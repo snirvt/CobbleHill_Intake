@@ -170,7 +170,7 @@ uvicorn classifier.api:app --reload
 6. Tests must be fast. If a test needs a real LLM call, mark it `@pytest.mark.integration` and skip by default.
 7. **After writing or modifying any code, immediately write or update the corresponding tests. Do not defer testing to later.**
 8. Aim for clear test names: `test_pdf_extractor_returns_text_from_valid_pdf`, not `test_pdf_1`.
-
+9. Use UV for package management
 ---
 
 ## Code Style
