@@ -5,8 +5,8 @@ from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifi
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
 from classifier.extractors.pdf import PdfExtractor
-from classifier.metadata.nurse_visit import NurseVisitMetadataExtractor
-from classifier.metadata.progress_note import ProgressNoteMetadataExtractor
+from classifier.metadata.nurse_visit import NurseVisitExtractor
+from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import OllamaProvider
@@ -37,7 +37,7 @@ def build_pipeline() -> Pipeline:
     _make_env()
     extractor = PdfExtractor()
     router = DefaultFileRouter({"pdf": extractor})
-    meta_extractor = ProgressNoteMetadataExtractor()
+    meta_extractor = ProgressNoteExtractor()
     llm = _make_llm()
     tasks = [
         _TASK_REGISTRY[name](llm)
@@ -56,7 +56,7 @@ def build_pair_pipeline() -> PairPipeline:
     llm = _make_llm()
     return PairPipeline(
         router=router,
-        dr_meta_extractor=ProgressNoteMetadataExtractor(),
-        nurse_meta_extractor=NurseVisitMetadataExtractor(),
+        dr_meta_extractor=ProgressNoteExtractor(),
+        nurse_meta_extractor=NurseVisitExtractor(),
         pair_classifier=DrNurseMatchClassifier(llm=llm),
     )
