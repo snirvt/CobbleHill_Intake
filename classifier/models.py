@@ -38,7 +38,7 @@ class MedicationData(BaseModel):
 
 
 class ExtractedFields(BaseModel):
-    """All structured fields parsed from document text by a MetadataExtractor."""
+    """All structured fields parsed from document text by a NoteExtractor."""
 
     meta: PatientMetadata
     hpi: str | None = None
@@ -93,8 +93,8 @@ class PipelineResult(BaseModel):
     error: str | None = None
 
 
-class NurseVisitFields(BaseModel):
-    """Structured fields parsed from a nurse visit SOAP note."""
+class NursePatientMeta(BaseModel):
+    """Patient identity/demographic fields from a nurse visit note."""
 
     patient_name: str | None = None
     dob: str | None = None
@@ -102,9 +102,15 @@ class NurseVisitFields(BaseModel):
     sex: str | None = None
     prn: str | None = None
     dos: str | None = None
-    address: str | None = None
     phone: str | None = None
+    address: str | None = None
     seen_by: str | None = None
+
+
+class NurseVisitFields(BaseModel):
+    """Structured clinical fields parsed from a nurse visit SOAP note."""
+
+    meta: NursePatientMeta = NursePatientMeta()
     chief_complaint: str | None = None
     diagnoses: list[str] = []
     medications_active: list[str] = []
