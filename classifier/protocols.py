@@ -6,6 +6,9 @@ from classifier.models import (
     DocumentMetadata,
     ExtractedFields,
     ExtractedText,
+    NurseVisitFields,
+    PairClassificationResult,
+    PairDocumentMetadata,
 )
 
 
@@ -51,3 +54,17 @@ class FileRouter(Protocol):
     """Resolves a file path to the appropriate ContentExtractor."""
 
     def route(self, file_path: Path) -> ContentExtractor: ...
+
+
+@runtime_checkable
+class NurseMetadataExtractor(Protocol):
+    """Parses structured fields from a nurse visit note."""
+
+    def extract(self, text: str) -> NurseVisitFields: ...
+
+
+@runtime_checkable
+class PairClassifier(Protocol):
+    """Classifies a dr+nurse document pair."""
+
+    async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult: ...
