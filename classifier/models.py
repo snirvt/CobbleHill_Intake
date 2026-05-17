@@ -91,3 +91,67 @@ class PipelineResult(BaseModel):
     success: bool
     result: ClassificationResult | None = None
     error: str | None = None
+
+
+class NurseVisitFields(BaseModel):
+    """Structured fields parsed from a nurse visit SOAP note."""
+
+    patient_name: str | None = None
+    dob: str | None = None
+    age: str | None = None
+    sex: str | None = None
+    prn: str | None = None
+    dos: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    seen_by: str | None = None
+    chief_complaint: str | None = None
+    diagnoses: list[str] = []
+    medications_active: list[str] = []
+    subjective: str | None = None
+    objective: str | None = None
+    assessment: list[str] = []
+    plan: str | None = None
+    care_plan: str | None = None
+
+
+class IdentityMatchResult(BaseModel):
+    """Per-field identity comparison between dr and nurse notes."""
+
+    patient_name: bool = False
+    dob: bool = False
+    dos: bool = False
+    sex: bool = False
+    account_number: bool = False
+
+
+class PairDocumentMetadata(BaseModel):
+    """Both dr and nurse document metadata for pair classification."""
+
+    dr_file_path: Path
+    nurse_file_path: Path
+    dr: DocumentMetadata
+    nurse: NurseVisitFields
+
+
+class PairClassificationResult(BaseModel):
+    """Output of pair classifier comparing dr and nurse notes."""
+
+    dr_file_path: Path
+    nurse_file_path: Path
+    identity_match: IdentityMatchResult
+    clinical_verdict: str
+    clinical_reasoning: str
+    overall: str
+    dr_metadata: "DocumentMetadata"
+    nurse_fields: NurseVisitFields
+
+
+class PairPipelineResult(BaseModel):
+    """Outcome of the pair pipeline for one dr+nurse pair."""
+
+    dr_file_path: Path
+    nurse_file_path: Path
+    success: bool
+    result: PairClassificationResult | None = None
+    error: str | None = None
