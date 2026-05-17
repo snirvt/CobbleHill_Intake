@@ -73,7 +73,7 @@ class DrNurseMatchClassifier:
 
     def _compare_identity(self, pair: PairDocumentMetadata) -> IdentityMatchResult:
         dr = pair.dr.meta
-        nurse = pair.nurse
+        nurse = pair.nurse.meta
         return IdentityMatchResult(
             patient_name=self._names_match(dr.patient_name, nurse.patient_name),
             dob=self._dates_match(dr.dob, nurse.dob),

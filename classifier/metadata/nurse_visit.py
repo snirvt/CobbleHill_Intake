@@ -1,9 +1,9 @@
 import re
 
-from classifier.models import NurseVisitFields
+from classifier.models import NursePatientMeta, NurseVisitFields
 
 
-class NurseVisitMetadataExtractor:
+class NurseVisitExtractor:
     """Extracts structured fields from nurse visit SOAP note text.
 
     Handles the tabular layout of Practice Fusion home-visit exports.
@@ -40,21 +40,20 @@ class NurseVisitMetadataExtractor:
 
     def extract(self, text: str) -> NurseVisitFields:
         """Return all structured fields parsed from nurse visit text."""
-        address = self._extract_address(text)
-
         phone_m = self._PHONE.search(text)
-        phone = phone_m.group(1).strip() if phone_m else None
-
-        return NurseVisitFields(
+        meta = NursePatientMeta(
             patient_name=self._first(self._PATIENT_HEADER, text),
             dob=self._first(self._DOB, text),
             age=self._first(self._AGE, text),
             sex=self._first(self._SEX, text),
             prn=self._first(self._PRN, text),
             dos=self._first(self._DOS, text),
-            address=address,
-            phone=phone,
+            phone=phone_m.group(1).strip() if phone_m else None,
+            address=self._extract_address(text),
             seen_by=self._first(self._SEEN_BY, text),
+        )
+        return NurseVisitFields(
+            meta=meta,
             chief_complaint=self._extract_block("Chief complaint", text),
             diagnoses=self._extract_icd_list("Diagnoses", text),
             medications_active=self._extract_medications(text),
