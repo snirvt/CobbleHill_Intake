@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from classifier.models import DocumentMetadata, PairDocumentMetadata, PairPipelineResult
-from classifier.protocols import FileRouter, MetadataExtractor, NurseMetadataExtractor, PairClassifier
+from classifier.protocols import FileRouter, NoteExtractor, NurseNoteExtractor, PairClassifier
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -53,8 +53,8 @@ class PairPipeline:
     def __init__(
         self,
         router: FileRouter,
-        dr_meta_extractor: MetadataExtractor,
-        nurse_meta_extractor: NurseMetadataExtractor,
+        dr_meta_extractor: NoteExtractor,
+        nurse_meta_extractor: NurseNoteExtractor,
         pair_classifier: PairClassifier,
     ) -> None:
         self._router = router

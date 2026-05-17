@@ -3,7 +3,7 @@ import re
 from classifier.models import ExaminationData, ExtractedFields, MedicationData, PatientMetadata
 
 
-class ProgressNoteMetadataExtractor:
+class ProgressNoteExtractor:
     """Extracts structured fields from progress note text using regex.
 
     Handles OCR noise from scanned fax documents (e.g. 'Ace No.' for 'Acc No.').

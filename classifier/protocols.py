@@ -36,7 +36,7 @@ class ContentExtractor(Protocol):
 
 
 @runtime_checkable
-class MetadataExtractor(Protocol):
+class NoteExtractor(Protocol):
     """Parses structured fields from extracted document text."""
 
     def extract(self, text: str) -> ExtractedFields: ...
@@ -57,7 +57,7 @@ class FileRouter(Protocol):
 
 
 @runtime_checkable
-class NurseMetadataExtractor(Protocol):
+class NurseNoteExtractor(Protocol):
     """Parses structured fields from a nurse visit note."""
 
     def extract(self, text: str) -> NurseVisitFields: ...

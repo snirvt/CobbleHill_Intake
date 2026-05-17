@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from classifier.models import DocumentMetadata, PipelineResult
-from classifier.protocols import Classifier, FileRouter, MetadataExtractor
+from classifier.protocols import Classifier, FileRouter, NoteExtractor
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class Pipeline:
     def __init__(
         self,
         router: FileRouter,
-        meta_extractor: MetadataExtractor,
+        meta_extractor: NoteExtractor,
         classifier: Classifier,
     ) -> None:
         self._router = router
