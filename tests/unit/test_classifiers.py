@@ -1,11 +1,24 @@
+import json
 from unittest.mock import AsyncMock
 
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dummy import DummyClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
 from classifier.models import ClassificationResult, DocumentMetadata
+
+
+def _fake_llm(*verdicts: str) -> FakeListChatModel:
+    """Return a FakeListChatModel whose responses are JSON-encoded DoctorVisitOutput objects."""
+    responses = [json.dumps({"verdict": v}) for v in verdicts]
+    return FakeListChatModel(responses=responses)
+
+
+def _invalid_llm() -> FakeListChatModel:
+    """Return a FakeListChatModel that responds with unparseable text."""
+    return FakeListChatModel(responses=["I'm not sure, maybe?"])
 
 
 # ---------------------------------------------------------------------------
@@ -36,16 +49,10 @@ async def test_dummy_classifier_preserves_metadata(
 # DoctorVisitNeededClassifier
 # ---------------------------------------------------------------------------
 
-def _make_llm(response: str) -> AsyncMock:
-    llm = AsyncMock()
-    llm.complete = AsyncMock(return_value=response)
-    return llm
-
-
 async def test_doctor_visit_needed_returns_needs_visit(
     sample_document_metadata: DocumentMetadata,
 ) -> None:
-    clf = DoctorVisitNeededClassifier(llm=_make_llm("NEEDS_VISIT"))
+    clf = DoctorVisitNeededClassifier(llm=_fake_llm("NEEDS_VISIT"))
     result = await clf.run(sample_document_metadata)
     assert result == "NEEDS_VISIT"
 
@@ -53,52 +60,38 @@ async def test_doctor_visit_needed_returns_needs_visit(
 async def test_doctor_visit_needed_returns_no_visit_needed(
     sample_document_metadata: DocumentMetadata,
 ) -> None:
-    clf = DoctorVisitNeededClassifier(llm=_make_llm("NO_VISIT_NEEDED"))
+    clf = DoctorVisitNeededClassifier(llm=_fake_llm("NO_VISIT_NEEDED"))
     result = await clf.run(sample_document_metadata)
     assert result == "NO_VISIT_NEEDED"
 
 
-async def test_doctor_visit_needed_defaults_on_ambiguous_response(
+async def test_doctor_visit_needed_defaults_on_parse_error(
     sample_document_metadata: DocumentMetadata,
 ) -> None:
-    clf = DoctorVisitNeededClassifier(llm=_make_llm("I'm not sure, maybe?"))
+    clf = DoctorVisitNeededClassifier(llm=_invalid_llm())
     result = await clf.run(sample_document_metadata)
     assert result == "NEEDS_VISIT"
 
 
-async def test_doctor_visit_needed_category_embedded_in_prose(
-    sample_document_metadata: DocumentMetadata,
-) -> None:
-    clf = DoctorVisitNeededClassifier(llm=_make_llm("Based on notes: NO_VISIT_NEEDED."))
-    result = await clf.run(sample_document_metadata)
-    assert result == "NO_VISIT_NEEDED"
-
-
-async def test_doctor_visit_needed_prompt_includes_complaints(
-    sample_document_metadata: DocumentMetadata,
-) -> None:
-    llm = _make_llm("NEEDS_VISIT")
-    clf = DoctorVisitNeededClassifier(llm=llm)
-    await clf.run(sample_document_metadata)
-
-    called_prompt: str = llm.complete.call_args[0][0]
-    assert "Well Visit" in called_prompt
-    assert "Runny nose" in called_prompt
-
-
-async def test_doctor_visit_needed_prompt_includes_assessment(
-    sample_document_metadata: DocumentMetadata,
-) -> None:
-    llm = _make_llm("NEEDS_VISIT")
-    clf = DoctorVisitNeededClassifier(llm=llm)
-    await clf.run(sample_document_metadata)
-
-    called_prompt: str = llm.complete.call_args[0][0]
-    assert "Z00.129" in called_prompt
-
-
 async def test_doctor_visit_needed_task_name() -> None:
     assert DoctorVisitNeededClassifier.task_name == "doctor_visit_needed"
+
+
+async def test_doctor_visit_needed_prompt_input_includes_complaints(
+    sample_document_metadata: DocumentMetadata,
+) -> None:
+    clf = DoctorVisitNeededClassifier(llm=_fake_llm("NEEDS_VISIT"))
+    prompt_input = clf._build_prompt_input(sample_document_metadata)
+    assert "Well Visit" in prompt_input["complaints"]
+    assert "Runny nose" in prompt_input["complaints"]
+
+
+async def test_doctor_visit_needed_prompt_input_includes_assessment(
+    sample_document_metadata: DocumentMetadata,
+) -> None:
+    clf = DoctorVisitNeededClassifier(llm=_fake_llm("NEEDS_VISIT"))
+    prompt_input = clf._build_prompt_input(sample_document_metadata)
+    assert "Z00.129" in prompt_input["assessment"]
 
 
 # ---------------------------------------------------------------------------
