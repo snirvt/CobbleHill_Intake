@@ -3,7 +3,8 @@ name = "cobblehill-intake"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "httpx>=0.28.1",
+    "langchain-core>=0.3",
+    "langchain-ollama>=0.3",
     "liteparse>=1.2.1",
     "pydantic-settings>=2.14.1",
 ]
