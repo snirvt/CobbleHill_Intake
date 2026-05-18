@@ -9,7 +9,9 @@ from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
-from classifier.providers.ollama import OllamaProvider
+from langchain_core.language_models import BaseChatModel
+
+from classifier.providers.ollama import create_ollama_chat_model
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
 
@@ -23,9 +25,9 @@ def _make_env() -> None:
         os.environ["PATH"] = settings.node_bin_path + ":" + os.environ["PATH"]
 
 
-def _make_llm() -> OllamaProvider:
+def _make_llm() -> BaseChatModel:
     semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
-    return OllamaProvider(
+    return create_ollama_chat_model(
         url=settings.ollama_url,
         model=settings.ollama_model,
         semaphore=semaphore,
