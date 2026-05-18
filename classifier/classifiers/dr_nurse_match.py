@@ -1,25 +1,34 @@
 import logging
 import re
+from typing import Literal
+
+from langchain_core.exceptions import OutputParserException
+from langchain_core.language_models import BaseChatModel
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
 from classifier.models import (
     IdentityMatchResult,
     PairClassificationResult,
     PairDocumentMetadata,
 )
-from classifier.protocols import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-_VERDICTS = frozenset({"MATCH", "PARTIAL_MATCH", "MISMATCH"})
+
+class ClinicalMatchOutput(BaseModel):
+    """Structured LLM output for the clinical-match classification task."""
+
+    verdict: Literal["MATCH", "PARTIAL_MATCH", "MISMATCH"]
+    reasoning: str | None
+
 
 _PROMPT_TEMPLATE = """\
 You are a medical records auditor. Compare the dr progress note and the nurse visit note \
 below and determine whether they describe the same patient encounter consistently.
 
-Respond with EXACTLY one verdict on the first line, then a brief explanation (2-4 sentences):
-  MATCH          — all key clinical details align
-  PARTIAL_MATCH  — some details match, minor discrepancies exist
-  MISMATCH       — significant clinical inconsistencies or wrong patient
+{format_instructions}
 
 --- DR PROGRESS NOTE ---
 Chief Complaints: {dr_complaints}
@@ -32,22 +41,25 @@ Chief Complaint: {nurse_complaint}
 Diagnoses: {nurse_diagnoses}
 Assessment: {nurse_assessment}
 Plan: {nurse_plan}
---- END ---
-
-Verdict and explanation:"""
+--- END ---"""
 
 
 class DrNurseMatchClassifier:
     """Compares a dr progress note with a nurse visit note for patient and clinical consistency."""
 
-    def __init__(self, llm: LLMProvider) -> None:
-        self._llm = llm
+    def __init__(self, llm: BaseChatModel) -> None:
+        parser: PydanticOutputParser[ClinicalMatchOutput] = PydanticOutputParser(
+            pydantic_object=ClinicalMatchOutput
+        )
+        prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
+            format_instructions=parser.get_format_instructions()
+        )
+        self._chain = prompt | llm | parser
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult:
         identity = self._compare_identity(pair)
         clinical_verdict, clinical_reasoning = await self._compare_clinical(pair)
 
-        # Overall: if identity fully fails, demote to MISMATCH regardless of LLM
         identity_score = sum([
             identity.patient_name,
             identity.dob,
@@ -82,16 +94,7 @@ class DrNurseMatchClassifier:
             account_number=self._tokens_match(dr.account_number, nurse.prn),
         )
 
-    async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[str, str]:
-        prompt = self._build_prompt(pair)
-        try:
-            response = await self._llm.complete(prompt)
-        except Exception as exc:
-            logger.error("LLM call failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
-            return "MISMATCH", f"LLM error: {exc}"
-        return self._parse_response(response)
-
-    def _build_prompt(self, pair: PairDocumentMetadata) -> str:
+    def _build_prompt_input(self, pair: PairDocumentMetadata) -> dict[str, str]:
         dr = pair.dr
         nurse = pair.nurse
 
@@ -109,34 +112,30 @@ class DrNurseMatchClassifier:
                 parts.append("Not taking: " + ", ".join(meds.not_taking))
             return " | ".join(parts) or "None"
 
-        return _PROMPT_TEMPLATE.format(
-            dr_complaints=fmt(dr.complaints),
-            dr_assessment=fmt(dr.assessment),
-            dr_plan=dr.plan or "None",
-            dr_medications=fmt_meds(dr),
-            nurse_complaint=nurse.chief_complaint or "None",
-            nurse_diagnoses=fmt(nurse.diagnoses),
-            nurse_assessment=fmt(nurse.assessment),
-            nurse_plan=nurse.plan or "None",
-        )
+        return {
+            "dr_complaints": fmt(dr.complaints),
+            "dr_assessment": fmt(dr.assessment),
+            "dr_plan": dr.plan or "None",
+            "dr_medications": fmt_meds(dr),
+            "nurse_complaint": nurse.chief_complaint or "None",
+            "nurse_diagnoses": fmt(nurse.diagnoses),
+            "nurse_assessment": fmt(nurse.assessment),
+            "nurse_plan": nurse.plan or "None",
+        }
 
-    def _parse_response(self, response: str) -> tuple[str, str]:
-        lines = response.strip().splitlines()
-        verdict = "MISMATCH"
-        # Check longest tokens first so "MATCH" doesn't shadow "PARTIAL_MATCH"
-        _ordered = ("PARTIAL_MATCH", "MISMATCH", "MATCH")
-        for line in lines:
-            upper = line.strip().upper()
-            for v in _ordered:
-                if v in upper:
-                    verdict = v
-                    break
-            else:
-                continue
-            break
-        reasoning = " ".join(line.strip() for line in lines[1:] if line.strip()) or response.strip()
-        logger.debug("Pair clinical verdict=%s", verdict)
-        return verdict, reasoning
+    async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[str, str]:
+        try:
+            output: ClinicalMatchOutput = await self._chain.ainvoke(
+                self._build_prompt_input(pair)
+            )
+            logger.debug("Pair clinical verdict=%s", output.verdict)
+            return output.verdict, output.reasoning
+        except OutputParserException as exc:
+            logger.error("Parse failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
+            return "MISMATCH", f"Parse error: {exc}"
+        except Exception as exc:
+            logger.error("LLM call failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
+            return "MISMATCH", f"LLM error: {exc}"
 
     @staticmethod
     def _normalize(s: str | None) -> str:
