@@ -13,13 +13,6 @@ from classifier.models import (
 
 
 @runtime_checkable
-class LLMProvider(Protocol):
-    """Sends a prompt to an LLM and returns the raw text response."""
-
-    async def complete(self, prompt: str) -> str: ...
-
-
-@runtime_checkable
 class TaskClassifier(Protocol):
     """Single-purpose classifier that returns a category string for one task."""
 
