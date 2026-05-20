@@ -12,8 +12,13 @@ def pdf_extractor() -> MagicMock:
 
 
 @pytest.fixture
-def router(pdf_extractor: MagicMock) -> DefaultFileRouter:
-    return DefaultFileRouter({"pdf": pdf_extractor})
+def txt_extractor() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
+def router(pdf_extractor: MagicMock, txt_extractor: MagicMock) -> DefaultFileRouter:
+    return DefaultFileRouter({"pdf": pdf_extractor, "txt": txt_extractor})
 
 
 def test_routes_pdf_to_pdf_extractor(
@@ -32,12 +37,20 @@ def test_routes_uppercase_pdf_extension(
     assert result is pdf_extractor
 
 
+def test_routes_txt_to_txt_extractor(
+    router: DefaultFileRouter, txt_extractor: MagicMock, tmp_path: Path
+) -> None:
+    txt = tmp_path / "nurse_visit.txt"
+    result = router.route(txt)
+    assert result is txt_extractor
+
+
 def test_raises_for_unsupported_extension(
     router: DefaultFileRouter, tmp_path: Path
 ) -> None:
-    txt = tmp_path / "doc.txt"
+    docx = tmp_path / "doc.docx"
     with pytest.raises(ValueError, match="No extractor registered"):
-        router.route(txt)
+        router.route(docx)
 
 
 def test_raises_for_no_extension(router: DefaultFileRouter, tmp_path: Path) -> None:

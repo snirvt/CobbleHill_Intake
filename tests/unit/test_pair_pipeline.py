@@ -1,0 +1,189 @@
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from classifier.models import (
+    DocumentMetadata,
+    ExtractedFields,
+    ExtractedText,
+    IdentityMatchResult,
+    NursePatientMeta,
+    NurseVisitFields,
+    PairClassificationResult,
+    PairDocumentMetadata,
+    PairPipelineResult,
+    PatientMetadata,
+)
+from classifier.pair_pipeline import PairPipeline, scan_pairs
+
+
+# ---------------------------------------------------------------------------
+# scan_pairs
+# ---------------------------------------------------------------------------
+
+def test_scan_pairs_finds_pair_in_root(tmp_path: Path) -> None:
+    (tmp_path / "dr_note.pdf").write_bytes(b"%PDF")
+    (tmp_path / "nurse_visit.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert pairs[0][0].name == "dr_note.pdf"
+    assert pairs[0][1].name == "nurse_visit.pdf"
+
+
+def test_scan_pairs_finds_pairs_in_subfolders(tmp_path: Path) -> None:
+    sub1 = tmp_path / "patient_a"
+    sub2 = tmp_path / "patient_b"
+    sub1.mkdir()
+    sub2.mkdir()
+    (sub1 / "dr_progress.pdf").write_bytes(b"%PDF")
+    (sub1 / "nurse_visit.pdf").write_bytes(b"%PDF")
+    (sub2 / "dr_note.pdf").write_bytes(b"%PDF")
+    (sub2 / "nurse_note.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert len(pairs) == 2
+
+
+def test_scan_pairs_skips_folder_missing_dr(tmp_path: Path) -> None:
+    sub = tmp_path / "incomplete"
+    sub.mkdir()
+    (sub / "nurse_visit.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert pairs == []
+
+
+def test_scan_pairs_skips_folder_missing_nurse(tmp_path: Path) -> None:
+    sub = tmp_path / "incomplete"
+    sub.mkdir()
+    (sub / "dr_note.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert pairs == []
+
+
+def test_scan_pairs_uses_first_alphabetically(tmp_path: Path) -> None:
+    (tmp_path / "dr_aaa.pdf").write_bytes(b"%PDF")
+    (tmp_path / "dr_zzz.pdf").write_bytes(b"%PDF")
+    (tmp_path / "nurse_aaa.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert pairs[0][0].name == "dr_aaa.pdf"
+
+
+def test_scan_pairs_ignores_unsupported_extensions(tmp_path: Path) -> None:
+    (tmp_path / "dr_note.txt").write_bytes(b"text")
+    (tmp_path / "nurse_visit.txt").write_bytes(b"text")
+    pairs = scan_pairs(tmp_path)
+    assert pairs == []
+
+
+# ---------------------------------------------------------------------------
+# PairPipeline.run_pairs
+# ---------------------------------------------------------------------------
+
+def _make_pair_pipeline(
+    pair_result: PairClassificationResult,
+    dr_text: str = "dr note text",
+    nurse_text: str = "nurse note text",
+) -> PairPipeline:
+    extractor = MagicMock()
+    extractor.extract = AsyncMock(
+        side_effect=lambda p: ExtractedText(file_path=p, text=dr_text if "dr" in p.name else nurse_text, num_pages=1)
+    )
+
+    router = MagicMock()
+    router.route = MagicMock(return_value=extractor)
+
+    dr_meta_extractor = MagicMock()
+    dr_meta_extractor.extract = MagicMock(
+        return_value=ExtractedFields(
+            meta=PatientMetadata(patient_name="Test", dob="01/01/2025", dos="04/17/2026", sex="F", account_number="X1"),
+        )
+    )
+
+    nurse_meta_extractor = MagicMock()
+    nurse_meta_extractor.extract = MagicMock(return_value=NurseVisitFields(meta=NursePatientMeta(patient_name="Test")))
+
+    pair_clf = MagicMock()
+    pair_clf.classify_pair = AsyncMock(return_value=pair_result)
+
+    return PairPipeline(
+        router=router,
+        dr_meta_extractor=dr_meta_extractor,
+        nurse_meta_extractor=nurse_meta_extractor,
+        pair_classifier=pair_clf,
+    )
+
+
+def _sample_pair_result(dr_path: Path, nurse_path: Path) -> PairClassificationResult:
+    dr_meta = DocumentMetadata(
+        file_path=dr_path,
+        raw_text="",
+        meta=PatientMetadata(patient_name="Test"),
+    )
+    return PairClassificationResult(
+        dr_file_path=dr_path,
+        nurse_file_path=nurse_path,
+        identity_match=IdentityMatchResult(patient_name=True, dob=True, dos=True, sex=True),
+        clinical_verdict="MATCH",
+        clinical_reasoning="All consistent.",
+        overall="MATCH",
+        dr_metadata=dr_meta,
+        nurse_fields=NurseVisitFields(meta=NursePatientMeta(patient_name="Test")),
+    )
+
+
+async def test_pair_pipeline_returns_success_result(tmp_path: Path) -> None:
+    dr = tmp_path / "dr_note.pdf"
+    nurse = tmp_path / "nurse_visit.pdf"
+    dr.write_bytes(b"%PDF")
+    nurse.write_bytes(b"%PDF")
+
+    pair_result = _sample_pair_result(dr, nurse)
+    pipeline = _make_pair_pipeline(pair_result)
+    results = await pipeline.run_pairs([(dr, nurse)])
+
+    assert len(results) == 1
+    assert results[0].success is True
+    assert results[0].result is not None
+    assert results[0].result.overall == "MATCH"
+
+
+async def test_pair_pipeline_returns_failure_on_extractor_error(tmp_path: Path) -> None:
+    dr = tmp_path / "dr_note.pdf"
+    nurse = tmp_path / "nurse_visit.pdf"
+    dr.write_bytes(b"%PDF")
+    nurse.write_bytes(b"%PDF")
+
+    extractor = MagicMock()
+    extractor.extract = AsyncMock(side_effect=RuntimeError("parse error"))
+    router = MagicMock()
+    router.route = MagicMock(return_value=extractor)
+
+    pipeline = PairPipeline(
+        router=router,
+        dr_meta_extractor=MagicMock(),
+        nurse_meta_extractor=MagicMock(),
+        pair_classifier=MagicMock(),
+    )
+    results = await pipeline.run_pairs([(dr, nurse)])
+    assert results[0].success is False
+    assert "parse error" in (results[0].error or "")
+
+
+async def test_pair_pipeline_run_folder_finds_pairs(tmp_path: Path) -> None:
+    dr = tmp_path / "dr_progress.pdf"
+    nurse = tmp_path / "nurse_visit.pdf"
+    dr.write_bytes(b"%PDF")
+    nurse.write_bytes(b"%PDF")
+
+    pair_result = _sample_pair_result(dr, nurse)
+    pipeline = _make_pair_pipeline(pair_result)
+    results = await pipeline.run_folder(tmp_path)
+    assert len(results) == 1
+    assert results[0].success is True
+
+
+async def test_pair_pipeline_run_folder_returns_empty_when_no_pairs(tmp_path: Path) -> None:
+    pipeline = _make_pair_pipeline(_sample_pair_result(tmp_path / "a.pdf", tmp_path / "b.pdf"))
+    results = await pipeline.run_folder(tmp_path)
+    assert results == []

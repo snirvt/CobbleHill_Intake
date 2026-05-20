@@ -1,9 +1,10 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
 from classifier.extractors.pdf import PdfExtractor
+from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.models import ExtractedText
 
 
@@ -56,3 +57,24 @@ async def test_pdf_extractor_sets_path_env(tmp_path: Path) -> None:
         extractor = PdfExtractor(node_bin_path="/custom/node/bin")
 
     assert "/custom/node/bin" in os.environ.get("PATH", "")
+
+
+async def test_plaintext_extractor_returns_extracted_text(tmp_path: Path) -> None:
+    txt = tmp_path / "nurse_visit.txt"
+    txt.write_text("Patient seen today. Blood pressure normal.", encoding="utf-8")
+
+    extractor = PlaintextExtractor()
+    result = await extractor.extract(txt)
+
+    assert isinstance(result, ExtractedText)
+    assert result.text == "Patient seen today. Blood pressure normal."
+    assert result.num_pages == 1
+    assert result.file_path == txt
+
+
+async def test_plaintext_extractor_raises_on_missing_file(tmp_path: Path) -> None:
+    missing = tmp_path / "nonexistent.txt"
+
+    extractor = PlaintextExtractor()
+    with pytest.raises(RuntimeError, match="Failed to read"):
+        await extractor.extract(missing)
