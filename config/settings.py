@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     data_folder: Path = Path("./data")
     node_bin_path: str = "/home/snir/.nvm/versions/node/v22.22.2/bin"
-    supported_extensions: dict[str, str] = {".pdf": "pdf"}
+    supported_extensions: dict[str, str] = {".pdf": "pdf", ".txt": "txt"}
     max_concurrent_files: int = 10
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:1b"
