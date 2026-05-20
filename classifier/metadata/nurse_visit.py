@@ -38,8 +38,19 @@ class NurseVisitExtractor:
         re.MULTILINE | re.IGNORECASE,
     )
 
+    _SOAP_MARKER = re.compile(
+        r"^\s*(?:Chief complaint|Subjective|Objective|Assessment|Plan|Diagnoses)\s*$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+
     def extract(self, text: str) -> NurseVisitFields:
-        """Return all structured fields parsed from nurse visit text."""
+        """Return all structured fields parsed from nurse visit text.
+
+        Falls back to storing raw text in `subjective` when no SOAP structure is detected.
+        """
+        if not self._SOAP_MARKER.search(text):
+            return NurseVisitFields(subjective=text.strip())
+
         phone_m = self._PHONE.search(text)
         meta = NursePatientMeta(
             patient_name=self._first(self._PATIENT_HEADER, text),
