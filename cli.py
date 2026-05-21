@@ -120,7 +120,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="CobbleHill document classifier")
     parser.add_argument(
         "--input",
-        required=True,
+        default=settings.data_folder,
+        required=False,
         type=str,
         help="Path to a single PDF/folder, or a SharePoint folder URL",
     )
