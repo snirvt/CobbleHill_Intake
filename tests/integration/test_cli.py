@@ -20,7 +20,7 @@ def test_cli_processes_real_pdf() -> None:
     assert SAMPLE_PDF.exists(), f"Sample PDF not found at {SAMPLE_PDF}"
 
     result = subprocess.run(
-        [sys.executable, "-m", "classifier.cli", "--input", str(SAMPLE_PDF)],
+        [sys.executable, "-m", "cli", "--input", str(SAMPLE_PDF)],
         capture_output=True,
         text=True,
     )
@@ -37,7 +37,7 @@ def test_cli_processes_real_pdf() -> None:
 @pytest.mark.integration
 def test_cli_processes_real_folder() -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "classifier.cli", "--input", str(DATA_DIR)],
+        [sys.executable, "-m", "cli", "--input", str(DATA_DIR)],
         capture_output=True,
         text=True,
     )
