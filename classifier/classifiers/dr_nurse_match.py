@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -20,14 +20,15 @@ logger = logging.getLogger(__name__)
 class ClinicalMatchOutput(BaseModel):
     """Structured LLM output for the clinical-match classification task."""
 
-    verdict: Literal["MATCH", "PARTIAL_MATCH", "MISMATCH"]
-    reasoning: str | None
+    verdict: Literal["MATCH", "MISMATCH", "UNDECIDED"]
+    reasoning: Optional[str] = None
 
 
 _PROMPT_TEMPLATE = """\
 You are a medical records auditor. Compare the dr progress note and the nurse visit note \
 below and determine whether they describe the same patient encounter consistently.
 
+Output instructions:
 {format_instructions}
 
 --- DR PROGRESS NOTE ---
