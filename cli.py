@@ -2,9 +2,11 @@ import argparse
 import asyncio
 import json
 import logging
+import shutil
 import sys
 from pathlib import Path
 
+from classifier.ingest.sharepoint import SharePointFolderDownloader, is_sharepoint_url
 from classifier.main import build_pair_pipeline, build_pipeline
 from classifier.models import PairPipelineResult, PipelineResult
 from classifier.output.csv_writer import write_csv, write_pair_csv
@@ -119,8 +121,8 @@ def main() -> None:
     parser.add_argument(
         "--input",
         required=True,
-        type=Path,
-        help="Path to a single PDF file or a folder containing PDF files",
+        type=str,
+        help="Path to a single PDF/folder, or a SharePoint folder URL",
     )
     parser.add_argument(
         "--pair-csv",
@@ -129,7 +131,24 @@ def main() -> None:
         help="Output CSV path for pair comparison results",
     )
     args = parser.parse_args()
-    sys.exit(asyncio.run(_run(args.input, args.pair_csv)))
+
+    if is_sharepoint_url(args.input):
+        client_id = settings.sharepoint_client_id
+        if not client_id:
+            logger.error(
+                "SharePoint URL given but COBBLEHILL_SHAREPOINT_CLIENT_ID is not set"
+            )
+            sys.exit(1)
+        downloader = SharePointFolderDownloader(client_id)
+        tmp_dir: Path | None = None
+        try:
+            tmp_dir = downloader.download_to_temp(args.input)
+            sys.exit(asyncio.run(_run(tmp_dir, args.pair_csv)))
+        finally:
+            if tmp_dir is not None:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+    else:
+        sys.exit(asyncio.run(_run(Path(args.input), args.pair_csv)))
 
 
 if __name__ == "__main__":
