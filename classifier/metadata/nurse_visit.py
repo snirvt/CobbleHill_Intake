@@ -49,7 +49,7 @@ class NurseVisitExtractor:
         Falls back to storing raw text in `subjective` when no SOAP structure is detected.
         """
         if not self._SOAP_MARKER.search(text):
-            return NurseVisitFields(subjective=text.strip())
+            return NurseVisitFields(assessment=[text.strip()])
 
         phone_m = self._PHONE.search(text)
         meta = NursePatientMeta(
