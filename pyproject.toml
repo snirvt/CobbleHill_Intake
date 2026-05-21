@@ -7,12 +7,13 @@ dependencies = [
     "langchain-core>=0.3",
     "langchain-ollama>=0.3",
     "liteparse>=1.2.1",
+    "Office365-REST-Python-Client>=2.5.0",
     "pydantic-settings>=2.14.1",
     "typer>=0.25.1",
 ]
 
 [project.scripts]
-cobblehill = "classifier.cli:main"
+cobblehill = "cli:main"
 
 [dependency-groups]
 dev = [
@@ -29,6 +30,13 @@ markers = [
     "integration: tests requiring external services (deselect with '-m not integration')",
 ]
 testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["classifier/**", "config/**", "cli.py"]
 
 [tool.ruff]
 target-version = "py313"
