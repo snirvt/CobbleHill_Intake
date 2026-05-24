@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from classifier.ingest.sharepoint import SharePointFolderDownloader, is_sharepoint_url
+from classifier.ingest.sharepoint import SharePointFolderDownloader
 from classifier.main import build_pair_pipeline, build_pipeline
 from classifier.models import PairPipelineResult, PipelineResult
 from classifier.output.csv_writer import write_csv, write_pair_csv
@@ -123,7 +123,22 @@ def main() -> None:
         default=settings.data_folder,
         required=False,
         type=str,
-        help="Path to a single PDF/folder, or a SharePoint folder URL",
+        help="Path to a local file or folder",
+    )
+    parser.add_argument(
+        "--sharepoint-folder",
+        default=None,
+        type=str,
+        help=(
+            'Drive-relative SharePoint folder path, e.g. '
+            '"Patient Encounters/Medical Notes/Non-Admits"'
+        ),
+    )
+    parser.add_argument(
+        "--download-dir",
+        default=None,
+        type=Path,
+        help="Directory to download SharePoint files into (default: auto temp dir, deleted after run)",
     )
     parser.add_argument(
         "--pair-csv",
@@ -133,24 +148,32 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if is_sharepoint_url(args.input):
-        client_id = settings.sharepoint_client_id
-        if not client_id:
-            logger.error(
-                "SharePoint URL given but COBBLEHILL_SHAREPOINT_CLIENT_ID is not set"
-            )
-            sys.exit(1)
-        downloader = SharePointFolderDownloader(client_id)
-        tmp_dir: Path | None = None
+    if args.sharepoint_folder:
+        downloader = SharePointFolderDownloader(
+            client_id=settings.sharepoint_client_id,
+            client_secret=settings.sharepoint_client_secret,
+            tenant_id=settings.sharepoint_tenant_id,
+            drive_id=settings.sharepoint_drive_id,
+        )
+        use_tmp = args.download_dir is None
+        local_dir = downloader.download(args.sharepoint_folder, args.download_dir)
         try:
-            tmp_dir = downloader.download_to_temp(args.input)
-            sys.exit(asyncio.run(_run(tmp_dir, args.pair_csv)))
+            sys.exit(asyncio.run(_run(local_dir, args.pair_csv)))
         finally:
-            if tmp_dir is not None:
-                shutil.rmtree(tmp_dir, ignore_errors=True)
+            if use_tmp:
+                shutil.rmtree(local_dir, ignore_errors=True)
     else:
         sys.exit(asyncio.run(_run(Path(args.input), args.pair_csv)))
 
 
 if __name__ == "__main__":
     main()
+"""
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits"
+
+# Download to persistent dir
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --download-dir ./downloads
+
+# Local files (unchanged)
+uv run python -m cli --input ./data
+"""
