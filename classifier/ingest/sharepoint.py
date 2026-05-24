@@ -1,99 +1,100 @@
-"""SharePoint Online folder downloader."""
+"""SharePoint Online folder downloader via Microsoft Graph API."""
 
 import logging
 import tempfile
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
-from config.settings import settings
+
+import requests
 
 try:
-    from office365.sharepoint.client_context import ClientContext
-except ImportError:  # package not installed — only needed at runtime, not in tests
-    ClientContext = None  # type: ignore[assignment,misc]
+    from msal import ConfidentialClientApplication
+except ImportError:
+    ConfidentialClientApplication = None  # type: ignore[assignment,misc]
+
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-
-def is_sharepoint_url(value: str) -> bool:
-    """Return True if value is an http(s) URL (treat as SharePoint)."""
-    try:
-        parsed = urlparse(value)
-        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-    except Exception:
-        return False
+GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 
 
-def _parse_sharepoint_url(url: str) -> tuple[str, str]:
-    """Return (site_url, folder_server_relative_path) from a SharePoint AllItems URL.
-
-    Expects the standard SharePoint web UI URL where the folder path is in the ``id``
-    query parameter, e.g.:
-        https://<tenant>.sharepoint.com/sites/<site>/…/AllItems.aspx?id=%2Fsites%2F…
-    """
-    parsed = urlparse(url)
-
-    # Folder path comes from the ?id= query param
-    qs = parse_qs(parsed.query)
-    id_values = qs.get("id", [])
-    if not id_values:
-        raise ValueError(
-            f"Cannot determine SharePoint folder: no 'id' query parameter in URL: {url}"
+def authenticate_to_graph(client_id: str, client_secret: str, tenant_id: str) -> str:
+    """Acquire a Graph API access token via MSAL client credentials flow."""
+    if ConfidentialClientApplication is None:
+        raise RuntimeError("msal package not installed. Run: uv add msal")
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    app = ConfidentialClientApplication(
+        client_id, authority=authority, client_credential=client_secret
+    )
+    result = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+    if "access_token" not in result:
+        raise RuntimeError(
+            f"MSAL authentication failed: {result.get('error_description', result.get('error'))}"
         )
-    folder_rel_path = unquote(id_values[0])  # e.g. /sites/Roga/Shared Documents/...
-
-    # Site URL: scheme + netloc + /sites/<site-name>
-    path_parts = [p for p in parsed.path.split("/") if p]
-    if len(path_parts) >= 2 and path_parts[0] == "sites":
-        site_url = f"{parsed.scheme}://{parsed.netloc}/sites/{path_parts[1]}"
-    else:
-        raise ValueError(
-            f"Cannot extract site URL from SharePoint path: {parsed.path!r}"
-        )
-
-    return site_url, folder_rel_path
+    return result["access_token"]  # type: ignore[return-value]
 
 
-class SharePointFolderDownloader:
-    """Downloads all supported files from a SharePoint Online folder to a temp directory."""
+def download_folder(
+    drive_id: str,
+    folder_path: str,
+    local_dir: Path,
+    headers: dict,  # type: ignore[type-arg]
+) -> None:
+    """Recursively download all supported files from a SharePoint drive folder."""
+    local_dir.mkdir(parents=True, exist_ok=True)
 
-    def __init__(self, client_id: str) -> None:
-        self._client_id = client_id
+    url = f"{GRAPH_ROOT}/drives/{drive_id}/root:/{folder_path}:/children"
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
 
-    def download_to_temp(self, folder_url: str) -> Path:
-        """Download supported files from *folder_url* and return path to a new temp directory.
+    supported = set(settings.supported_extensions.keys())
 
-        The caller is responsible for deleting the directory when done.
-        """
-        if ClientContext is None:
-            raise RuntimeError(
-                "office365 package not installed. Run: uv add Office365-REST-Python-Client"
+    for item in response.json()["value"]:
+        name: str = item["name"]
+
+        if "folder" in item:
+            logger.info("Entering folder: %s/%s", folder_path, name)
+            download_folder(
+                drive_id,
+                f"{folder_path}/{name}",
+                local_dir / name,
+                headers,
             )
-
-        site_url, folder_path = _parse_sharepoint_url(folder_url)
-        logger.info("Connecting to SharePoint site: %s", site_url)
-
-        ctx = ClientContext(site_url).with_interactive(
-            tenant="common", client_id=self._client_id
-        )
-
-        temp_dir = Path(tempfile.mkdtemp(prefix="cobblehill_sp_"))
-        logger.info("Downloading files from %s → %s", folder_path, temp_dir)
-
-        folder = ctx.web.get_folder_by_server_relative_url(folder_path)
-        files = folder.files
-        ctx.load(files)
-        ctx.execute_query()
-
-        supported = set(settings.supported_extensions.keys())
-        for sp_file in files:
-            name: str = sp_file.properties["Name"]
+        else:
             if Path(name).suffix.lower() not in supported:
                 logger.debug("Skipping unsupported file: %s", name)
                 continue
-            local_path = temp_dir / name
-            with open(local_path, "wb") as fh:
-                sp_file.download(fh)
-                ctx.execute_query()
+            download_url = f"{GRAPH_ROOT}/drives/{drive_id}/items/{item['id']}/content"
+            file_response = requests.get(download_url, headers=headers, timeout=60)
+            file_response.raise_for_status()
+            (local_dir / name).write_bytes(file_response.content)
             logger.info("Downloaded: %s", name)
 
-        return temp_dir
+
+class SharePointFolderDownloader:
+    """Downloads files from a SharePoint Online drive folder."""
+
+    def __init__(self, client_id: str, client_secret: str, tenant_id: str, drive_id: str) -> None:
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._tenant_id = tenant_id
+        self._drive_id = drive_id
+
+    def download(self, folder_path: str, local_dir: Path | None = None) -> Path:
+        """Download all supported files from *folder_path* into *local_dir*.
+
+        *folder_path* is the drive-relative path, e.g.
+        ``"Patient Encounters/Medical Notes/Non-Admits"``.
+
+        If *local_dir* is None a temporary directory is created; the caller is
+        responsible for deleting it when done.
+        """
+        if local_dir is None:
+            local_dir = Path(tempfile.mkdtemp(prefix="cobblehill_sp_"))
+
+        access_token = authenticate_to_graph(self._client_id, self._client_secret, self._tenant_id)
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        logger.info("Downloading SharePoint folder '%s' → %s", folder_path, local_dir)
+        download_folder(self._drive_id, folder_path, local_dir, headers)
+        return local_dir
