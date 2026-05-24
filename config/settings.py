@@ -1,7 +1,7 @@
 from pathlib import Path
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from _SECRETS._secrets import CLIENT_ID, TENANT_ID
+from _SECRETS._secrets import CLIENT_ID, TENANT_ID, CLIENT_SECRET
 
 
 class Settings(BaseSettings):
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     output_csv: Path = Path("./output/results.csv")
     sharepoint_client_id: str = CLIENT_ID
     sharepoint_tenant_id: str = TENANT_ID
-    sharepoint_client_secret: str = ""
+    sharepoint_client_secret: str = CLIENT_SECRET
 
     @computed_field  # type: ignore[prop-decorator]
     @property
