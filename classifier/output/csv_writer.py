@@ -1,11 +1,22 @@
-import csv
 import json
 import logging
 from pathlib import Path
 
+import openpyxl
+from openpyxl.worksheet.worksheet import Worksheet
+
 from classifier.models import PairPipelineResult, PipelineResult
 
 logger = logging.getLogger(__name__)
+
+# Maps column -> set of values that mean "no issue".
+# A row is clean only when ALL listed columns hold a clean value.
+# Add a new entry here to extend issue detection to future checks.
+_CLEAN_VALUES: dict[str, set[object]] = {
+    "success": {True},
+    "overall": {"MATCH"},
+    "errors": {"", None},
+}
 
 # Fixed patient metadata columns in output order
 _META_COLUMNS = [
@@ -34,15 +45,43 @@ _PAIR_COLUMNS = (
 )
 
 
-def write_pair_csv(results: list[PairPipelineResult], output_path: Path) -> None:
-    """Write pair pipeline results to a CSV file."""
+def _row_has_issue(row: dict[str, object]) -> bool:
+    """Return True if row fails any clean-value check."""
+    return any(row.get(col) not in clean for col, clean in _CLEAN_VALUES.items())
+
+
+def _write_pair_sheet(ws: Worksheet, rows: list[dict[str, object]]) -> None:
+    ws.append(_PAIR_COLUMNS)
+    for row in rows:
+        ws.append([row.get(col, "") for col in _PAIR_COLUMNS])
+
+
+def write_pair_xlsx(results: list[PairPipelineResult], output_path: Path) -> None:
+    """Write pair pipeline results to a 3-sheet Excel workbook.
+
+    Sheets: All (every row), No Issues (clean rows), Issues (rows with problems).
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=_PAIR_COLUMNS)
-        writer.writeheader()
-        for result in results:
-            writer.writerow(_pair_result_to_row(result))
-    logger.info("Pair CSV written to %s (%d rows)", output_path, len(results))
+    rows = [_pair_result_to_row(r) for r in results]
+
+    clean_rows = [r for r in rows if not _row_has_issue(r)]
+    issue_rows = [r for r in rows if _row_has_issue(r)]
+
+    wb = openpyxl.Workbook()
+    wb.active.title = "All"  # type: ignore[union-attr]
+    _write_pair_sheet(wb.active, rows)  # type: ignore[arg-type]
+
+    _write_pair_sheet(wb.create_sheet("No Issues"), clean_rows)
+    _write_pair_sheet(wb.create_sheet("Issues"), issue_rows)
+
+    wb.save(output_path)
+    logger.info(
+        "Pair XLSX written to %s (%d total, %d clean, %d issues)",
+        output_path,
+        len(rows),
+        len(clean_rows),
+        len(issue_rows),
+    )
 
 
 def _pair_result_to_row(result: PairPipelineResult) -> dict[str, object]:
@@ -79,22 +118,24 @@ def _pair_result_to_row(result: PairPipelineResult) -> dict[str, object]:
     return base
 
 
-def write_csv(results: list[PipelineResult], output_path: Path, task_names: list[str]) -> None:
-    """Write pipeline results to a CSV file.
+def write_xlsx(results: list[PipelineResult], output_path: Path, task_names: list[str]) -> None:
+    """Write pipeline results to an Excel workbook (single sheet).
 
     Columns: file_path, success, category, <one per task>, <patient meta fields>, errors
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    columns = ["file_path", "success", "category"] + task_names + _META_COLUMNS + ["errors"]
 
-    fieldnames = ["file_path", "success", "category"] + task_names + _META_COLUMNS + ["errors"]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Results"  # type: ignore[union-attr]
+    ws.append(columns)  # type: ignore[union-attr]
+    for result in results:
+        row = _result_to_row(result, task_names)
+        ws.append([row.get(col, "") for col in columns])  # type: ignore[union-attr]
 
-    with output_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for result in results:
-            writer.writerow(_result_to_row(result, task_names))
-
-    logger.info("CSV written to %s (%d rows)", output_path, len(results))
+    wb.save(output_path)
+    logger.info("XLSX written to %s (%d rows)", output_path, len(results))
 
 
 def _result_to_row(result: PipelineResult, task_names: list[str]) -> dict[str, object]:

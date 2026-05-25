@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
     sharepoint_results_folder: str = "Patient Encounters/Medical Notes/Non-Admits-results"
-    output_csv: Path = Path("./output/results.csv")
+    output_path: Path = Path("./output/results.xlsx")
     sharepoint_client_id: str = CLIENT_ID
     sharepoint_tenant_id: str = TENANT_ID
     sharepoint_client_secret: str = CLIENT_SECRET

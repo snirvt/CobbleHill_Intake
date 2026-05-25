@@ -9,7 +9,7 @@ from pathlib import Path
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import build_pair_pipeline, build_pipeline
 from classifier.models import PairPipelineResult, PipelineResult
-from classifier.output.csv_writer import write_csv, write_pair_csv
+from classifier.output.csv_writer import write_pair_xlsx, write_xlsx
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -88,7 +88,7 @@ def _is_pair_folder(path: Path) -> bool:
     return False
 
 
-async def _run(input_path: Path, pair_csv: Path) -> tuple[int, Path | None]:
+async def _run(input_path: Path) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
         pipeline = build_pair_pipeline()
         pairs = scan_pairs(input_path)
@@ -98,8 +98,9 @@ async def _run(input_path: Path, pair_csv: Path) -> tuple[int, Path | None]:
         results = await pipeline.run_pairs(pairs)
         output = [_pair_result_to_dict(r) for r in results]
         print(json.dumps(output, indent=2, default=str))
-        write_pair_csv(results, pair_csv)
-        return sum(1 for r in results if not r.success), pair_csv
+        pair_path = settings.output_path.parent / "pair_results.xlsx"
+        write_pair_xlsx(results, pair_path)
+        return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
     if input_path.is_dir():
@@ -112,8 +113,8 @@ async def _run(input_path: Path, pair_csv: Path) -> tuple[int, Path | None]:
 
     output = [_result_to_dict(r) for r in single_results]
     print(json.dumps(output, indent=2, default=str))
-    write_csv(single_results, settings.output_csv, task_names=settings.classifier_tasks)
-    return sum(1 for r in single_results if not r.success), settings.output_csv
+    write_xlsx(single_results, settings.output_path, task_names=settings.classifier_tasks)
+    return sum(1 for r in single_results if not r.success), settings.output_path
 
 
 def main() -> None:
@@ -139,12 +140,6 @@ def main() -> None:
         default=None,
         type=Path,
         help="Directory to download SharePoint files into (default: auto temp dir, deleted after run)",
-    )
-    parser.add_argument(
-        "--pair-csv",
-        type=Path,
-        default=settings.output_csv.parent / "pair_results.csv",
-        help="Output CSV path for pair comparison results",
     )
     parser.add_argument(
         "--upload-results",
@@ -175,12 +170,12 @@ def main() -> None:
         use_tmp = args.download_dir is None
         local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
-            exit_code, written_csv = asyncio.run(_run(local_dir, args.pair_csv))
+            exit_code, written_csv = asyncio.run(_run(local_dir))
         finally:
             if use_tmp:
                 shutil.rmtree(local_dir, ignore_errors=True)
     else:
-        exit_code, written_csv = asyncio.run(_run(Path(args.input), args.pair_csv))
+        exit_code, written_csv = asyncio.run(_run(Path(args.input)))
 
     if args.upload_results and written_csv and written_csv.exists():
         uploader = SharePointFileUploader(**_sp_kwargs)
