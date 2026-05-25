@@ -30,19 +30,10 @@ _META_COLUMNS = [
     "address",
 ]
 
-_PAIR_IDENTITY_COLUMNS = [
-    "identity_patient_name",
-    "identity_dob",
-    "identity_dos",
-    "identity_sex",
-    "identity_account_number",
+_PAIR_COLUMNS = [
+    "dr_file_path", "nurse_file_path", "success", "overall", "clinical_verdict",
+    "clinical_reasoning", "identity_match", "dr_fields", "nurse_fields", "errors",
 ]
-
-_PAIR_COLUMNS = (
-    ["dr_file_path", "nurse_file_path", "success", "overall", "clinical_verdict", "clinical_reasoning"]
-    + _PAIR_IDENTITY_COLUMNS
-    + ["dr_fields", "nurse_fields", "errors"]
-)
 
 
 def _row_has_issue(row: dict[str, object]) -> bool:
@@ -96,7 +87,7 @@ def _pair_result_to_row(result: PairPipelineResult) -> dict[str, object]:
             "overall": "",
             "clinical_verdict": "",
             "clinical_reasoning": "",
-            **{col: "" for col in _PAIR_IDENTITY_COLUMNS},
+            "identity_match": "",
             "dr_fields": "",
             "nurse_fields": "",
         })
@@ -107,11 +98,7 @@ def _pair_result_to_row(result: PairPipelineResult) -> dict[str, object]:
         "overall": r.overall,
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
-        "identity_patient_name": r.identity_match.patient_name,
-        "identity_dob": r.identity_match.dob,
-        "identity_dos": r.identity_match.dos,
-        "identity_sex": r.identity_match.sex,
-        "identity_account_number": r.identity_match.account_number,
+        "identity_match": json.dumps(r.identity_match.model_dump(), default=str),
         "dr_fields": json.dumps(r.dr_metadata.model_dump(exclude={"file_path", "raw_text"}), default=str),
         "nurse_fields": json.dumps(r.nurse_fields.model_dump(), default=str),
     })

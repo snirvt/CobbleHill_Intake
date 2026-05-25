@@ -157,11 +157,6 @@ async def test_clinical_verdict_match() -> None:
     assert "infant" in result.clinical_reasoning.lower()
 
 
-async def test_clinical_verdict_partial_match() -> None:
-    clf = DrNurseMatchClassifier(llm=_fake_llm("PARTIAL_MATCH", "Minor plan discrepancies."))
-    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
-    assert result.clinical_verdict == "PARTIAL_MATCH"
-
 
 async def test_clinical_verdict_mismatch() -> None:
     clf = DrNurseMatchClassifier(llm=_fake_llm("MISMATCH", "Different diagnoses entirely."))
@@ -170,34 +165,30 @@ async def test_clinical_verdict_mismatch() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Overall verdict override logic
+# Overall verdict — mirrors clinical_verdict only
 # ---------------------------------------------------------------------------
 
-async def test_overall_mismatch_when_zero_identity_fields_match() -> None:
+async def test_overall_equals_clinical_verdict_match() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH", "Clinically consistent."))
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert result.overall == "MATCH"
+
+
+async def test_overall_equals_clinical_verdict_mismatch() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MISMATCH", "Completely different cases."))
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert result.overall == "MISMATCH"
+
+
+async def test_overall_unaffected_by_identity_mismatch() -> None:
+    """Identity mismatches no longer influence overall — clinical verdict wins."""
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH", "Clinically consistent."))
     pair = _make_pair(
         _make_dr_meta(name="Alice A", dob="01/01/2020", dos="01/01/2026", sex="F"),
         _make_nurse_fields(name="Bob B", dob="02/02/2021", dos="02/02/2027", sex="Male"),
     )
     result = await clf.classify_pair(pair)
-    assert result.overall == "MISMATCH"
-
-
-async def test_overall_partial_match_when_few_identity_fields_match() -> None:
-    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH", "Looks good."))
-    pair = _make_pair(
-        _make_dr_meta(name="Alice A", dob="01/01/2020", dos="04/17/2026", sex="F"),
-        _make_nurse_fields(name="Bob B", dob="02/02/2021", dos="04/17/2026", sex="Female"),
-    )
-    result = await clf.classify_pair(pair)
-    # Only dos and sex match (score=2), LLM says MATCH → demote to PARTIAL_MATCH
-    assert result.overall == "PARTIAL_MATCH"
-
-
-async def test_overall_propagates_mismatch_from_llm() -> None:
-    clf = DrNurseMatchClassifier(llm=_fake_llm("MISMATCH", "Completely different cases."))
-    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
-    assert result.overall == "MISMATCH"
+    assert result.overall == "MATCH"
 
 
 # ---------------------------------------------------------------------------

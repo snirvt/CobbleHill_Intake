@@ -61,17 +61,7 @@ class DrNurseMatchClassifier:
         identity = self._compare_identity(pair)
         clinical_verdict, clinical_reasoning = await self._compare_clinical(pair)
 
-        identity_score = sum([
-            identity.patient_name,
-            identity.dob,
-            identity.dos,
-            identity.sex,
-        ])
         overall = clinical_verdict
-        if identity_score == 0:
-            overall = "MISMATCH"
-        elif identity_score < 3 and clinical_verdict == "MATCH":
-            overall = "PARTIAL_MATCH"
 
         return PairClassificationResult(
             dr_file_path=pair.dr_file_path,
