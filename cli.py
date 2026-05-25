@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from classifier.ingest.sharepoint import SharePointFolderDownloader
+from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import build_pair_pipeline, build_pipeline
 from classifier.models import PairPipelineResult, PipelineResult
 from classifier.output.csv_writer import write_csv, write_pair_csv
@@ -88,18 +88,18 @@ def _is_pair_folder(path: Path) -> bool:
     return False
 
 
-async def _run(input_path: Path, pair_csv: Path) -> int:
+async def _run(input_path: Path, pair_csv: Path) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
         pipeline = build_pair_pipeline()
         pairs = scan_pairs(input_path)
         if not pairs:
             logger.error("No dr_*/nurse_* pairs found in %s", input_path)
-            return 1
+            return 1, None
         results = await pipeline.run_pairs(pairs)
         output = [_pair_result_to_dict(r) for r in results]
         print(json.dumps(output, indent=2, default=str))
         write_pair_csv(results, pair_csv)
-        return sum(1 for r in results if not r.success)
+        return sum(1 for r in results if not r.success), pair_csv
 
     pipeline = build_pipeline()
     if input_path.is_dir():
@@ -108,12 +108,12 @@ async def _run(input_path: Path, pair_csv: Path) -> int:
         single_results = await pipeline.run([input_path])
     else:
         logger.error("Path does not exist: %s", input_path)
-        return 1
+        return 1, None
 
     output = [_result_to_dict(r) for r in single_results]
     print(json.dumps(output, indent=2, default=str))
     write_csv(single_results, settings.output_csv, task_names=settings.classifier_tasks)
-    return sum(1 for r in single_results if not r.success)
+    return sum(1 for r in single_results if not r.success), settings.output_csv
 
 
 def main() -> None:
@@ -146,33 +146,59 @@ def main() -> None:
         default=settings.output_csv.parent / "pair_results.csv",
         help="Output CSV path for pair comparison results",
     )
+    parser.add_argument(
+        "--upload-results",
+        action="store_true",
+        default=False,
+        help=(
+            f"Upload the results CSV to SharePoint after processing "
+            f"(default folder: {settings.sharepoint_results_folder!r})"
+        ),
+    )
+    parser.add_argument(
+        "--results-folder",
+        default=settings.sharepoint_results_folder,
+        type=str,
+        help="SharePoint folder to upload results CSV into",
+    )
     args = parser.parse_args()
 
+    _sp_kwargs = dict(
+        client_id=settings.sharepoint_client_id,
+        client_secret=settings.sharepoint_client_secret,
+        tenant_id=settings.sharepoint_tenant_id,
+        drive_id=settings.sharepoint_drive_id,
+    )
+
     if args.sharepoint_folder:
-        downloader = SharePointFolderDownloader(
-            client_id=settings.sharepoint_client_id,
-            client_secret=settings.sharepoint_client_secret,
-            tenant_id=settings.sharepoint_tenant_id,
-            drive_id=settings.sharepoint_drive_id,
-        )
+        downloader = SharePointFolderDownloader(**_sp_kwargs)
         use_tmp = args.download_dir is None
         local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
-            sys.exit(asyncio.run(_run(local_dir, args.pair_csv)))
+            exit_code, written_csv = asyncio.run(_run(local_dir, args.pair_csv))
         finally:
             if use_tmp:
                 shutil.rmtree(local_dir, ignore_errors=True)
     else:
-        sys.exit(asyncio.run(_run(Path(args.input), args.pair_csv)))
+        exit_code, written_csv = asyncio.run(_run(Path(args.input), args.pair_csv))
+
+    if args.upload_results and written_csv and written_csv.exists():
+        uploader = SharePointFileUploader(**_sp_kwargs)
+        asyncio.run(uploader.upload(written_csv, args.results_folder))
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
     main()
 """
-uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits"
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --upload-results
 
 # Download to persistent dir
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --download-dir ./downloads
+
+# or override the results folder:
+uv run python -m cli --input ./data --upload-results --results-folder "Some/Other/Folder"
 
 # Local files (unchanged)
 uv run python -m cli --input ./data
