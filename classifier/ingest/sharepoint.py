@@ -1,10 +1,11 @@
 """SharePoint Online folder downloader via Microsoft Graph API."""
 
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
 
-import requests
+import httpx
 
 try:
     from msal import ConfidentialClientApplication
@@ -34,41 +35,62 @@ def authenticate_to_graph(client_id: str, client_secret: str, tenant_id: str) ->
     return result["access_token"]  # type: ignore[return-value]
 
 
-def download_folder(
+async def _download_file(
+    drive_id: str,
+    item_id: str,
+    dest: Path,
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    """Download a single file, gated by *semaphore*."""
+    url = f"{GRAPH_ROOT}/drives/{drive_id}/items/{item_id}/content"
+    async with semaphore:
+        response = await client.get(url, timeout=60, follow_redirects=True)
+        response.raise_for_status()
+        dest.write_bytes(response.content)
+    logger.info("Downloaded: %s", dest.name)
+
+
+async def download_folder(
     drive_id: str,
     folder_path: str,
     local_dir: Path,
-    headers: dict,  # type: ignore[type-arg]
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
 ) -> None:
     """Recursively download all supported files from a SharePoint drive folder."""
     local_dir.mkdir(parents=True, exist_ok=True)
 
     url = f"{GRAPH_ROOT}/drives/{drive_id}/root:/{folder_path}:/children"
-    response = requests.get(url, headers=headers, timeout=30)
+    response = await client.get(url, timeout=30)
     response.raise_for_status()
 
     supported = set(settings.supported_extensions.keys())
 
+    tasks = []
     for item in response.json()["value"]:
         name: str = item["name"]
 
         if "folder" in item:
             logger.info("Entering folder: %s/%s", folder_path, name)
-            download_folder(
-                drive_id,
-                f"{folder_path}/{name}",
-                local_dir / name,
-                headers,
+            tasks.append(
+                download_folder(
+                    drive_id,
+                    f"{folder_path}/{name}",
+                    local_dir / name,
+                    client,
+                    semaphore,
+                )
             )
         else:
             if Path(name).suffix.lower() not in supported:
                 logger.debug("Skipping unsupported file: %s", name)
                 continue
-            download_url = f"{GRAPH_ROOT}/drives/{drive_id}/items/{item['id']}/content"
-            file_response = requests.get(download_url, headers=headers, timeout=60)
-            file_response.raise_for_status()
-            (local_dir / name).write_bytes(file_response.content)
-            logger.info("Downloaded: %s", name)
+            tasks.append(
+                _download_file(drive_id, item["id"], local_dir / name, client, semaphore)
+            )
+
+    await asyncio.gather(*tasks)
 
 
 class SharePointFolderDownloader:
@@ -80,7 +102,7 @@ class SharePointFolderDownloader:
         self._tenant_id = tenant_id
         self._drive_id = drive_id
 
-    def download(self, folder_path: str, local_dir: Path | None = None) -> Path:
+    async def download(self, folder_path: str, local_dir: Path | None = None) -> Path:
         """Download all supported files from *folder_path* into *local_dir*.
 
         *folder_path* is the drive-relative path, e.g.
@@ -94,7 +116,9 @@ class SharePointFolderDownloader:
 
         access_token = authenticate_to_graph(self._client_id, self._client_secret, self._tenant_id)
         headers = {"Authorization": f"Bearer {access_token}"}
+        semaphore = asyncio.Semaphore(settings.sharepoint_download_concurrency)
 
         logger.info("Downloading SharePoint folder '%s' → %s", folder_path, local_dir)
-        download_folder(self._drive_id, folder_path, local_dir, headers)
+        async with httpx.AsyncClient(headers=headers) as client:
+            await download_folder(self._drive_id, folder_path, local_dir, client, semaphore)
         return local_dir
