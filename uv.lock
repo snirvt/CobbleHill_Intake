@@ -212,6 +212,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "liteparse" },
@@ -232,6 +233,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "langchain-core", specifier = ">=0.3" },
     { name = "langchain-ollama", specifier = ">=0.3" },
     { name = "liteparse", specifier = ">=1.2.1" },
