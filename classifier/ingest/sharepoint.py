@@ -1,8 +1,9 @@
-"""SharePoint Online folder downloader via Microsoft Graph API."""
+"""SharePoint Online folder downloader/uploader via Microsoft Graph API."""
 
 import asyncio
 import logging
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -91,6 +92,45 @@ async def download_folder(
             )
 
     await asyncio.gather(*tasks)
+
+
+async def upload_file(
+    drive_id: str,
+    folder_path: str,
+    local_file: Path,
+    client: httpx.AsyncClient,
+) -> str:
+    """Upload *local_file* to *folder_path* on SharePoint, returning the remote filename.
+
+    A timestamp suffix is appended to avoid overwriting existing files.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    remote_name = f"{local_file.stem}_{timestamp}{local_file.suffix}"
+    url = f"{GRAPH_ROOT}/drives/{drive_id}/root:/{folder_path}/{remote_name}:/content"
+    response = await client.put(url, content=local_file.read_bytes(), timeout=60)
+    response.raise_for_status()
+    logger.info("Uploaded: %s → %s/%s", local_file.name, folder_path, remote_name)
+    return remote_name
+
+
+class SharePointFileUploader:
+    """Uploads files to a SharePoint Online drive folder."""
+
+    def __init__(self, client_id: str, client_secret: str, tenant_id: str, drive_id: str) -> None:
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._tenant_id = tenant_id
+        self._drive_id = drive_id
+
+    async def upload(self, local_file: Path, folder_path: str) -> str:
+        """Upload *local_file* to *folder_path*, returning the remote filename."""
+        access_token = authenticate_to_graph(self._client_id, self._client_secret, self._tenant_id)
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/octet-stream",
+        }
+        async with httpx.AsyncClient(headers=headers) as client:
+            return await upload_file(self._drive_id, folder_path, local_file, client)
 
 
 class SharePointFolderDownloader:
