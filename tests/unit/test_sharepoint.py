@@ -7,9 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from classifier.ingest.sharepoint import (
+    SharePointFileUploader,
     SharePointFolderDownloader,
     authenticate_to_graph,
     download_folder,
+    upload_file,
 )
 
 # ---------------------------------------------------------------------------
@@ -156,3 +158,70 @@ async def test_downloader_creates_tmp_dir_when_no_local_dir(
     assert result.exists()
     assert result.name.startswith("cobblehill_sp_")
     result.rmdir()
+
+
+# ---------------------------------------------------------------------------
+# upload_file
+# ---------------------------------------------------------------------------
+
+
+async def test_upload_file_puts_content_and_returns_remote_name(tmp_path: Path) -> None:
+    local_file = tmp_path / "results.csv"
+    local_file.write_bytes(b"col1,col2\nval1,val2")
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status = MagicMock()
+
+    client = AsyncMock()
+    client.put.return_value = put_resp
+
+    remote_name = await upload_file("drive1", "Some/Folder", local_file, client)
+
+    assert remote_name.startswith("results_")
+    assert remote_name.endswith(".csv")
+    client.put.assert_called_once()
+    call_url: str = client.put.call_args.args[0]
+    assert "Some/Folder" in call_url
+    assert remote_name in call_url
+    assert client.put.call_args.kwargs["content"] == b"col1,col2\nval1,val2"
+
+
+async def test_upload_file_raises_on_http_error(tmp_path: Path) -> None:
+    local_file = tmp_path / "results.csv"
+    local_file.write_bytes(b"data")
+
+    import httpx
+
+    client = AsyncMock()
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "403", request=MagicMock(), response=MagicMock()
+    )
+    client.put.return_value = mock_resp
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await upload_file("drive1", "Some/Folder", local_file, client)
+
+
+# ---------------------------------------------------------------------------
+# SharePointFileUploader
+# ---------------------------------------------------------------------------
+
+
+@patch("classifier.ingest.sharepoint.authenticate_to_graph", return_value="tok")
+@patch("classifier.ingest.sharepoint.upload_file", new_callable=AsyncMock, return_value="results_2026.csv")
+async def test_file_uploader_calls_upload_file(
+    mock_ul: AsyncMock, _mock_auth: MagicMock, tmp_path: Path
+) -> None:
+    local_file = tmp_path / "results.csv"
+    local_file.write_bytes(b"data")
+
+    uploader = SharePointFileUploader(**_KWARGS)
+    remote_name = await uploader.upload(local_file, "Some/Results")
+
+    assert remote_name == "results_2026.csv"
+    mock_ul.assert_called_once()
+    call_args = mock_ul.call_args.args
+    assert call_args[0] == "did"
+    assert call_args[1] == "Some/Results"
+    assert call_args[2] == local_file
