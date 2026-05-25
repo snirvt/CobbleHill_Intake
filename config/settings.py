@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma3:1b"
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
+    sharepoint_download_concurrency: int = 5
     output_csv: Path = Path("./output/results.csv")
     sharepoint_client_id: str = CLIENT_ID
     sharepoint_tenant_id: str = TENANT_ID
