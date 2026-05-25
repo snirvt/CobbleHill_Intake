@@ -1,7 +1,8 @@
 """Unit tests for classifier.ingest.sharepoint."""
 
+import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -50,7 +51,6 @@ def test_authenticate_to_graph_raises_on_error(mock_app_cls: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 DRIVE_ID = "test-drive"
-HEADERS = {"Authorization": "Bearer tok"}
 
 
 def _file_item(name: str, item_id: str = "fid") -> dict:  # type: ignore[type-arg]
@@ -61,48 +61,58 @@ def _folder_item(name: str) -> dict:  # type: ignore[type-arg]
     return {"name": name, "id": f"did-{name}", "folder": {}}
 
 
-@patch("classifier.ingest.sharepoint.requests.get")
-def test_download_folder_downloads_supported_files(
-    mock_get: MagicMock, tmp_path: Path
-) -> None:
-    list_resp = MagicMock()
-    list_resp.json.return_value = {
-        "value": [
-            _file_item("report.pdf", "id1"),
-            _file_item("note.txt", "id2"),
-            _file_item("ignore.docx", "id3"),
-        ]
-    }
-    dl_pdf = MagicMock()
-    dl_pdf.content = b"pdf-data"
-    dl_txt = MagicMock()
-    dl_txt.content = b"txt-data"
+def _make_client(url_responses: dict[str, object]) -> MagicMock:
+    """Return an async-capable mock client whose get() dispatches by URL fragment."""
 
-    mock_get.side_effect = [list_resp, dl_pdf, dl_txt]
+    async def fake_get(url: str, **kwargs: object) -> MagicMock:
+        for fragment, payload in url_responses.items():
+            if fragment in url:
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                if isinstance(payload, dict):
+                    resp.json.return_value = payload
+                else:
+                    resp.content = payload
+                return resp
+        raise AssertionError(f"Unexpected URL in test: {url}")
 
-    download_folder(DRIVE_ID, "Folder/Sub", tmp_path, HEADERS)
+    client = MagicMock()
+    client.get = fake_get
+    return client
+
+
+async def test_download_folder_downloads_supported_files(tmp_path: Path) -> None:
+    semaphore = asyncio.Semaphore(5)
+    client = _make_client(
+        {
+            "children": {"value": [
+                _file_item("report.pdf", "id1"),
+                _file_item("note.txt", "id2"),
+                _file_item("ignore.docx", "id3"),
+            ]},
+            "items/id1": b"pdf-data",
+            "items/id2": b"txt-data",
+        }
+    )
+
+    await download_folder(DRIVE_ID, "Folder/Sub", tmp_path, client, semaphore)
 
     assert (tmp_path / "report.pdf").read_bytes() == b"pdf-data"
     assert (tmp_path / "note.txt").read_bytes() == b"txt-data"
     assert not (tmp_path / "ignore.docx").exists()
 
 
-@patch("classifier.ingest.sharepoint.requests.get")
-def test_download_folder_recurses_into_subfolders(
-    mock_get: MagicMock, tmp_path: Path
-) -> None:
-    root_resp = MagicMock()
-    root_resp.json.return_value = {"value": [_folder_item("sub")]}
+async def test_download_folder_recurses_into_subfolders(tmp_path: Path) -> None:
+    semaphore = asyncio.Semaphore(5)
+    client = _make_client(
+        {
+            "root:/Root:": {"value": [_folder_item("sub")]},
+            "root:/Root/sub:": {"value": [_file_item("file.pdf", "fid1")]},
+            "items/fid1": b"bytes",
+        }
+    )
 
-    sub_resp = MagicMock()
-    sub_resp.json.return_value = {"value": [_file_item("file.pdf", "fid1")]}
-
-    dl_resp = MagicMock()
-    dl_resp.content = b"bytes"
-
-    mock_get.side_effect = [root_resp, sub_resp, dl_resp]
-
-    download_folder(DRIVE_ID, "Root", tmp_path, HEADERS)
+    await download_folder(DRIVE_ID, "Root", tmp_path, client, semaphore)
 
     assert (tmp_path / "sub" / "file.pdf").read_bytes() == b"bytes"
 
@@ -120,24 +130,28 @@ _KWARGS = dict(
 
 
 @patch("classifier.ingest.sharepoint.authenticate_to_graph", return_value="tok")
-@patch("classifier.ingest.sharepoint.download_folder")
-def test_downloader_uses_provided_local_dir(
-    mock_dl: MagicMock, _mock_auth: MagicMock, tmp_path: Path
+@patch("classifier.ingest.sharepoint.download_folder", new_callable=AsyncMock)
+async def test_downloader_uses_provided_local_dir(
+    mock_dl: AsyncMock, _mock_auth: MagicMock, tmp_path: Path
 ) -> None:
     downloader = SharePointFolderDownloader(**_KWARGS)
-    result = downloader.download("Some/Folder", local_dir=tmp_path)
+    result = await downloader.download("Some/Folder", local_dir=tmp_path)
 
     assert result == tmp_path
-    mock_dl.assert_called_once_with("did", "Some/Folder", tmp_path, {"Authorization": "Bearer tok"})
+    mock_dl.assert_called_once()
+    args = mock_dl.call_args.args
+    assert args[0] == "did"
+    assert args[1] == "Some/Folder"
+    assert args[2] == tmp_path
 
 
 @patch("classifier.ingest.sharepoint.authenticate_to_graph", return_value="tok")
-@patch("classifier.ingest.sharepoint.download_folder")
-def test_downloader_creates_tmp_dir_when_no_local_dir(
-    mock_dl: MagicMock, _mock_auth: MagicMock
+@patch("classifier.ingest.sharepoint.download_folder", new_callable=AsyncMock)
+async def test_downloader_creates_tmp_dir_when_no_local_dir(
+    mock_dl: AsyncMock, _mock_auth: MagicMock
 ) -> None:
     downloader = SharePointFolderDownloader(**_KWARGS)
-    result = downloader.download("Some/Folder")
+    result = await downloader.download("Some/Folder")
 
     assert result.exists()
     assert result.name.startswith("cobblehill_sp_")
