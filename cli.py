@@ -156,7 +156,7 @@ def main() -> None:
             drive_id=settings.sharepoint_drive_id,
         )
         use_tmp = args.download_dir is None
-        local_dir = downloader.download(args.sharepoint_folder, args.download_dir)
+        local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
             sys.exit(asyncio.run(_run(local_dir, args.pair_csv)))
         finally:
