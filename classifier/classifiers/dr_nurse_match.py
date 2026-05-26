@@ -32,16 +32,10 @@ Output instructions:
 {format_instructions}
 
 --- DR PROGRESS NOTE ---
-Chief Complaints: {dr_complaints}
-Assessment / Diagnoses: {dr_assessment}
-Plan: {dr_plan}
-Medications: {dr_medications}
+{dr_full_text}
 
 --- NURSE VISIT NOTE ---
-Chief Complaint: {nurse_complaint}
-Diagnoses: {nurse_diagnoses}
-Assessment: {nurse_assessment}
-Plan: {nurse_plan}
+{nurse_full_text}
 --- END ---"""
 
 
@@ -86,32 +80,9 @@ class DrNurseMatchClassifier:
         )
 
     def _build_prompt_input(self, pair: PairDocumentMetadata) -> dict[str, str]:
-        dr = pair.dr
-        nurse = pair.nurse
-
-        def fmt(items: list[str]) -> str:
-            return "; ".join(items) if items else "None"
-
-        def fmt_meds(meta: object) -> str:
-            meds = getattr(meta, "medications", None)
-            if not meds:
-                return "None"
-            parts: list[str] = []
-            if meds.taking:
-                parts.append("Taking: " + ", ".join(meds.taking))
-            if meds.not_taking:
-                parts.append("Not taking: " + ", ".join(meds.not_taking))
-            return " | ".join(parts) or "None"
-
         return {
-            "dr_complaints": fmt(dr.complaints),
-            "dr_assessment": fmt(dr.assessment),
-            "dr_plan": dr.plan or "None",
-            "dr_medications": fmt_meds(dr),
-            "nurse_complaint": nurse.chief_complaint or "None",
-            "nurse_diagnoses": fmt(nurse.diagnoses),
-            "nurse_assessment": fmt(nurse.assessment),
-            "nurse_plan": nurse.plan or "None",
+            "dr_full_text": pair.dr.raw_text or "None",
+            "nurse_full_text": pair.nurse_raw_text or "None",
         }
 
     async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[str, str]:

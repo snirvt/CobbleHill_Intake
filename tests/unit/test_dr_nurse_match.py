@@ -6,7 +6,6 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.models import (
     DocumentMetadata,
-    MedicationData,
     NursePatientMeta,
     NurseVisitFields,
     PairDocumentMetadata,
@@ -29,13 +28,11 @@ def _make_dr_meta(
     dos: str = "04/17/2026",
     sex: str = "M",
     account: str = "ABC123",
-    assessment: list[str] | None = None,
-    complaints: list[str] | None = None,
-    plan: str = "Follow up in one month.",
+    raw_text: str = "Patient: Smith, John  DOB: 01/15/2025\nAssessment: Colic\nPlan: Follow up.",
 ) -> DocumentMetadata:
     return DocumentMetadata(
         file_path=Path("dr_note.pdf"),
-        raw_text="",
+        raw_text=raw_text,
         meta=PatientMetadata(
             patient_name=name,
             dob=dob,
@@ -43,10 +40,6 @@ def _make_dr_meta(
             sex=sex,
             account_number=account,
         ),
-        assessment=assessment or ["Colic - R10.83"],
-        complaints=complaints or ["Crying", "Feeding issues"],
-        plan=plan,
-        medications=MedicationData(taking=[], not_taking=[]),
     )
 
 
@@ -56,26 +49,23 @@ def _make_nurse_fields(
     dos: str = "04/17/2026",
     sex: str = "Male",
     prn: str = "ABC123",
-    diagnoses: list[str] | None = None,
-    assessment: list[str] | None = None,
-    chief_complaint: str = "Crying and feeding difficulty",
-    plan: str = "Monitor feeding and weight.",
 ) -> NurseVisitFields:
     return NurseVisitFields(
         meta=NursePatientMeta(patient_name=name, dob=dob, dos=dos, sex=sex, prn=prn),
-        diagnoses=diagnoses or ["(R10.83) Colic"],
-        assessment=assessment or ["Infantile colic - R10.83"],
-        chief_complaint=chief_complaint,
-        plan=plan,
     )
 
 
-def _make_pair(dr: DocumentMetadata, nurse: NurseVisitFields) -> PairDocumentMetadata:
+def _make_pair(
+    dr: DocumentMetadata,
+    nurse: NurseVisitFields,
+    nurse_raw_text: str = "Date of service: 04/17/2026\nAssessment: Infantile colic - R10.83\nPlan: Monitor feeding.",
+) -> PairDocumentMetadata:
     return PairDocumentMetadata(
         dr_file_path=Path("dr_note.pdf"),
         nurse_file_path=Path("nurse_note.pdf"),
         dr=dr,
         nurse=nurse,
+        nurse_raw_text=nurse_raw_text,
     )
 
 
@@ -206,16 +196,19 @@ async def test_llm_parse_error_returns_mismatch() -> None:
 # Prompt input content
 # ---------------------------------------------------------------------------
 
-async def test_prompt_input_includes_dr_complaints() -> None:
+async def test_prompt_input_uses_dr_raw_text() -> None:
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
-    dr = _make_dr_meta(complaints=["Fever", "Rash"])
+    dr = _make_dr_meta(raw_text="Fever and rash noted by physician.")
     prompt_input = clf._build_prompt_input(_make_pair(dr, _make_nurse_fields()))
-    assert "Fever" in prompt_input["dr_complaints"]
-    assert "Rash" in prompt_input["dr_complaints"]
+    assert "Fever and rash" in prompt_input["dr_full_text"]
 
 
-async def test_prompt_input_includes_nurse_chief_complaint() -> None:
+async def test_prompt_input_uses_nurse_raw_text() -> None:
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
-    nurse = _make_nurse_fields(chief_complaint="High temperature and spots on skin")
-    prompt_input = clf._build_prompt_input(_make_pair(_make_dr_meta(), nurse))
-    assert "High temperature" in prompt_input["nurse_complaint"]
+    pair = _make_pair(
+        _make_dr_meta(),
+        _make_nurse_fields(),
+        nurse_raw_text="High temperature and spots on skin observed.",
+    )
+    prompt_input = clf._build_prompt_input(pair)
+    assert "High temperature" in prompt_input["nurse_full_text"]

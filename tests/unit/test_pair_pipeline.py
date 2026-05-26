@@ -117,7 +117,7 @@ def _make_pair_pipeline(
 def _sample_pair_result(dr_path: Path, nurse_path: Path) -> PairClassificationResult:
     dr_meta = DocumentMetadata(
         file_path=dr_path,
-        raw_text="",
+        raw_text="dr note text",
         meta=PatientMetadata(patient_name="Test"),
     )
     return PairClassificationResult(

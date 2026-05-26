@@ -138,6 +138,7 @@ class PairDocumentMetadata(BaseModel):
     nurse_file_path: Path
     dr: DocumentMetadata
     nurse: NurseVisitFields
+    nurse_raw_text: str = ""
 
 
 class PairClassificationResult(BaseModel):

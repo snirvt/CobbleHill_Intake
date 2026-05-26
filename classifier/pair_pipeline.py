@@ -99,6 +99,7 @@ class PairPipeline:
                         nurse_file_path=nurse_path,
                         dr=dr_meta,
                         nurse=nurse_fields,
+                        nurse_raw_text=nurse_text.text,
                     )
                     result = await self._pair_clf.classify_pair(pair)
                     return PairPipelineResult(
