@@ -41,7 +41,7 @@ def _result_to_dict(r: PipelineResult) -> dict:  # type: ignore[type-arg]
     }
 
 
-def _pair_result_to_dict(r: PairPipelineResult) -> dict:  # type: ignore[type-arg]
+def _pair_result_to_dict(r: PairPipelineResult, *, verbose: bool = False) -> dict:  # type: ignore[type-arg]
     if not r.success or r.result is None:
         return {
             "dr_file": str(r.dr_file_path),
@@ -52,15 +52,17 @@ def _pair_result_to_dict(r: PairPipelineResult) -> dict:  # type: ignore[type-ar
     res = r.result
     dr = res.dr_metadata
     nurse = res.nurse_fields
-    return {
+    out: dict = {  # type: ignore[type-arg]
         "dr_file": str(r.dr_file_path),
         "nurse_file": str(r.nurse_file_path),
         "success": True,
         "overall": res.overall,
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
-        "identity_match": res.identity_match.model_dump(),
-        "dr_extracted": {
+    }
+    if verbose:
+        out["identity_match"] = res.identity_match.model_dump()
+        out["dr_extracted"] = {
             "meta": dr.meta.model_dump(),
             "complaints": dr.complaints,
             "assessment": dr.assessment,
@@ -72,9 +74,9 @@ def _pair_result_to_dict(r: PairPipelineResult) -> dict:  # type: ignore[type-ar
             "medical_history": dr.medical_history,
             "surgical_history": dr.surgical_history,
             "procedure_codes": dr.procedure_codes,
-        },
-        "nurse_extracted": nurse.model_dump(),
-    }
+        }
+        out["nurse_extracted"] = nurse.model_dump()
+    return out
 
 
 def _is_pair_folder(path: Path) -> bool:
@@ -88,7 +90,7 @@ def _is_pair_folder(path: Path) -> bool:
     return False
 
 
-async def _run(input_path: Path) -> tuple[int, Path | None]:
+async def _run(input_path: Path, *, verbose: bool = False) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
         pipeline = build_pair_pipeline()
         pairs = scan_pairs(input_path)
@@ -96,10 +98,10 @@ async def _run(input_path: Path) -> tuple[int, Path | None]:
             logger.error("No dr_*/nurse_* pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
-        output = [_pair_result_to_dict(r) for r in results]
+        output = [_pair_result_to_dict(r, verbose=verbose) for r in results]
         print(json.dumps(output, indent=2, default=str))
         pair_path = settings.output_path.parent / "pair_results.xlsx"
-        write_pair_xlsx(results, pair_path)
+        write_pair_xlsx(results, pair_path, verbose=verbose)
         return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
@@ -156,6 +158,12 @@ def main() -> None:
         type=str,
         help="SharePoint folder to upload results CSV into",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Include identity_match, dr_fields, and nurse_fields columns in the output report",
+    )
     args = parser.parse_args()
 
     _sp_kwargs = dict(
@@ -170,12 +178,12 @@ def main() -> None:
         use_tmp = args.download_dir is None
         local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
-            exit_code, written_csv = asyncio.run(_run(local_dir))
+            exit_code, written_csv = asyncio.run(_run(local_dir, verbose=args.verbose))
         finally:
             if use_tmp:
                 shutil.rmtree(local_dir, ignore_errors=True)
     else:
-        exit_code, written_csv = asyncio.run(_run(Path(args.input)))
+        exit_code, written_csv = asyncio.run(_run(Path(args.input), verbose=args.verbose))
 
     if args.upload_results and written_csv and written_csv.exists():
         uploader = SharePointFileUploader(**_sp_kwargs)
@@ -197,4 +205,7 @@ uv run python -m cli --input ./data --upload-results --results-folder "Some/Othe
 
 # Local files (unchanged)
 uv run python -m cli --input ./data
+# Showing all fields
+--verbose
+
 """
