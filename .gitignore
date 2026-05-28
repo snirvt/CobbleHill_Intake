@@ -1,1 +1,9 @@
 *_SECRETS
+__pycache__/
+*.pyc
+*.pyo
+.idea/
+.venv/
+output/
+*.egg-info/
+.env
