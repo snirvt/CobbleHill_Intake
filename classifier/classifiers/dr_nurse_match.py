@@ -25,8 +25,10 @@ class ClinicalMatchOutput(BaseModel):
 
 
 _PROMPT_TEMPLATE = """\
-You are a medical records auditor. Compare the dr progress note and the nurse visit note \
-below and determine whether they describe the same patient encounter consistently.
+You are a medical records auditor. Compare the dr note and the nurse visit note \
+below and determine whether they describe the same patient and conditions consistently.
+
+Keep in mind the dates of the meeting may be different (hence the patient age could be slightly different in each note), it's up to you to decide if there is a match.
 
 Output instructions:
 {format_instructions}

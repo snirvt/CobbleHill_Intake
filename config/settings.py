@@ -18,11 +18,12 @@ class Settings(BaseSettings):
     supported_extensions: dict[str, str] = {".pdf": "pdf", ".txt": "txt"}
     max_concurrent_files: int = 10
     ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma3:1b"
+    # ollama_model: str = "gemma3:1b"
+    ollama_model: str = "medgemma:27b"
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
-    sharepoint_results_folder: str = "Patient Encounters/Medical Notes/Non-Admits-results"
+    sharepoint_results_folder: str = "Patient Encounters/Medical Notes/results"
     output_path: Path = Path("./output/results.xlsx")
     sharepoint_client_id: str = CLIENT_ID
     sharepoint_tenant_id: str = TENANT_ID
