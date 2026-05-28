@@ -9,7 +9,7 @@ from pathlib import Path
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import build_pair_pipeline, build_pipeline
 from classifier.models import PairPipelineResult, PipelineResult
-from classifier.output.csv_writer import write_pair_xlsx, write_xlsx
+from classifier.output.csv_writer import resolve_folder, write_pair_xlsx, write_xlsx
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -41,7 +41,13 @@ def _result_to_dict(r: PipelineResult) -> dict:  # type: ignore[type-arg]
     }
 
 
-def _pair_result_to_dict(r: PairPipelineResult, *, verbose: bool = False) -> dict:  # type: ignore[type-arg]
+def _pair_result_to_dict(
+    r: PairPipelineResult,
+    *,
+    verbose: bool = False,
+    local_root: Path | None = None,
+    sp_folder: str | None = None,
+) -> dict:  # type: ignore[type-arg]
     if not r.success or r.result is None:
         return {
             "dr_file": str(r.dr_file_path),
@@ -53,6 +59,7 @@ def _pair_result_to_dict(r: PairPipelineResult, *, verbose: bool = False) -> dic
     dr = res.dr_metadata
     nurse = res.nurse_fields
     out: dict = {  # type: ignore[type-arg]
+        "folder": resolve_folder(r.dr_file_path, local_root, sp_folder),
         "dr_file": str(r.dr_file_path),
         "nurse_file": str(r.nurse_file_path),
         "success": True,
@@ -90,7 +97,13 @@ def _is_pair_folder(path: Path) -> bool:
     return False
 
 
-async def _run(input_path: Path, *, verbose: bool = False) -> tuple[int, Path | None]:
+async def _run(
+    input_path: Path,
+    *,
+    verbose: bool = False,
+    local_root: Path | None = None,
+    sp_folder: str | None = None,
+) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
         pipeline = build_pair_pipeline()
         pairs = scan_pairs(input_path)
@@ -98,10 +111,10 @@ async def _run(input_path: Path, *, verbose: bool = False) -> tuple[int, Path | 
             logger.error("No dr_*/nurse_* pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
-        output = [_pair_result_to_dict(r, verbose=verbose) for r in results]
+        output = [_pair_result_to_dict(r, verbose=verbose, local_root=local_root, sp_folder=sp_folder) for r in results]
         print(json.dumps(output, indent=2, default=str))
         pair_path = settings.output_path.parent / "pair_results.xlsx"
-        write_pair_xlsx(results, pair_path, verbose=verbose)
+        write_pair_xlsx(results, pair_path, verbose=verbose, local_root=local_root, sp_folder=sp_folder)
         return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
@@ -178,7 +191,9 @@ def main() -> None:
         use_tmp = args.download_dir is None
         local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
-            exit_code, written_csv = asyncio.run(_run(local_dir, verbose=args.verbose))
+            exit_code, written_csv = asyncio.run(
+                _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_folder=args.sharepoint_folder)
+            )
         finally:
             if use_tmp:
                 shutil.rmtree(local_dir, ignore_errors=True)
