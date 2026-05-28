@@ -1,6 +1,7 @@
 import json
 import logging
 from pathlib import Path
+from urllib.parse import quote
 
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
@@ -57,17 +58,17 @@ def write_pair_xlsx(
     *,
     verbose: bool = False,
     local_root: Path | None = None,
-    sp_folder: str | None = None,
+    sp_web_url: str | None = None,
 ) -> None:
     """Write pair pipeline results to a 3-sheet Excel workbook.
 
     Sheets: All (every row), No Issues (clean rows), Issues (rows with problems).
     Pass verbose=True to include identity_match, dr_fields, nurse_fields columns.
-    Pass local_root + sp_folder to show SharePoint paths instead of local tmp paths.
+    Pass local_root + sp_web_url to show SharePoint paths instead of local tmp paths.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     columns = _PAIR_COLUMNS_VERBOSE if verbose else _PAIR_COLUMNS_BASE
-    rows = [_pair_result_to_row(r, verbose=verbose, local_root=local_root, sp_folder=sp_folder) for r in results]
+    rows = [_pair_result_to_row(r, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url) for r in results]
 
     clean_rows = [r for r in rows if not _row_has_issue(r)]
     issue_rows = [r for r in rows if _row_has_issue(r)]
@@ -89,13 +90,13 @@ def write_pair_xlsx(
     )
 
 
-def resolve_folder(file_path: Path, local_root: Path | None, sp_folder: str | None) -> str:
-    if local_root is not None and sp_folder is not None:
+def resolve_folder(file_path: Path, local_root: Path | None, sp_web_url: str | None) -> str:
+    if local_root is not None and sp_web_url is not None:
         rel = file_path.parent.relative_to(local_root)
-        parts = [sp_folder.rstrip("/")]
-        if str(rel) != ".":
-            parts.append(str(rel))
-        return "/".join(parts)
+        if str(rel) == ".":
+            return sp_web_url
+        encoded = "/".join(quote(part, safe="") for part in rel.parts)
+        return f"{sp_web_url.rstrip('/')}/{encoded}"
     return str(file_path.parent)
 
 
@@ -104,10 +105,10 @@ def _pair_result_to_row(
     *,
     verbose: bool = False,
     local_root: Path | None = None,
-    sp_folder: str | None = None,
+    sp_web_url: str | None = None,
 ) -> dict[str, object]:
     base: dict[str, object] = {
-        "folder": resolve_folder(result.dr_file_path, local_root, sp_folder),
+        "folder": resolve_folder(result.dr_file_path, local_root, sp_web_url),
         "dr_file_path": str(result.dr_file_path),
         "nurse_file_path": str(result.nurse_file_path),
         "success": result.success,

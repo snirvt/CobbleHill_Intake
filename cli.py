@@ -46,7 +46,7 @@ def _pair_result_to_dict(
     *,
     verbose: bool = False,
     local_root: Path | None = None,
-    sp_folder: str | None = None,
+    sp_web_url: str | None = None,
 ) -> dict:  # type: ignore[type-arg]
     if not r.success or r.result is None:
         return {
@@ -59,7 +59,7 @@ def _pair_result_to_dict(
     dr = res.dr_metadata
     nurse = res.nurse_fields
     out: dict = {  # type: ignore[type-arg]
-        "folder": resolve_folder(r.dr_file_path, local_root, sp_folder),
+        "folder": resolve_folder(r.dr_file_path, local_root, sp_web_url),
         "dr_file": str(r.dr_file_path),
         "nurse_file": str(r.nurse_file_path),
         "success": True,
@@ -102,7 +102,7 @@ async def _run(
     *,
     verbose: bool = False,
     local_root: Path | None = None,
-    sp_folder: str | None = None,
+    sp_web_url: str | None = None,
 ) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
         pipeline = build_pair_pipeline()
@@ -111,10 +111,10 @@ async def _run(
             logger.error("No dr_*/nurse_* pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
-        output = [_pair_result_to_dict(r, verbose=verbose, local_root=local_root, sp_folder=sp_folder) for r in results]
+        output = [_pair_result_to_dict(r, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url) for r in results]
         print(json.dumps(output, indent=2, default=str))
         pair_path = settings.output_path.parent / "pair_results.xlsx"
-        write_pair_xlsx(results, pair_path, verbose=verbose, local_root=local_root, sp_folder=sp_folder)
+        write_pair_xlsx(results, pair_path, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url)
         return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
@@ -189,10 +189,10 @@ def main() -> None:
     if args.sharepoint_folder:
         downloader = SharePointFolderDownloader(**_sp_kwargs)
         use_tmp = args.download_dir is None
-        local_dir = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
+        local_dir, sp_web_url = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
             exit_code, written_csv = asyncio.run(
-                _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_folder=args.sharepoint_folder)
+                _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_web_url=sp_web_url)
             )
         finally:
             if use_tmp:

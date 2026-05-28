@@ -52,6 +52,18 @@ async def _download_file(
     logger.info("Downloaded: %s", dest.name)
 
 
+async def get_folder_web_url(
+    drive_id: str,
+    folder_path: str,
+    client: httpx.AsyncClient,
+) -> str:
+    """Return the SharePoint webUrl for *folder_path* on the given drive."""
+    url = f"{GRAPH_ROOT}/drives/{drive_id}/root:/{folder_path}"
+    response = await client.get(url, timeout=30)
+    response.raise_for_status()
+    return response.json()["webUrl"]  # type: ignore[return-value]
+
+
 async def download_folder(
     drive_id: str,
     folder_path: str,
@@ -142,7 +154,7 @@ class SharePointFolderDownloader:
         self._tenant_id = tenant_id
         self._drive_id = drive_id
 
-    async def download(self, folder_path: str, local_dir: Path | None = None) -> Path:
+    async def download(self, folder_path: str, local_dir: Path | None = None) -> tuple[Path, str]:
         """Download all supported files from *folder_path* into *local_dir*.
 
         *folder_path* is the drive-relative path, e.g.
@@ -150,6 +162,8 @@ class SharePointFolderDownloader:
 
         If *local_dir* is None a temporary directory is created; the caller is
         responsible for deleting it when done.
+
+        Returns (local_dir, web_url) where web_url is the SharePoint URL for the folder.
         """
         if local_dir is None:
             local_dir = Path(tempfile.mkdtemp(prefix="cobblehill_sp_"))
@@ -160,5 +174,8 @@ class SharePointFolderDownloader:
 
         logger.info("Downloading SharePoint folder '%s' → %s", folder_path, local_dir)
         async with httpx.AsyncClient(headers=headers) as client:
-            await download_folder(self._drive_id, folder_path, local_dir, client, semaphore)
-        return local_dir
+            web_url, _ = await asyncio.gather(
+                get_folder_web_url(self._drive_id, folder_path, client),
+                download_folder(self._drive_id, folder_path, local_dir, client, semaphore),
+            )
+        return local_dir, web_url
