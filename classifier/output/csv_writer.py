@@ -32,12 +32,13 @@ _META_COLUMNS = [
 ]
 
 _PAIR_COLUMNS_BASE = [
-    "folder", "dr_file_path", "nurse_file_path", "success", "overall", "clinical_verdict",
-    "clinical_reasoning", "errors",
+    "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
+    "clinical_verdict", "clinical_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
-    "folder", "dr_file_path", "nurse_file_path", "success", "overall", "clinical_verdict",
-    "clinical_reasoning", "identity_match", "dr_fields", "nurse_fields", "errors",
+    "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
+    "clinical_verdict", "clinical_reasoning", "identity_match", "dr_fields", "nurse_fields",
+    "errors",
 ]
 
 
@@ -109,6 +110,7 @@ def _pair_result_to_row(
 ) -> dict[str, object]:
     base: dict[str, object] = {
         "folder": resolve_folder(result.dr_file_path, local_root, sp_web_url),
+        "patient_name": result.dr_file_path.parent.name,
         "dr_file_path": str(result.dr_file_path),
         "nurse_file_path": str(result.nurse_file_path),
         "success": result.success,
