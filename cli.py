@@ -50,8 +50,8 @@ def _pair_result_to_dict(
 ) -> dict:  # type: ignore[type-arg]
     if not r.success or r.result is None:
         return {
-            "dr_file": str(r.dr_file_path),
-            "nurse_file": str(r.nurse_file_path),
+            "dr_file": r.dr_file_path.name,
+            "nurse_file": r.nurse_file_path.name,
             "success": False,
             "error": r.error,
         }
@@ -60,8 +60,8 @@ def _pair_result_to_dict(
     nurse = res.nurse_fields
     out: dict = {  # type: ignore[type-arg]
         "folder": resolve_folder(r.dr_file_path, local_root, sp_web_url),
-        "dr_file": str(r.dr_file_path),
-        "nurse_file": str(r.nurse_file_path),
+        "dr_file": r.dr_file_path.name,
+        "nurse_file": r.nurse_file_path.name,
         "success": True,
         "overall": res.overall,
         "clinical_verdict": res.clinical_verdict,

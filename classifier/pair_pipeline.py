@@ -95,24 +95,24 @@ class PairPipeline:
                         preventive_medicine=dr_fields.preventive_medicine,
                     )
                     pair = PairDocumentMetadata(
-                        dr_file_path=Path(dr_path.name),
-                        nurse_file_path=Path(nurse_path.name),
+                        dr_file_path=dr_path,
+                        nurse_file_path=nurse_path,
                         dr=dr_meta,
                         nurse=nurse_fields,
                         nurse_raw_text=nurse_text.text,
                     )
                     result = await self._pair_clf.classify_pair(pair)
                     return PairPipelineResult(
-                        dr_file_path=Path(dr_path.name),
-                        nurse_file_path=Path(nurse_path.name),
+                        dr_file_path=dr_path,
+                        nurse_file_path=nurse_path,
                         success=True,
                         result=result,
                     )
                 except Exception as exc:
                     logger.error("Pair pipeline failed for %s + %s: %s", dr_path, nurse_path, exc)
                     return PairPipelineResult(
-                        dr_file_path=Path(dr_path.name),
-                        nurse_file_path=Path(nurse_path.name),
+                        dr_file_path=dr_path,
+                        nurse_file_path=nurse_path,
                         success=False,
                         error=str(exc),
                     )

@@ -111,8 +111,8 @@ def _pair_result_to_row(
     base: dict[str, object] = {
         "folder": resolve_folder(result.dr_file_path, local_root, sp_web_url),
         "patient_name": result.dr_file_path.parent.name,
-        "dr_file_path": str(result.dr_file_path),
-        "nurse_file_path": str(result.nurse_file_path),
+        "dr_file_path": result.dr_file_path.name,
+        "nurse_file_path": result.nurse_file_path.name,
         "success": result.success,
         "errors": result.error or "",
     }
