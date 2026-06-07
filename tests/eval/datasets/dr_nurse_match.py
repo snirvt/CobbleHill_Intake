@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from classifier.models import ClinicalVerdict
+from config.settings import settings
+
+_BASE = settings.base_path
 
 
 @dataclass(frozen=True)
@@ -19,8 +22,8 @@ class PairExample:
 # ---------------------------------------------------------------------------
 EXAMPLES: list[PairExample] = [
     PairExample(
-        dr_path=Path("./cases/Active/ABAYEV, JONAH/dr_note.pdf"),
-        nurse_path=Path("./cases/Active/ABAYEV, JONAH/nurse_note.pdf"),
+        dr_path=_BASE / "cases/Active/ABAYEV, JONAH/dr_note.pdf",
+        nurse_path=_BASE / "cases/Active/ABAYEV, JONAH/nurse_note.pdf",
         expected=ClinicalVerdict.MATCH,
         description="Same patient, same visit date",
     ),
