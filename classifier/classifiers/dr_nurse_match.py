@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.models import (
+    ClinicalVerdict,
     IdentityMatchResult,
     PairClassificationResult,
     PairDocumentMetadata,
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ClinicalMatchOutput(BaseModel):
     """Structured LLM output for the clinical-match classification task."""
 
-    verdict: Literal["MATCH", "MISMATCH", "UNDECIDED"]
+    verdict: ClinicalVerdict
     reasoning: Optional[str] = None
 
 
@@ -87,19 +88,19 @@ class DrNurseMatchClassifier:
             "nurse_full_text": pair.nurse_raw_text or "None",
         }
 
-    async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[str, str]:
+    async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[ClinicalVerdict, str]:
         try:
             output: ClinicalMatchOutput = await self._chain.ainvoke(
                 self._build_prompt_input(pair)
             )
             logger.debug("Pair clinical verdict=%s", output.verdict)
-            return output.verdict, output.reasoning
+            return output.verdict, output.reasoning or ""
         except OutputParserException as exc:
             logger.error("Parse failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
-            return "MISMATCH", f"Parse error: {exc}"
+            return ClinicalVerdict.MISMATCH, f"Parse error: {exc}"
         except Exception as exc:
             logger.error("LLM call failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
-            return "MISMATCH", f"LLM error: {exc}"
+            return ClinicalVerdict.MISMATCH, f"LLM error: {exc}"
 
     @staticmethod
     def _normalize(s: str | None) -> str:
