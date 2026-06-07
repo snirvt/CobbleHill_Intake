@@ -1,5 +1,13 @@
+from enum import StrEnum
 from pathlib import Path
+
 from pydantic import BaseModel
+
+
+class ClinicalVerdict(StrEnum):
+    MATCH = "MATCH"
+    MISMATCH = "MISMATCH"
+    UNDECIDED = "UNDECIDED"
 
 
 class ExtractedText(BaseModel):
@@ -147,9 +155,9 @@ class PairClassificationResult(BaseModel):
     dr_file_path: Path
     nurse_file_path: Path
     identity_match: IdentityMatchResult
-    clinical_verdict: str
+    clinical_verdict: ClinicalVerdict
     clinical_reasoning: str
-    overall: str
+    overall: ClinicalVerdict
     dr_metadata: "DocumentMetadata"
     nurse_fields: NurseVisitFields
 
