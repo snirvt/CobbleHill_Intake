@@ -18,12 +18,12 @@ class PairExample:
 # Add labeled examples here. Paths must point to actual local files.
 # ---------------------------------------------------------------------------
 EXAMPLES: list[PairExample] = [
-    # PairExample(
-    #     dr_path=Path("./classifier_data/case1/dr_note.pdf"),
-    #     nurse_path=Path("./classifier_data/case1/nurse_note.pdf"),
-    #     expected=ClinicalVerdict.MATCH,
-    #     description="Same patient, same visit date",
-    # ),
+    PairExample(
+        dr_path=Path("./cases/Active/ABAYEV, JONAH/dr_note.pdf"),
+        nurse_path=Path("./cases/Active/ABAYEV, JONAH/nurse_note.pdf"),
+        expected=ClinicalVerdict.MATCH,
+        description="Same patient, same visit date",
+    ),
     # PairExample(
     #     dr_path=Path("./classifier_data/case2/dr_note.pdf"),
     #     nurse_path=Path("./classifier_data/case2/nurse_note.pdf"),
