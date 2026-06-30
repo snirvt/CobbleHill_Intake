@@ -5,6 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "aiofiles>=25.1.0",
     "httpx>=0.28",
+    "img2pdf>=0.6",
     "langchain-core>=0.3",
     "langchain-ollama>=0.3",
     "liteparse>=1.2.1",
