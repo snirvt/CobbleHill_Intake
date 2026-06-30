@@ -18,11 +18,17 @@ class Settings(BaseSettings):
         "/usr/bin",         # system node
         "/opt/homebrew/bin",  # Mac M1/M2
     ]
-    supported_extensions: dict[str, str] = {".pdf": "pdf", ".txt": "txt"}
+    supported_extensions: dict[str, str] = {
+        ".pdf": "pdf",
+        ".txt": "txt",
+        ".jpg": "image",
+        ".jpeg": "image",
+        ".png": "image",
+    }
     max_concurrent_files: int = 10
     ollama_url: str = "http://localhost:11434"
-    # ollama_model: str = "gemma3:1b"
-    ollama_model: str = "medgemma:27b"
+    ollama_model: str = "gemma3:1b"
+    # ollama_model: str = "medgemma:27b"
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
