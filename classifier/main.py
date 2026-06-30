@@ -4,6 +4,7 @@ import os
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
+from classifier.extractors.image import ImageExtractor
 from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
@@ -39,7 +40,13 @@ def build_pipeline() -> Pipeline:
     """Wire up all components and return a ready-to-use Pipeline."""
     _make_env()
     extractor = PdfExtractor()
-    router = DefaultFileRouter({"pdf": extractor, "txt": PlaintextExtractor()})
+    router = DefaultFileRouter(
+        {
+            "pdf": extractor,
+            "txt": PlaintextExtractor(),
+            "image": ImageExtractor(extractor),
+        }
+    )
     meta_extractor = ProgressNoteExtractor()
     llm = _make_llm()
     tasks = [
@@ -55,7 +62,13 @@ def build_pair_pipeline() -> PairPipeline:
     """Wire up all components and return a ready-to-use PairPipeline."""
     _make_env()
     extractor = PdfExtractor()
-    router = DefaultFileRouter({"pdf": extractor, "txt": PlaintextExtractor()})
+    router = DefaultFileRouter(
+        {
+            "pdf": extractor,
+            "txt": PlaintextExtractor(),
+            "image": ImageExtractor(extractor),
+        }
+    )
     llm = _make_llm()
     return PairPipeline(
         router=router,
