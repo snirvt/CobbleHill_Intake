@@ -36,6 +36,22 @@ async def test_pdf_extractor_returns_extracted_text(
     assert result.file_path == pdf
 
 
+async def test_pdf_extractor_passes_dpi_to_liteparse(
+    tmp_path: Path, mock_parse_result: MagicMock
+) -> None:
+    pdf = tmp_path / "test.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        instance = MockLiteParse.return_value
+        instance.parse_async = AsyncMock(return_value=mock_parse_result)
+
+        extractor = PdfExtractor(node_bin_path="/fake/bin", dpi=300)
+        await extractor.extract(pdf)
+
+    assert instance.parse_async.await_args.kwargs["dpi"] == 300
+
+
 async def test_pdf_extractor_raises_on_parse_error(tmp_path: Path) -> None:
     from liteparse.types import ParseError
 

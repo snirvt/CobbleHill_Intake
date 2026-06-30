@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         ".png": "image",
     }
     max_concurrent_files: int = 10
+    ocr_dpi: int = 300  # DPI liteparse renders pages at before OCR; raise (e.g. 300) for sharper scans/images
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:1b"
     # ollama_model: str = "medgemma:27b"
