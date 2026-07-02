@@ -3,6 +3,9 @@ import logging
 from pathlib import Path
 from typing import Any, Protocol
 
+import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from classifier.models import ExtractedText
 
 logger = logging.getLogger(__name__)
@@ -11,7 +14,7 @@ logger = logging.getLogger(__name__)
 class OcrReader(Protocol):
     """Minimal easyocr.Reader interface, so it can be injected and mocked."""
 
-    def readtext(self, image: str, **kwargs: Any) -> list[Any]: ...
+    def readtext(self, image: Any, **kwargs: Any) -> list[Any]: ...
 
 
 class EasyOcrExtractor:
@@ -26,11 +29,22 @@ class EasyOcrExtractor:
         self._reader = reader
         self._paragraph = paragraph
 
+    def _load_image(self, file_path: Path) -> "np.ndarray[Any, Any]":
+        """Decode an image to an RGB numpy array via Pillow.
+
+        Pillow (not easyocr's internal cv2.imread) handles unicode/spaced paths
+        and more formats, and raises a clear error on unreadable files instead of
+        cv2's opaque "!ssize.empty() in resize".
+        """
+        with Image.open(file_path) as image:
+            oriented = ImageOps.exif_transpose(image) or image  # honour camera rotation
+            rgb = oriented.convert("RGB")
+            return np.asarray(rgb)
+
     def _read(self, file_path: Path) -> str:
+        image = self._load_image(file_path)
         # detail=0 returns plain strings instead of (bbox, text, confidence) tuples.
-        lines = self._reader.readtext(
-            str(file_path), detail=0, paragraph=self._paragraph
-        )
+        lines = self._reader.readtext(image, detail=0, paragraph=self._paragraph)
         return "\n".join(str(line) for line in lines)
 
     async def extract(self, file_path: Path) -> ExtractedText:
@@ -38,7 +52,7 @@ class EasyOcrExtractor:
         logger.debug("Running easyocr on image: %s", file_path)
         try:
             text = await asyncio.to_thread(self._read, file_path)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, UnidentifiedImageError) as exc:
             raise RuntimeError(f"easyocr failed on {file_path}: {exc}") from exc
         return ExtractedText(file_path=file_path, text=text, num_pages=1)
 
