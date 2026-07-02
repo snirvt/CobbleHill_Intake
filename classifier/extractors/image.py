@@ -4,9 +4,12 @@ import tempfile
 from pathlib import Path
 
 import img2pdf  # type: ignore[import-untyped]
+from PIL import Image, UnidentifiedImageError
 
 from classifier.extractors.pdf import PdfExtractor
+from classifier.extractors.preprocess import preprocess_image
 from classifier.models import ExtractedText
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +24,49 @@ _IMG2PDF_ERRORS = (
 
 
 class ImageExtractor:
-    """ContentExtractor for image files (jpg/jpeg).
+    """ContentExtractor for image files (jpg/jpeg/png).
 
-    Converts the image to a single-page PDF with img2pdf, then delegates to a
-    PdfExtractor so liteparse's bundled OCR turns it into text. No system
+    Preprocesses the image with Pillow (flatten alpha, downscale to a size cap,
+    grayscale + Otsu binarize), tags it at ``dpi`` so the downstream render is
+    1:1 with the preprocessed pixels, converts it to a single-page PDF with
+    img2pdf, then delegates to a PdfExtractor so liteparse's bundled OCR turns
+    it into text.
+
+    The dpi tag matters: img2pdf sizes the PDF page from the image's dpi, and
+    liteparse re-renders that page at ``dpi``. Matching them renders at native
+    resolution instead of blindly upscaling a raster (which blurs the text and,
+    past the OCR engine's size limit, yields empty output). No system
     dependencies (ImageMagick/tesseract) required.
     """
 
-    def __init__(self, pdf_extractor: PdfExtractor) -> None:
+    def __init__(
+        self,
+        pdf_extractor: PdfExtractor,
+        dpi: int = settings.ocr_dpi,
+        max_dimension: int = settings.ocr_max_dimension,
+        binarize: bool = settings.ocr_binarize,
+    ) -> None:
         self._pdf_extractor = pdf_extractor
+        self._dpi = dpi
+        self._max_dimension = max_dimension
+        self._binarize = binarize
+
+    def _to_pdf_bytes(self, file_path: Path) -> bytes:
+        """Preprocess the image and encode it as a single-page PDF (sync)."""
+        with Image.open(file_path) as image:
+            processed = preprocess_image(
+                image, self._max_dimension, binarize_image=self._binarize
+            )
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as img_fh:
+                processed.save(img_fh.name, format="PNG", dpi=(self._dpi, self._dpi))
+                return img2pdf.convert(img_fh.name)  # type: ignore[no-any-return]
 
     async def extract(self, file_path: Path) -> ExtractedText:
-        """Convert an image to PDF and return its OCR'd text content."""
-        logger.debug("Converting image to PDF: %s", file_path)
+        """Preprocess an image, convert to PDF, and return its OCR'd text."""
+        logger.debug("Preprocessing and converting image to PDF: %s", file_path)
         try:
-            pdf_bytes = await asyncio.to_thread(img2pdf.convert, str(file_path))
-        except (*_IMG2PDF_ERRORS, OSError) as exc:
+            pdf_bytes = await asyncio.to_thread(self._to_pdf_bytes, file_path)
+        except (*_IMG2PDF_ERRORS, OSError, UnidentifiedImageError) as exc:
             raise RuntimeError(f"Image-to-PDF conversion failed on {file_path}: {exc}") from exc
 
         tmp_pdf: Path | None = None
