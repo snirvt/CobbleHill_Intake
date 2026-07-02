@@ -1,18 +1,23 @@
 import asyncio
 import os
+from functools import cache
+
+from langchain_core.language_models import BaseChatModel
 
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
-from classifier.extractors.image import ImageExtractor
+from classifier.extractors.easyocr_extractor import (
+    EasyOcrExtractor,
+    OcrReader,
+    create_easyocr_reader,
+)
 from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
-from langchain_core.language_models import BaseChatModel
-
 from classifier.providers.ollama import create_ollama_chat_model
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
@@ -25,6 +30,17 @@ _TASK_REGISTRY = {
 def _make_env() -> None:
     if settings.node_bin_path not in os.environ.get("PATH", ""):
         os.environ["PATH"] = settings.node_bin_path + ":" + os.environ["PATH"]
+
+
+@cache
+def _make_ocr_reader() -> OcrReader:
+    """Build the easyocr Reader once and reuse it (model load is expensive)."""
+    return create_easyocr_reader(
+        languages=settings.ocr_languages,
+        gpu=settings.ocr_gpu,
+        model_storage_directory=settings.ocr_model_dir,
+        download_enabled=settings.ocr_download,
+    )
 
 
 def _make_llm() -> BaseChatModel:
@@ -44,7 +60,7 @@ def build_pipeline() -> Pipeline:
         {
             "pdf": extractor,
             "txt": PlaintextExtractor(),
-            "image": ImageExtractor(extractor),
+            "image": EasyOcrExtractor(_make_ocr_reader()),
         }
     )
     meta_extractor = ProgressNoteExtractor()
@@ -66,7 +82,7 @@ def build_pair_pipeline() -> PairPipeline:
         {
             "pdf": extractor,
             "txt": PlaintextExtractor(),
-            "image": ImageExtractor(extractor),
+            "image": EasyOcrExtractor(_make_ocr_reader()),
         }
     )
     llm = _make_llm()
