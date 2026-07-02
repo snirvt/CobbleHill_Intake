@@ -26,7 +26,15 @@ class Settings(BaseSettings):
         ".png": "image",
     }
     max_concurrent_files: int = 10
-    ocr_dpi: int = 300  # DPI liteparse renders pages at before OCR; raise (e.g. 300) for sharper scans/images
+    ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
+    # easyocr (image OCR). Reads images directly, no PDF conversion.
+    ocr_languages: list[str] = ["en"]
+    # CPU by default; portable across machines, no CUDA needed.
+    ocr_gpu: bool = False
+    # Custom weights dir; pair with ocr_download=False for offline/air-gapped use.
+    ocr_model_dir: str | None = None
+    # Let easyocr fetch model weights on first run (weights only, no patient data).
+    ocr_download: bool = True
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:1b"
     # ollama_model: str = "medgemma:27b"
