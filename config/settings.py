@@ -26,7 +26,14 @@ class Settings(BaseSettings):
         ".png": "image",
     }
     max_concurrent_files: int = 10
-    ocr_dpi: int = 300  # DPI liteparse renders pages at before OCR; raise (e.g. 300) for sharper scans/images
+    # DPI liteparse renders native/scanned PDF pages at before OCR. Ignored for
+    # images: they OCR 1:1 at native pixels (capped by ocr_max_dimension), never upscaled.
+    ocr_dpi: int = 300
+    # Longest side (px) an image is downscaled to before OCR. Guards the render
+    # from exceeding the OCR engine's size limit, which returns empty text.
+    ocr_max_dimension: int = 4000
+    # Grayscale + Otsu-threshold images before OCR to cut background noise.
+    ocr_binarize: bool = True
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:1b"
     # ollama_model: str = "medgemma:27b"

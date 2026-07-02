@@ -76,9 +76,20 @@ async def test_pdf_extractor_sets_path_env(tmp_path: Path) -> None:
     assert "/custom/node/bin" in os.environ.get("PATH", "")
 
 
+def _write_png(path: Path, size: tuple[int, int] = (64, 48), dpi: int | None = None) -> None:
+    """Write a real white PNG so PIL can open it during preprocessing."""
+    from PIL import Image
+
+    image = Image.new("RGB", size, "white")
+    if dpi is not None:
+        image.save(path, dpi=(dpi, dpi))
+    else:
+        image.save(path)
+
+
 async def test_image_extractor_converts_and_delegates_to_pdf(tmp_path: Path) -> None:
-    img = tmp_path / "note.jpg"
-    img.write_bytes(b"\xff\xd8\xff\xe0fakejpeg")
+    img = tmp_path / "note.png"
+    _write_png(img)
 
     pdf_extractor = MagicMock()
     pdf_extractor.extract = AsyncMock(
@@ -93,7 +104,9 @@ async def test_image_extractor_converts_and_delegates_to_pdf(tmp_path: Path) -> 
         extractor = ImageExtractor(pdf_extractor)
         result = await extractor.extract(img)
 
-    mock_convert.assert_called_once_with(str(img))
+    # img2pdf is handed the preprocessed temp PNG, not the original image.
+    mock_convert.assert_called_once()
+    assert mock_convert.call_args.args[0].endswith(".png")
     # delegated to the injected PdfExtractor with a generated temp .pdf path
     delegated_path = pdf_extractor.extract.await_args.args[0]
     assert delegated_path.suffix == ".pdf"
@@ -104,22 +117,48 @@ async def test_image_extractor_converts_and_delegates_to_pdf(tmp_path: Path) -> 
     assert result.file_path == img
 
 
-async def test_image_extractor_raises_on_conversion_error(tmp_path: Path) -> None:
-    import img2pdf
+async def test_image_extractor_downscales_large_image_and_tags_dpi(tmp_path: Path) -> None:
+    img = tmp_path / "big.png"
+    _write_png(img, size=(9000, 6000))
 
-    img = tmp_path / "bad.jpg"
+    pdf_extractor = MagicMock()
+    pdf_extractor.extract = AsyncMock(
+        return_value=ExtractedText(file_path=Path("/tmp/x.pdf"), text="t", num_pages=1)
+    )
+
+    saved: dict[str, object] = {}
+
+    def _capture_convert(png_path: str) -> bytes:
+        from PIL import Image
+
+        with Image.open(png_path) as saved_img:
+            saved["size"] = saved_img.size
+            saved["dpi"] = saved_img.info.get("dpi")
+        return b"%PDF-1.4"
+
+    with patch(
+        "classifier.extractors.image.img2pdf.convert", side_effect=_capture_convert
+    ):
+        extractor = ImageExtractor(pdf_extractor, dpi=300, max_dimension=4000)
+        await extractor.extract(img)
+
+    # Longest side capped to max_dimension; dpi tagged so render is 1:1 native.
+    assert max(saved["size"]) == 4000  # type: ignore[arg-type]
+    dpi_x, dpi_y = saved["dpi"]  # type: ignore[misc]
+    # PNG stores dpi as pixels-per-metre, so it round-trips approximately.
+    assert round(dpi_x) == 300 and round(dpi_y) == 300
+
+
+async def test_image_extractor_raises_on_unreadable_image(tmp_path: Path) -> None:
+    img = tmp_path / "bad.png"
     img.write_bytes(b"not an image")
 
     pdf_extractor = MagicMock()
     pdf_extractor.extract = AsyncMock()
 
-    with patch(
-        "classifier.extractors.image.img2pdf.convert",
-        side_effect=img2pdf.ImageOpenError("cannot read"),
-    ):
-        extractor = ImageExtractor(pdf_extractor)
-        with pytest.raises(RuntimeError, match="Image-to-PDF conversion failed"):
-            await extractor.extract(img)
+    extractor = ImageExtractor(pdf_extractor)
+    with pytest.raises(RuntimeError, match="Image-to-PDF conversion failed"):
+        await extractor.extract(img)
 
     pdf_extractor.extract.assert_not_awaited()
 
