@@ -91,6 +91,11 @@ def write_pair_xlsx(
     )
 
 
+def _join_names(paths: list[Path], fallback: Path) -> str:
+    """Join file names with '; '. Falls back to the representative path if empty."""
+    return "; ".join(p.name for p in (paths or [fallback]))
+
+
 def resolve_folder(file_path: Path, local_root: Path | None, sp_web_url: str | None) -> str:
     if local_root is not None and sp_web_url is not None:
         rel = file_path.parent.relative_to(local_root)
@@ -111,8 +116,8 @@ def _pair_result_to_row(
     base: dict[str, object] = {
         "folder": resolve_folder(result.dr_file_path, local_root, sp_web_url),
         "patient_name": result.dr_file_path.parent.name,
-        "dr_file_path": result.dr_file_path.name,
-        "nurse_file_path": result.nurse_file_path.name,
+        "dr_file_path": _join_names(result.dr_paths, result.dr_file_path),
+        "nurse_file_path": _join_names(result.nurse_paths, result.nurse_file_path),
         "success": result.success,
         "errors": result.error or "",
     }
