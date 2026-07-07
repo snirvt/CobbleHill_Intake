@@ -27,8 +27,8 @@ def test_scan_pairs_finds_pair_in_root(tmp_path: Path) -> None:
     (tmp_path / "nurse_visit.pdf").write_bytes(b"%PDF")
     pairs = scan_pairs(tmp_path)
     assert len(pairs) == 1
-    assert pairs[0][0].name == "dr_note.pdf"
-    assert pairs[0][1].name == "nurse_visit.pdf"
+    assert [p.name for p in pairs[0][0]] == ["dr_note.pdf"]
+    assert [p.name for p in pairs[0][1]] == ["nurse_visit.pdf"]
 
 
 def test_scan_pairs_finds_pairs_in_subfolders(tmp_path: Path) -> None:
@@ -60,13 +60,14 @@ def test_scan_pairs_skips_folder_missing_nurse(tmp_path: Path) -> None:
     assert pairs == []
 
 
-def test_scan_pairs_uses_first_alphabetically(tmp_path: Path) -> None:
+def test_scan_pairs_includes_all_notes_sorted(tmp_path: Path) -> None:
     (tmp_path / "dr_aaa.pdf").write_bytes(b"%PDF")
     (tmp_path / "dr_zzz.pdf").write_bytes(b"%PDF")
     (tmp_path / "nurse_aaa.pdf").write_bytes(b"%PDF")
     pairs = scan_pairs(tmp_path)
     assert len(pairs) == 1
-    assert pairs[0][0].name == "dr_aaa.pdf"
+    assert [p.name for p in pairs[0][0]] == ["dr_aaa.pdf", "dr_zzz.pdf"]
+    assert [p.name for p in pairs[0][1]] == ["nurse_aaa.pdf"]
 
 
 def test_scan_pairs_ignores_unsupported_extensions(tmp_path: Path) -> None:
@@ -140,12 +141,57 @@ async def test_pair_pipeline_returns_success_result(tmp_path: Path) -> None:
 
     pair_result = _sample_pair_result(dr, nurse)
     pipeline = _make_pair_pipeline(pair_result)
-    results = await pipeline.run_pairs([(dr, nurse)])
+    results = await pipeline.run_pairs([([dr], [nurse])])
 
     assert len(results) == 1
     assert results[0].success is True
     assert results[0].result is not None
     assert results[0].result.overall == "MATCH"
+
+
+async def test_pair_pipeline_appends_multiple_notes_with_headers(tmp_path: Path) -> None:
+    dr_a = tmp_path / "dr_note_a.pdf"
+    dr_b = tmp_path / "dr_note_b.pdf"
+    nurse = tmp_path / "nurse_visit.pdf"
+    for f in (dr_a, dr_b, nurse):
+        f.write_bytes(b"%PDF")
+
+    # Distinct text per file so we can assert both are appended.
+    extractor = MagicMock()
+    extractor.extract = AsyncMock(
+        side_effect=lambda p: ExtractedText(file_path=p, text=f"TEXT[{p.name}]", num_pages=1)
+    )
+    router = MagicMock()
+    router.route = MagicMock(return_value=extractor)
+
+    dr_meta_extractor = MagicMock()
+    dr_meta_extractor.extract = MagicMock(
+        return_value=ExtractedFields(meta=PatientMetadata(patient_name="Test"))
+    )
+    nurse_meta_extractor = MagicMock()
+    nurse_meta_extractor.extract = MagicMock(
+        return_value=NurseVisitFields(meta=NursePatientMeta(patient_name="Test"))
+    )
+    pair_clf = MagicMock()
+    pair_clf.classify_pair = AsyncMock(
+        return_value=_sample_pair_result(dr_a, nurse)
+    )
+
+    pipeline = PairPipeline(
+        router=router,
+        dr_meta_extractor=dr_meta_extractor,
+        nurse_meta_extractor=nurse_meta_extractor,
+        pair_classifier=pair_clf,
+    )
+    results = await pipeline.run_pairs([([dr_a, dr_b], [nurse])])
+
+    assert results[0].success is True
+    assert [p.name for p in results[0].dr_paths] == ["dr_note_a.pdf", "dr_note_b.pdf"]
+    dr_text_seen = dr_meta_extractor.extract.call_args.args[0]
+    assert "--- dr_note_a.pdf ---" in dr_text_seen
+    assert "--- dr_note_b.pdf ---" in dr_text_seen
+    assert "TEXT[dr_note_a.pdf]" in dr_text_seen
+    assert "TEXT[dr_note_b.pdf]" in dr_text_seen
 
 
 async def test_pair_pipeline_returns_failure_on_extractor_error(tmp_path: Path) -> None:
@@ -165,7 +211,7 @@ async def test_pair_pipeline_returns_failure_on_extractor_error(tmp_path: Path) 
         nurse_meta_extractor=MagicMock(),
         pair_classifier=MagicMock(),
     )
-    results = await pipeline.run_pairs([(dr, nurse)])
+    results = await pipeline.run_pairs([([dr], [nurse])])
     assert results[0].success is False
     assert "parse error" in (results[0].error or "")
 
