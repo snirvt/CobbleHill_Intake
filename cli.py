@@ -48,10 +48,12 @@ def _pair_result_to_dict(
     local_root: Path | None = None,
     sp_web_url: str | None = None,
 ) -> dict:  # type: ignore[type-arg]
+    dr_names = "; ".join(p.name for p in (r.dr_paths or [r.dr_file_path]))
+    nurse_names = "; ".join(p.name for p in (r.nurse_paths or [r.nurse_file_path]))
     if not r.success or r.result is None:
         return {
-            "dr_file": r.dr_file_path.name,
-            "nurse_file": r.nurse_file_path.name,
+            "dr_file": dr_names,
+            "nurse_file": nurse_names,
             "success": False,
             "error": r.error,
         }
@@ -60,8 +62,8 @@ def _pair_result_to_dict(
     nurse = res.nurse_fields
     out: dict = {  # type: ignore[type-arg]
         "folder": resolve_folder(r.dr_file_path, local_root, sp_web_url),
-        "dr_file": r.dr_file_path.name,
-        "nurse_file": r.nurse_file_path.name,
+        "dr_file": dr_names,
+        "nurse_file": nurse_names,
         "success": True,
         "overall": res.overall,
         "clinical_verdict": res.clinical_verdict,
