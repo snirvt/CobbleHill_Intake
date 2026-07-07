@@ -167,6 +167,8 @@ class PairPipelineResult(BaseModel):
 
     dr_file_path: Path
     nurse_file_path: Path
+    dr_paths: list[Path] = []
+    nurse_paths: list[Path] = []
     success: bool
     result: PairClassificationResult | None = None
     error: str | None = None
