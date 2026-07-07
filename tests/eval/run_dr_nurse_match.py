@@ -28,24 +28,25 @@ async def main() -> None:
 
     pipeline = build_pair_pipeline()
 
-    async def predict(pair: tuple[Path, Path]) -> str:
-        dr_path, nurse_path = pair
-        results = await pipeline.run_pairs([(dr_path, nurse_path)])
+    async def predict(pair: tuple[list[Path], list[Path]]) -> str:
+        dr_paths, nurse_paths = pair
+        results = await pipeline.run_pairs([(dr_paths, nurse_paths)])
         r = results[0]
         if not r.success or r.result is None:
             raise RuntimeError(r.error or "pipeline returned no result")
         return r.result.overall
 
-    examples: list[LabeledExample[tuple[Path, Path]]] = [
+    examples: list[LabeledExample[tuple[list[Path], list[Path]]]] = [
         LabeledExample(
-            input=(ex.dr_path, ex.nurse_path),
+            input=(ex.dr_paths, ex.nurse_paths),
             expected=ex.expected,
-            description=ex.description or f"{ex.dr_path.name} + {ex.nurse_path.name}",
+            description=ex.description
+            or f"{'; '.join(p.name for p in ex.dr_paths)} + {'; '.join(p.name for p in ex.nurse_paths)}",
         )
         for ex in EXAMPLES
     ]
 
-    harness: EvalHarness[tuple[Path, Path]] = EvalHarness(
+    harness: EvalHarness[tuple[list[Path], list[Path]]] = EvalHarness(
         classifier_name="dr_nurse_match",
         examples=examples,
         predict_fn=predict,
