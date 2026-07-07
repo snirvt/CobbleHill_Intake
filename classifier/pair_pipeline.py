@@ -12,18 +12,20 @@ _DR_PREFIX = "dr_"
 _NURSE_PREFIX = "nurse_"
 
 
-def scan_pairs(root: Path) -> list[tuple[Path, Path]]:
+def scan_pairs(root: Path) -> list[tuple[list[Path], list[Path]]]:
     """Recursively find dr_* + nurse_* pairs in root and its subdirectories.
 
     Each folder (including root) that contains at least one dr_* and one nurse_*
-    supported file yields one pair (first alphabetically of each prefix).
+    supported file yields one pair. When a folder holds multiple dr_* or nurse_*
+    files, ALL of them are included (sorted alphabetically); their extracted text
+    is appended downstream.
     """
-    pairs: list[tuple[Path, Path]] = []
+    pairs: list[tuple[list[Path], list[Path]]] = []
     _collect_pairs(root, pairs)
     return pairs
 
 
-def _collect_pairs(folder: Path, pairs: list[tuple[Path, Path]]) -> None:
+def _collect_pairs(folder: Path, pairs: list[tuple[list[Path], list[Path]]]) -> None:
     exts = set(settings.supported_extensions.keys())
     dr_files = sorted(
         f for f in folder.iterdir()
@@ -34,17 +36,22 @@ def _collect_pairs(folder: Path, pairs: list[tuple[Path, Path]]) -> None:
         if f.is_file() and f.name.lower().startswith(_NURSE_PREFIX) and f.suffix.lower() in exts
     )
     if dr_files and nurse_files:
-        pairs.append((dr_files[0], nurse_files[0]))
+        pairs.append((dr_files, nurse_files))
         if len(dr_files) > 1 or len(nurse_files) > 1:
-            logger.warning(
-                "Folder %s has multiple dr_* or nurse_* files — using first of each: %s, %s",
+            logger.info(
+                "Folder %s has multiple notes — appending dr_*=%s, nurse_*=%s",
                 folder,
-                dr_files[0].name,
-                nurse_files[0].name,
+                [f.name for f in dr_files],
+                [f.name for f in nurse_files],
             )
     for child in sorted(folder.iterdir()):
         if child.is_dir():
             _collect_pairs(child, pairs)
+
+
+def _concat_notes(paths: list[Path], texts: list[str]) -> str:
+    """Append multiple note texts, each prefixed with a filename header marker."""
+    return "\n\n".join(f"--- {p.name} ---\n{t}" for p, t in zip(paths, texts))
 
 
 class PairPipeline:
@@ -62,24 +69,34 @@ class PairPipeline:
         self._nurse_meta = nurse_meta_extractor
         self._pair_clf = pair_classifier
 
-    async def run_pairs(self, pairs: list[tuple[Path, Path]]) -> list[PairPipelineResult]:
-        """Process all pairs concurrently up to max_concurrent_files at a time."""
+    async def run_pairs(
+        self, pairs: list[tuple[list[Path], list[Path]]]
+    ) -> list[PairPipelineResult]:
+        """Process all pairs concurrently up to max_concurrent_files at a time.
+
+        Each pair is (dr_paths, nurse_paths); multiple files per side are extracted
+        and their text appended before classification. The first file of each side is
+        the representative path used for folder/patient resolution.
+        """
         sem = asyncio.Semaphore(settings.max_concurrent_files)
 
-        async def process(dr_path: Path, nurse_path: Path) -> PairPipelineResult:
+        async def process(dr_paths: list[Path], nurse_paths: list[Path]) -> PairPipelineResult:
+            dr_path, nurse_path = dr_paths[0], nurse_paths[0]
             async with sem:
                 try:
-                    dr_ext = self._router.route(dr_path)
-                    nurse_ext = self._router.route(nurse_path)
-                    dr_text, nurse_text = await asyncio.gather(
-                        dr_ext.extract(dr_path),
-                        nurse_ext.extract(nurse_path),
+                    dr_extracted = await asyncio.gather(
+                        *(self._router.route(p).extract(p) for p in dr_paths)
                     )
-                    dr_fields = self._dr_meta.extract(dr_text.text)
-                    nurse_fields = self._nurse_meta.extract(nurse_text.text)
+                    nurse_extracted = await asyncio.gather(
+                        *(self._router.route(p).extract(p) for p in nurse_paths)
+                    )
+                    dr_full = _concat_notes(dr_paths, [x.text for x in dr_extracted])
+                    nurse_full = _concat_notes(nurse_paths, [x.text for x in nurse_extracted])
+                    dr_fields = self._dr_meta.extract(dr_full)
+                    nurse_fields = self._nurse_meta.extract(nurse_full)
                     dr_meta = DocumentMetadata(
                         file_path=dr_path,
-                        raw_text=dr_text.text,
+                        raw_text=dr_full,
                         meta=dr_fields.meta,
                         hpi=dr_fields.hpi,
                         examination=dr_fields.examination,
@@ -99,12 +116,14 @@ class PairPipeline:
                         nurse_file_path=nurse_path,
                         dr=dr_meta,
                         nurse=nurse_fields,
-                        nurse_raw_text=nurse_text.text,
+                        nurse_raw_text=nurse_full,
                     )
                     result = await self._pair_clf.classify_pair(pair)
                     return PairPipelineResult(
                         dr_file_path=dr_path,
                         nurse_file_path=nurse_path,
+                        dr_paths=dr_paths,
+                        nurse_paths=nurse_paths,
                         success=True,
                         result=result,
                     )
@@ -113,6 +132,8 @@ class PairPipeline:
                     return PairPipelineResult(
                         dr_file_path=dr_path,
                         nurse_file_path=nurse_path,
+                        dr_paths=dr_paths,
+                        nurse_paths=nurse_paths,
                         success=False,
                         error=str(exc),
                     )
