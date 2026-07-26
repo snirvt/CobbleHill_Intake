@@ -3,6 +3,7 @@ from typing import Protocol, runtime_checkable
 
 from classifier.models import (
     ClassificationResult,
+    DiagnosisExtractionResult,
     DocumentMetadata,
     ExtractedFields,
     ExtractedText,
@@ -61,3 +62,12 @@ class PairClassifier(Protocol):
     """Classifies a dr+nurse document pair."""
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult: ...
+
+
+@runtime_checkable
+class DiagnosisExtractor(Protocol):
+    """Extracts diagnoses (name + optional ICD code) from a dr note."""
+
+    async def extract_diagnoses(
+        self, metadata: DocumentMetadata
+    ) -> DiagnosisExtractionResult: ...
