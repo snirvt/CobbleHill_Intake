@@ -59,21 +59,24 @@ async def test_run_returns_empty_result_on_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_folder_scans_supported_files_recursively(tmp_path: Path) -> None:
+async def test_run_folder_processes_only_dr_notes_recursively(tmp_path: Path) -> None:
     (tmp_path / "sub").mkdir()
-    (tmp_path / "dr.pdf").write_text("x")
-    (tmp_path / "sub" / "nurse.txt").write_text("y")
+    (tmp_path / "dr_progress_note.pdf").write_text("x")
+    (tmp_path / "sub" / "dr_visit.txt").write_text("x")
+    (tmp_path / "nurse_visit.txt").write_text("y")
+    (tmp_path / "sub" / "nurse_visit_2.txt").write_text("y")
     (tmp_path / "ignore.md").write_text("z")
 
     pipeline = DiagnosisPipeline(_FakeRouter(), _FakeDiagnosisExtractor())
     results = await pipeline.run_folder(tmp_path)
 
     names = sorted(r.file_path.name for r in results)
-    assert names == ["dr.pdf", "nurse.txt"]
+    assert names == ["dr_progress_note.pdf", "dr_visit.txt"]
 
 
 @pytest.mark.asyncio
-async def test_run_folder_empty_when_no_supported_files(tmp_path: Path) -> None:
+async def test_run_folder_empty_when_no_dr_notes(tmp_path: Path) -> None:
+    (tmp_path / "nurse_visit.txt").write_text("y")
     (tmp_path / "note.md").write_text("z")
 
     pipeline = DiagnosisPipeline(_FakeRouter(), _FakeDiagnosisExtractor())

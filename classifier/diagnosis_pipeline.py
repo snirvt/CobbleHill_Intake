@@ -7,6 +7,7 @@ from classifier.models import (
     DocumentMetadata,
     PatientMetadata,
 )
+from classifier.pair_pipeline import _DR_PREFIX
 from classifier.protocols import DiagnosisExtractor, FileRouter
 from config.settings import settings
 
@@ -46,12 +47,18 @@ class DiagnosisPipeline:
         return list(await asyncio.gather(*[process(f) for f in files]))
 
     async def run_folder(self, folder: Path) -> list[DiagnosisExtractionResult]:
-        """Scan folder recursively for supported files and extract diagnoses."""
+        """Scan folder recursively for dr_* notes and extract diagnoses.
+
+        Nurse notes (and any non-dr_* files) are ignored — only files whose name
+        starts with the dr_ prefix are processed.
+        """
         files = [
             f
             for f in sorted(folder.rglob("*"))
-            if f.is_file() and f.suffix.lower() in settings.supported_extensions
+            if f.is_file()
+            and f.name.lower().startswith(_DR_PREFIX)
+            and f.suffix.lower() in settings.supported_extensions
         ]
         if not files:
-            logger.warning("No supported files found in %s", folder)
+            logger.warning("No dr_* notes found in %s", folder)
         return await self.run(files)
