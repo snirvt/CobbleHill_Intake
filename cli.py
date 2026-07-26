@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
-from classifier.main import build_pair_pipeline, build_pipeline
-from classifier.models import PairPipelineResult, PipelineResult
+from classifier.main import build_diagnosis_pipeline, build_pair_pipeline, build_pipeline
+from classifier.models import DiagnosisExtractionResult, PairPipelineResult, PipelineResult
 from classifier.output.csv_writer import resolve_folder, write_pair_xlsx, write_xlsx
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
@@ -86,6 +86,27 @@ def _pair_result_to_dict(
         }
         out["nurse_extracted"] = nurse.model_dump()
     return out
+
+
+def _diagnosis_result_to_dict(r: DiagnosisExtractionResult) -> dict:  # type: ignore[type-arg]
+    return {
+        "file": str(r.file_path),
+        "diagnoses": [d.model_dump() for d in r.diagnoses],
+    }
+
+
+async def _run_diagnosis(input_path: Path) -> tuple[int, Path | None]:
+    """Extract diagnoses from a dr note file, or all dr_* notes in a folder."""
+    pipeline = build_diagnosis_pipeline()
+    if input_path.is_dir():
+        results = await pipeline.run_folder(input_path)
+    elif input_path.is_file():
+        results = await pipeline.run([input_path])
+    else:
+        logger.error("Path does not exist: %s", input_path)
+        return 1, None
+    print(json.dumps([_diagnosis_result_to_dict(r) for r in results], indent=2, default=str))
+    return 0, None
 
 
 def _is_pair_folder(path: Path) -> bool:
@@ -179,6 +200,12 @@ def main() -> None:
         default=False,
         help="Include identity_match, dr_fields, and nurse_fields columns in the output report",
     )
+    parser.add_argument(
+        "--diagnosis",
+        action="store_true",
+        default=False,
+        help="Extract diagnoses from dr_* notes only (ignores nurse notes); prints JSON",
+    )
     args = parser.parse_args()
 
     _sp_kwargs = dict(
@@ -193,12 +220,17 @@ def main() -> None:
         use_tmp = args.download_dir is None
         local_dir, sp_web_url = asyncio.run(downloader.download(args.sharepoint_folder, args.download_dir))
         try:
-            exit_code, written_csv = asyncio.run(
-                _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_web_url=sp_web_url)
-            )
+            if args.diagnosis:
+                exit_code, written_csv = asyncio.run(_run_diagnosis(local_dir))
+            else:
+                exit_code, written_csv = asyncio.run(
+                    _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_web_url=sp_web_url)
+                )
         finally:
             if use_tmp:
                 shutil.rmtree(local_dir, ignore_errors=True)
+    elif args.diagnosis:
+        exit_code, written_csv = asyncio.run(_run_diagnosis(Path(args.input)))
     else:
         exit_code, written_csv = asyncio.run(_run(Path(args.input), verbose=args.verbose))
 
