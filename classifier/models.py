@@ -92,6 +92,20 @@ class ClassificationResult(BaseModel):
     metadata: DocumentMetadata
 
 
+class Diagnosis(BaseModel):
+    """A single diagnosis extracted from a dr note."""
+
+    name: str
+    icd_code: str | None = None
+
+
+class DiagnosisExtractionResult(BaseModel):
+    """All diagnoses extracted from one dr note."""
+
+    file_path: Path
+    diagnoses: list[Diagnosis] = []
+
+
 class PipelineResult(BaseModel):
     """Outcome of the full pipeline for one file."""
 
