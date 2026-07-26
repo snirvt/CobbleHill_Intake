@@ -4,6 +4,7 @@ from functools import cache
 
 from langchain_core.language_models import BaseChatModel
 
+from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
@@ -16,9 +17,11 @@ from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
+from classifier.diagnosis_pipeline import DiagnosisPipeline
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
+from classifier.providers.stub import create_stub_chat_model
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
 
@@ -50,6 +53,25 @@ def _make_llm() -> BaseChatModel:
         model=settings.ollama_model,
         semaphore=semaphore,
     )
+
+
+def build_diagnosis_extractor() -> DiagnosisExtractionClassifier:
+    """Wire up the diagnosis-extraction classifier (stub or ollama per settings)."""
+    llm = create_stub_chat_model() if settings.stub_mode else _make_llm()
+    return DiagnosisExtractionClassifier(llm=llm)
+
+
+def build_diagnosis_pipeline() -> DiagnosisPipeline:
+    """Wire up a folder-capable diagnosis pipeline (route → extract → diagnoses)."""
+    _make_env()
+    router = DefaultFileRouter(
+        {
+            "pdf": PdfExtractor(),
+            "txt": PlaintextExtractor(),
+            "image": EasyOcrExtractor(_make_ocr_reader()),
+        }
+    )
+    return DiagnosisPipeline(router=router, extractor=build_diagnosis_extractor())
 
 
 def build_pipeline() -> Pipeline:
