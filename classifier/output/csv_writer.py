@@ -181,18 +181,18 @@ def write_diagnosis_xlsx(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Diagnoses"  # type: ignore[union-attr]
-    ws.append(_DIAGNOSIS_COLUMNS)  # type: ignore[union-attr]
+    ws.title = "Diagnoses"
+    ws.append(_DIAGNOSIS_COLUMNS)
 
     row_count = 0
     for result in results:
         file_path = str(result.file_path)
         if not result.diagnoses:
-            ws.append([file_path, "", ""])  # type: ignore[union-attr]
+            ws.append([file_path, "", ""])
             row_count += 1
             continue
         for diagnosis in result.diagnoses:
-            ws.append([file_path, diagnosis.name, diagnosis.icd_code or ""])  # type: ignore[union-attr]
+            ws.append([file_path, diagnosis.name, diagnosis.icd_code or ""])
             row_count += 1
 
     wb.save(output_path)
