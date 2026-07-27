@@ -9,7 +9,12 @@ from pathlib import Path
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import build_diagnosis_pipeline, build_pair_pipeline, build_pipeline
 from classifier.models import DiagnosisExtractionResult, PairPipelineResult, PipelineResult
-from classifier.output.csv_writer import resolve_folder, write_pair_xlsx, write_xlsx
+from classifier.output.csv_writer import (
+    resolve_folder,
+    write_diagnosis_xlsx,
+    write_pair_xlsx,
+    write_xlsx,
+)
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -106,7 +111,9 @@ async def _run_diagnosis(input_path: Path) -> tuple[int, Path | None]:
         logger.error("Path does not exist: %s", input_path)
         return 1, None
     print(json.dumps([_diagnosis_result_to_dict(r) for r in results], indent=2, default=str))
-    return 0, None
+    diagnosis_path = settings.output_path.parent / "diagnosis_results.xlsx"
+    write_diagnosis_xlsx(results, diagnosis_path)
+    return 0, diagnosis_path
 
 
 def _is_pair_folder(path: Path) -> bool:
@@ -256,5 +263,18 @@ uv run python -m cli --input ./data --upload-results --results-folder "Some/Othe
 uv run python -m cli --input ./data
 # Showing all fields
 --verbose
+
+# Diagnosis extraction (dr_* notes only, nurse notes ignored)
+# Prints JSON and writes output/diagnosis_results.xlsx
+uv run python -m cli --input ./data --diagnosis
+
+# Single dr note file
+uv run python -m cli --input ./data/1/dr_progress_note.pdf --diagnosis
+
+# From SharePoint, then upload the results xlsx back
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --diagnosis --upload-results
+
+# Real extraction instead of stub (needs ollama running)
+COBBLEHILL_STUB_MODE=false uv run python -m cli --input ./data --diagnosis
 
 """
