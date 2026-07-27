@@ -106,6 +106,14 @@ class DiagnosisExtractionResult(BaseModel):
     diagnoses: list[Diagnosis] = []
 
 
+class TreatmentRequestResult(BaseModel):
+    """Whether the patient explicitly requested treatment, per a dr note."""
+
+    file_path: Path
+    patient_requested_treatment: bool
+    reasoning: str | None = None
+
+
 class PipelineResult(BaseModel):
     """Outcome of the full pipeline for one file."""
 

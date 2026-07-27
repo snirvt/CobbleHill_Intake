@@ -10,6 +10,7 @@ from classifier.models import (
     NurseVisitFields,
     PairClassificationResult,
     PairDocumentMetadata,
+    TreatmentRequestResult,
 )
 
 
@@ -71,3 +72,12 @@ class DiagnosisExtractor(Protocol):
     async def extract_diagnoses(
         self, metadata: DocumentMetadata
     ) -> DiagnosisExtractionResult: ...
+
+
+@runtime_checkable
+class TreatmentRequestExtractor(Protocol):
+    """Determines whether the patient explicitly requested treatment in a dr note."""
+
+    async def extract_treatment_request(
+        self, metadata: DocumentMetadata
+    ) -> TreatmentRequestResult: ...

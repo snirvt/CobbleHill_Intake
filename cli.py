@@ -7,12 +7,23 @@ import sys
 from pathlib import Path
 
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
-from classifier.main import build_diagnosis_pipeline, build_pair_pipeline, build_pipeline
-from classifier.models import DiagnosisExtractionResult, PairPipelineResult, PipelineResult
+from classifier.main import (
+    build_diagnosis_pipeline,
+    build_pair_pipeline,
+    build_pipeline,
+    build_treatment_request_pipeline,
+)
+from classifier.models import (
+    DiagnosisExtractionResult,
+    PairPipelineResult,
+    PipelineResult,
+    TreatmentRequestResult,
+)
 from classifier.output.csv_writer import (
     resolve_folder,
     write_diagnosis_xlsx,
     write_pair_xlsx,
+    write_treatment_request_xlsx,
     write_xlsx,
 )
 from classifier.pair_pipeline import scan_pairs
@@ -116,6 +127,30 @@ async def _run_diagnosis(input_path: Path) -> tuple[int, Path | None]:
     return 0, diagnosis_path
 
 
+def _treatment_result_to_dict(r: TreatmentRequestResult) -> dict:  # type: ignore[type-arg]
+    return {
+        "file": str(r.file_path),
+        "patient_requested_treatment": r.patient_requested_treatment,
+        "reasoning": r.reasoning,
+    }
+
+
+async def _run_treatment_request(input_path: Path) -> tuple[int, Path | None]:
+    """Detect patient treatment requests in a dr note file, or all dr_* notes in a folder."""
+    pipeline = build_treatment_request_pipeline()
+    if input_path.is_dir():
+        results = await pipeline.run_folder(input_path)
+    elif input_path.is_file():
+        results = await pipeline.run([input_path])
+    else:
+        logger.error("Path does not exist: %s", input_path)
+        return 1, None
+    print(json.dumps([_treatment_result_to_dict(r) for r in results], indent=2, default=str))
+    out_path = settings.output_path.parent / "treatment_request_results.xlsx"
+    write_treatment_request_xlsx(results, out_path)
+    return 0, out_path
+
+
 def _is_pair_folder(path: Path) -> bool:
     """Return True if path contains any dr_* or nurse_* supported files (recursively)."""
     exts = set(settings.supported_extensions.keys())
@@ -213,6 +248,12 @@ def main() -> None:
         default=False,
         help="Extract diagnoses from dr_* notes only (ignores nurse notes); prints JSON",
     )
+    parser.add_argument(
+        "--treatment-request",
+        action="store_true",
+        default=False,
+        help="Detect if the patient explicitly requested treatment (dr_* notes only); prints JSON",
+    )
     args = parser.parse_args()
 
     _sp_kwargs = dict(
@@ -229,6 +270,8 @@ def main() -> None:
         try:
             if args.diagnosis:
                 exit_code, written_csv = asyncio.run(_run_diagnosis(local_dir))
+            elif args.treatment_request:
+                exit_code, written_csv = asyncio.run(_run_treatment_request(local_dir))
             else:
                 exit_code, written_csv = asyncio.run(
                     _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_web_url=sp_web_url)
@@ -238,6 +281,8 @@ def main() -> None:
                 shutil.rmtree(local_dir, ignore_errors=True)
     elif args.diagnosis:
         exit_code, written_csv = asyncio.run(_run_diagnosis(Path(args.input)))
+    elif args.treatment_request:
+        exit_code, written_csv = asyncio.run(_run_treatment_request(Path(args.input)))
     else:
         exit_code, written_csv = asyncio.run(_run(Path(args.input), verbose=args.verbose))
 
@@ -270,6 +315,10 @@ uv run python -m cli --input ./data --diagnosis
 
 # Single dr note file
 uv run python -m cli --input ./data/1/dr_progress_note.pdf --diagnosis
+
+# Treatment-request detection (dr_* notes only, nurse notes ignored)
+# Prints JSON and writes output/treatment_request_results.xlsx
+uv run python -m cli --input ./data --treatment-request
 
 # From SharePoint, then upload the results xlsx back
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --diagnosis --upload-results
