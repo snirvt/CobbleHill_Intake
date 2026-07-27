@@ -6,7 +6,11 @@ from urllib.parse import quote
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
-from classifier.models import PairPipelineResult, PipelineResult
+from classifier.models import (
+    DiagnosisExtractionResult,
+    PairPipelineResult,
+    PipelineResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +164,44 @@ def write_xlsx(results: list[PipelineResult], output_path: Path, task_names: lis
 
     wb.save(output_path)
     logger.info("XLSX written to %s (%d rows)", output_path, len(results))
+
+
+_DIAGNOSIS_COLUMNS = ["file_path", "diagnosis", "icd_code"]
+
+
+def write_diagnosis_xlsx(
+    results: list[DiagnosisExtractionResult], output_path: Path
+) -> None:
+    """Write diagnosis-extraction results to a single-sheet Excel workbook.
+
+    One row per diagnosis (file_path, diagnosis, icd_code). A file with no
+    diagnoses still gets one row with empty diagnosis/icd_code columns.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Diagnoses"  # type: ignore[union-attr]
+    ws.append(_DIAGNOSIS_COLUMNS)  # type: ignore[union-attr]
+
+    row_count = 0
+    for result in results:
+        file_path = str(result.file_path)
+        if not result.diagnoses:
+            ws.append([file_path, "", ""])  # type: ignore[union-attr]
+            row_count += 1
+            continue
+        for diagnosis in result.diagnoses:
+            ws.append([file_path, diagnosis.name, diagnosis.icd_code or ""])  # type: ignore[union-attr]
+            row_count += 1
+
+    wb.save(output_path)
+    logger.info(
+        "Diagnosis XLSX written to %s (%d files, %d rows)",
+        output_path,
+        len(results),
+        row_count,
+    )
 
 
 def _result_to_row(result: PipelineResult, task_names: list[str]) -> dict[str, object]:
