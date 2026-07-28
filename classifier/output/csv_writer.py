@@ -10,6 +10,7 @@ from classifier.models import (
     DiagnosisExtractionResult,
     PairPipelineResult,
     PipelineResult,
+    TreatmentRequestResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,37 @@ def write_diagnosis_xlsx(
         output_path,
         len(results),
         row_count,
+    )
+
+
+_TREATMENT_COLUMNS = ["file_path", "treatment_requested", "reasoning"]
+
+
+def write_treatment_request_xlsx(
+    results: list[TreatmentRequestResult], output_path: Path
+) -> None:
+    """Write treatment-request results to a single-sheet Excel workbook.
+
+    One row per file (file_path, patient_requested_treatment, reasoning).
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TreatmentRequest"
+    ws.append(_TREATMENT_COLUMNS)
+    for result in results:
+        ws.append(
+            [
+                str(result.file_path),
+                result.treatment_requested,
+                result.reasoning or "",
+            ]
+        )
+
+    wb.save(output_path)
+    logger.info(
+        "Treatment-request XLSX written to %s (%d rows)", output_path, len(results)
     )
 
 
