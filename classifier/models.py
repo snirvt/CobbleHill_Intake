@@ -107,10 +107,10 @@ class DiagnosisExtractionResult(BaseModel):
 
 
 class TreatmentRequestResult(BaseModel):
-    """Whether the patient explicitly requested treatment, per a dr note."""
+    """Whether anyone indicates the patient should receive treatment, per a dr note."""
 
     file_path: Path
-    patient_requested_treatment: bool
+    treatment_requested: bool
     reasoning: str | None = None
 
 
