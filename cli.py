@@ -130,13 +130,13 @@ async def _run_diagnosis(input_path: Path) -> tuple[int, Path | None]:
 def _treatment_result_to_dict(r: TreatmentRequestResult) -> dict:  # type: ignore[type-arg]
     return {
         "file": str(r.file_path),
-        "patient_requested_treatment": r.patient_requested_treatment,
+        "treatment_requested": r.treatment_requested,
         "reasoning": r.reasoning,
     }
 
 
 async def _run_treatment_request(input_path: Path) -> tuple[int, Path | None]:
-    """Detect patient treatment requests in a dr note file, or all dr_* notes in a folder."""
+    """Detect if anyone indicates treatment is needed, for a dr note file or all dr_* notes in a folder."""
     pipeline = build_treatment_request_pipeline()
     if input_path.is_dir():
         results = await pipeline.run_folder(input_path)
@@ -252,7 +252,7 @@ def main() -> None:
         "--treatment-request",
         action="store_true",
         default=False,
-        help="Detect if the patient explicitly requested treatment (dr_* notes only); prints JSON",
+        help="Detect if anyone indicates the patient should receive treatment (dr_* notes only); prints JSON",
     )
     args = parser.parse_args()
 
@@ -316,14 +316,20 @@ uv run python -m cli --input ./data --diagnosis
 # Single dr note file
 uv run python -m cli --input ./data/1/dr_progress_note.pdf --diagnosis
 
-# Treatment-request detection (dr_* notes only, nurse notes ignored)
+# Treatment-request detection — true if ANYONE (patient, family, or provider)
+# indicates the patient should be treated. dr_* notes only, nurse notes ignored.
 # Prints JSON and writes output/treatment_request_results.xlsx
 uv run python -m cli --input ./data --treatment-request
 
-# From SharePoint, then upload the results xlsx back
+# Single dr note file
+uv run python -m cli --input ./data/1/dr_progress_note.pdf --treatment-request
+
+# From SharePoint, then upload the results xlsx back (works with --diagnosis or --treatment-request)
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --diagnosis --upload-results
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --treatment-request --upload-results
 
 # Real extraction instead of stub (needs ollama running)
 COBBLEHILL_STUB_MODE=false uv run python -m cli --input ./data --diagnosis
+COBBLEHILL_STUB_MODE=false uv run python -m cli --input ./data --treatment-request
 
 """
