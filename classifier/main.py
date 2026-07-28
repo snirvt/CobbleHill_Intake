@@ -8,6 +8,8 @@ from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClass
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
+from classifier.classifiers.treatment_request import TreatmentRequestClassifier
+from classifier.dr_note_pipeline import DrNotePipeline
 from classifier.extractors.easyocr_extractor import (
     EasyOcrExtractor,
     OcrReader,
@@ -17,11 +19,14 @@ from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
-from classifier.diagnosis_pipeline import DiagnosisPipeline
+from classifier.models import DiagnosisExtractionResult, TreatmentRequestResult
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
-from classifier.providers.stub import create_stub_chat_model
+from classifier.providers.stub import (
+    STUB_TREATMENT_REQUEST_RESPONSE,
+    create_stub_chat_model,
+)
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
 
@@ -55,36 +60,64 @@ def _make_llm() -> BaseChatModel:
     )
 
 
-def build_diagnosis_extractor() -> DiagnosisExtractionClassifier:
-    """Wire up the diagnosis-extraction classifier (stub or ollama per settings)."""
-    llm = create_stub_chat_model() if settings.stub_mode else _make_llm()
-    return DiagnosisExtractionClassifier(llm=llm)
-
-
-def build_diagnosis_pipeline() -> DiagnosisPipeline:
-    """Wire up a folder-capable diagnosis pipeline (route → extract → diagnoses)."""
-    _make_env()
-    router = DefaultFileRouter(
+def _make_router() -> DefaultFileRouter:
+    """Build the default file router mapping file types to content extractors."""
+    return DefaultFileRouter(
         {
             "pdf": PdfExtractor(),
             "txt": PlaintextExtractor(),
             "image": EasyOcrExtractor(_make_ocr_reader()),
         }
     )
-    return DiagnosisPipeline(router=router, extractor=build_diagnosis_extractor())
+
+
+def build_diagnosis_extractor() -> DiagnosisExtractionClassifier:
+    """Wire up the diagnosis-extraction classifier (stub or ollama per settings)."""
+    llm = create_stub_chat_model() if settings.stub_mode else _make_llm()
+    return DiagnosisExtractionClassifier(llm=llm)
+
+
+def build_diagnosis_pipeline() -> DrNotePipeline[DiagnosisExtractionResult]:
+    """Wire up a folder-capable diagnosis pipeline (dr_* notes only)."""
+    _make_env()
+    extractor = build_diagnosis_extractor()
+    return DrNotePipeline(
+        router=_make_router(),
+        extract_fn=extractor.extract_diagnoses,
+        error_fn=lambda path, _exc: DiagnosisExtractionResult(
+            file_path=path, diagnoses=[]
+        ),
+    )
+
+
+def build_treatment_request_extractor() -> TreatmentRequestClassifier:
+    """Wire up the treatment-request classifier (stub or ollama per settings)."""
+    llm = (
+        create_stub_chat_model(STUB_TREATMENT_REQUEST_RESPONSE)
+        if settings.stub_mode
+        else _make_llm()
+    )
+    return TreatmentRequestClassifier(llm=llm)
+
+
+def build_treatment_request_pipeline() -> DrNotePipeline[TreatmentRequestResult]:
+    """Wire up a folder-capable treatment-request pipeline (dr_* notes only)."""
+    _make_env()
+    extractor = build_treatment_request_extractor()
+    return DrNotePipeline(
+        router=_make_router(),
+        extract_fn=extractor.extract_treatment_request,
+        error_fn=lambda path, exc: TreatmentRequestResult(
+            file_path=path,
+            treatment_requested=False,
+            reasoning=f"Pipeline error: {exc}",
+        ),
+    )
 
 
 def build_pipeline() -> Pipeline:
     """Wire up all components and return a ready-to-use Pipeline."""
     _make_env()
-    extractor = PdfExtractor()
-    router = DefaultFileRouter(
-        {
-            "pdf": extractor,
-            "txt": PlaintextExtractor(),
-            "image": EasyOcrExtractor(_make_ocr_reader()),
-        }
-    )
     meta_extractor = ProgressNoteExtractor()
     llm = _make_llm()
     tasks = [
@@ -93,23 +126,17 @@ def build_pipeline() -> Pipeline:
         if name in _TASK_REGISTRY
     ]
     classifier = LLMClassifier(tasks=tasks)
-    return Pipeline(router=router, meta_extractor=meta_extractor, classifier=classifier)
+    return Pipeline(
+        router=_make_router(), meta_extractor=meta_extractor, classifier=classifier
+    )
 
 
 def build_pair_pipeline() -> PairPipeline:
     """Wire up all components and return a ready-to-use PairPipeline."""
     _make_env()
-    extractor = PdfExtractor()
-    router = DefaultFileRouter(
-        {
-            "pdf": extractor,
-            "txt": PlaintextExtractor(),
-            "image": EasyOcrExtractor(_make_ocr_reader()),
-        }
-    )
     llm = _make_llm()
     return PairPipeline(
-        router=router,
+        router=_make_router(),
         dr_meta_extractor=ProgressNoteExtractor(),
         nurse_meta_extractor=NurseVisitExtractor(),
         pair_classifier=DrNurseMatchClassifier(llm=llm),
