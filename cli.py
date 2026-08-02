@@ -26,6 +26,7 @@ from classifier.output.csv_writer import (
     write_treatment_request_xlsx,
     write_xlsx,
 )
+from classifier.naming import parse_note
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -112,7 +113,7 @@ def _diagnosis_result_to_dict(r: DiagnosisExtractionResult) -> dict:  # type: ig
 
 
 async def _run_diagnosis(input_path: Path) -> tuple[int, Path | None]:
-    """Extract diagnoses from a dr note file, or all dr_* notes in a folder."""
+    """Extract diagnoses from a dr note file, or all dr notes in a folder."""
     pipeline = build_diagnosis_pipeline()
     if input_path.is_dir():
         results = await pipeline.run_folder(input_path)
@@ -136,7 +137,7 @@ def _treatment_result_to_dict(r: TreatmentRequestResult) -> dict:  # type: ignor
 
 
 async def _run_treatment_request(input_path: Path) -> tuple[int, Path | None]:
-    """Detect if anyone indicates treatment is needed, for a dr note file or all dr_* notes in a folder."""
+    """Detect if anyone indicates treatment is needed, for a dr note file or all dr notes in a folder."""
     pipeline = build_treatment_request_pipeline()
     if input_path.is_dir():
         results = await pipeline.run_folder(input_path)
@@ -152,14 +153,8 @@ async def _run_treatment_request(input_path: Path) -> tuple[int, Path | None]:
 
 
 def _is_pair_folder(path: Path) -> bool:
-    """Return True if path contains any dr_* or nurse_* supported files (recursively)."""
-    exts = set(settings.supported_extensions.keys())
-    for f in path.rglob("*"):
-        if f.is_file() and f.suffix.lower() in exts:
-            name = f.name.lower()
-            if name.startswith("dr_") or name.startswith("nurse_"):
-                return True
-    return False
+    """Return True if path contains any dr or nurse note (recursively, any category)."""
+    return any(parse_note(f) is not None for f in path.rglob("*"))
 
 
 async def _run(
@@ -173,7 +168,7 @@ async def _run(
         pipeline = build_pair_pipeline()
         pairs = scan_pairs(input_path)
         if not pairs:
-            logger.error("No dr_*/nurse_* pairs found in %s", input_path)
+            logger.error("No dr/nurse note pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
         output = [_pair_result_to_dict(r, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url) for r in results]
@@ -246,13 +241,13 @@ def main() -> None:
         "--diagnosis",
         action="store_true",
         default=False,
-        help="Extract diagnoses from dr_* notes only (ignores nurse notes); prints JSON",
+        help="Extract diagnoses from dr notes only (ignores nurse notes); prints JSON",
     )
     parser.add_argument(
         "--treatment-request",
         action="store_true",
         default=False,
-        help="Detect if anyone indicates the patient should receive treatment (dr_* notes only); prints JSON",
+        help="Detect if anyone indicates the patient should receive treatment (dr notes only); prints JSON",
     )
     args = parser.parse_args()
 
@@ -309,7 +304,7 @@ uv run python -m cli --input ./data
 # Showing all fields
 --verbose
 
-# Diagnosis extraction (dr_* notes only, nurse notes ignored)
+# Diagnosis extraction (dr notes only, nurse notes ignored)
 # Prints JSON and writes output/diagnosis_results.xlsx
 uv run python -m cli --input ./data --diagnosis
 
@@ -317,7 +312,7 @@ uv run python -m cli --input ./data --diagnosis
 uv run python -m cli --input ./data/1/dr_progress_note.pdf --diagnosis
 
 # Treatment-request detection — true if ANYONE (patient, family, or provider)
-# indicates the patient should be treated. dr_* notes only, nurse notes ignored.
+# indicates the patient should be treated. dr notes only, nurse notes ignored.
 # Prints JSON and writes output/treatment_request_results.xlsx
 uv run python -m cli --input ./data --treatment-request
 
