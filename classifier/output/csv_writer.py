@@ -7,6 +7,8 @@ import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
 from classifier.models import (
+    Diagnosis,
+    DiagnosisCheck,
     DiagnosisExtractionResult,
     PairPipelineResult,
     PipelineResult,
@@ -22,6 +24,8 @@ _CLEAN_VALUES: dict[str, set[object]] = {
     "success": {True},
     "overall": {"MATCH"},
     "errors": {"", None},
+    # "" = check did not apply to this pair's category.
+    "diagnosis_check": {"", DiagnosisCheck.EXISTS},
 }
 
 # Fixed patient metadata columns in output order
@@ -38,13 +42,23 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "clinical_verdict", "clinical_reasoning", "errors",
+    "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "clinical_verdict", "clinical_reasoning", "identity_match", "dr_fields", "nurse_fields",
+    "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
+    "identity_match", "dr_fields", "nurse_fields",
     "errors",
 ]
+
+
+def format_diagnoses(diagnoses: list[Diagnosis]) -> str:
+    """Render diagnoses as proof text: 'dr: name (ICD); nurse: name'."""
+    parts = []
+    for d in diagnoses:
+        name = f"{d.name} ({d.icd_code})" if d.icd_code else d.name
+        parts.append(f"{d.source}: {name}" if d.source else name)
+    return "; ".join(parts)
 
 
 def _row_has_issue(row: dict[str, object]) -> bool:
@@ -127,7 +141,10 @@ def _pair_result_to_row(
         "errors": result.error or "",
     }
     if not result.success or result.result is None:
-        base.update({"overall": "", "clinical_verdict": "", "clinical_reasoning": ""})
+        base.update({
+            "overall": "", "clinical_verdict": "", "clinical_reasoning": "",
+            "diagnosis_check": "", "diagnoses": "",
+        })
         if verbose:
             base.update({"identity_match": "", "dr_fields": "", "nurse_fields": ""})
         return base
@@ -137,6 +154,8 @@ def _pair_result_to_row(
         "overall": r.overall,
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
+        "diagnosis_check": r.diagnosis_check or "",
+        "diagnoses": format_diagnoses(r.diagnoses),
     })
     if verbose:
         base.update({
