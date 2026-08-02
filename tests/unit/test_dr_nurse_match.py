@@ -1,10 +1,15 @@
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.models import (
+    Diagnosis,
+    DiagnosisCheck,
+    DiagnosisExtractionResult,
     DocumentMetadata,
     NursePatientMeta,
     NurseVisitFields,
@@ -59,6 +64,7 @@ def _make_pair(
     dr: DocumentMetadata,
     nurse: NurseVisitFields,
     nurse_raw_text: str = "Date of service: 04/17/2026\nAssessment: Infantile colic - R10.83\nPlan: Monitor feeding.",
+    category: str | None = None,
 ) -> PairDocumentMetadata:
     return PairDocumentMetadata(
         dr_file_path=Path("dr_note.pdf"),
@@ -66,6 +72,7 @@ def _make_pair(
         dr=dr,
         nurse=nurse,
         nurse_raw_text=nurse_raw_text,
+        category=category,
     )
 
 
@@ -212,3 +219,90 @@ async def test_prompt_input_uses_nurse_raw_text() -> None:
     )
     prompt_input = clf._build_prompt_input(pair)
     assert "High temperature" in prompt_input["nurse_full_text"]
+
+
+# ---------------------------------------------------------------------------
+# Diagnosis check (hospital pairs only)
+# ---------------------------------------------------------------------------
+
+def _fake_diagnosis_extractor(
+    dr_diagnoses: list[Diagnosis] | None = None,
+    nurse_diagnoses: list[Diagnosis] | None = None,
+) -> MagicMock:
+    """Extractor returning per-note diagnoses, keyed on the metadata's file path."""
+    per_file = {
+        "dr_note.pdf": dr_diagnoses or [],
+        "nurse_note.pdf": nurse_diagnoses or [],
+    }
+    extractor = MagicMock()
+    extractor.extract_diagnoses = AsyncMock(
+        side_effect=lambda meta: DiagnosisExtractionResult(
+            file_path=meta.file_path,
+            diagnoses=per_file.get(meta.file_path.name, []),
+        )
+    )
+    return extractor
+
+
+async def test_diagnosis_check_exists_when_dr_note_has_diagnosis() -> None:
+    extractor = _fake_diagnosis_extractor(dr_diagnoses=[Diagnosis(name="Colic", icd_code="R10.83")])
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
+    assert result.diagnosis_check == DiagnosisCheck.EXISTS
+    assert [(d.name, d.source) for d in result.diagnoses] == [("Colic", "dr")]
+    assert result.overall == "MATCH"
+
+
+async def test_diagnosis_check_exists_when_only_nurse_note_has_diagnosis() -> None:
+    extractor = _fake_diagnosis_extractor(nurse_diagnoses=[Diagnosis(name="Otitis media")])
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
+    assert result.diagnosis_check == DiagnosisCheck.EXISTS
+    assert [(d.name, d.source) for d in result.diagnoses] == [("Otitis media", "nurse")]
+
+
+async def test_diagnosis_check_collects_proof_from_both_notes() -> None:
+    extractor = _fake_diagnosis_extractor(
+        dr_diagnoses=[Diagnosis(name="Colic", icd_code="R10.83")],
+        nurse_diagnoses=[Diagnosis(name="Reflux")],
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
+    assert [(d.name, d.source) for d in result.diagnoses] == [("Colic", "dr"), ("Reflux", "nurse")]
+
+
+async def test_diagnosis_missing_forces_overall_mismatch() -> None:
+    extractor = _fake_diagnosis_extractor()
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
+    assert result.diagnosis_check == DiagnosisCheck.MISSING
+    assert result.diagnoses == []
+    assert result.clinical_verdict == "MATCH"  # clinical verdict itself untouched
+    assert result.overall == "MISMATCH"
+
+
+@pytest.mark.parametrize("category", [None, "peds"])
+async def test_diagnosis_check_skipped_for_other_categories(category: str | None) -> None:
+    extractor = _fake_diagnosis_extractor()
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category=category))
+    assert result.diagnosis_check is None
+    assert result.diagnoses == []
+    assert result.overall == "MATCH"
+    extractor.extract_diagnoses.assert_not_awaited()
+
+
+async def test_diagnosis_check_skipped_when_no_extractor_injected() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
+    assert result.diagnosis_check is None
+    assert result.overall == "MATCH"
+
+
+async def test_diagnosis_check_reads_nurse_raw_text() -> None:
+    extractor = _fake_diagnosis_extractor(nurse_diagnoses=[Diagnosis(name="Reflux")])
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), nurse_raw_text="Nurse text here", category="hospital")
+    await clf.classify_pair(pair)
+    texts = [call.args[0].raw_text for call in extractor.extract_diagnoses.await_args_list]
+    assert "Nurse text here" in texts

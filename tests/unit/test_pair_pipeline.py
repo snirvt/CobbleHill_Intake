@@ -278,3 +278,27 @@ async def test_pair_pipeline_run_folder_returns_empty_when_no_pairs(tmp_path: Pa
     pipeline = _make_pair_pipeline(_sample_pair_result(tmp_path / "a.pdf", tmp_path / "b.pdf"))
     results = await pipeline.run_folder(tmp_path)
     assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Category propagation to the pair classifier
+# ---------------------------------------------------------------------------
+
+async def _classified_pair_metadata(tmp_path: Path, dr_name: str, nurse_name: str):  # type: ignore[no-untyped-def]
+    """Run the pipeline on one pair and return the metadata handed to the classifier."""
+    dr, nurse = tmp_path / dr_name, tmp_path / nurse_name
+    dr.write_bytes(b"%PDF")
+    nurse.write_bytes(b"%PDF")
+    pipeline = _make_pair_pipeline(_sample_pair_result(dr, nurse))
+    await pipeline.run_pairs([([dr], [nurse])])
+    return pipeline._pair_clf.classify_pair.await_args.args[0]
+
+
+async def test_pair_pipeline_passes_category_to_classifier(tmp_path: Path) -> None:
+    pair = await _classified_pair_metadata(tmp_path, "hospital_dr_note.pdf", "hospital_nurse_visit.pdf")
+    assert pair.category == "hospital"
+
+
+async def test_pair_pipeline_passes_none_category_for_uncategorized_notes(tmp_path: Path) -> None:
+    pair = await _classified_pair_metadata(tmp_path, "dr_note.pdf", "nurse_visit.pdf")
+    assert pair.category is None

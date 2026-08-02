@@ -37,7 +37,9 @@ def test_cli_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     output = json.loads(result.stdout)
     assert len(output) == 1
     assert output[0]["file"].endswith("dr_progress_note.txt")
-    assert output[0]["diagnoses"] == [{"name": "STUB_DIAGNOSIS", "icd_code": "Z00.0"}]
+    assert output[0]["diagnoses"] == [
+        {"name": "STUB_DIAGNOSIS", "icd_code": "Z00.0", "source": None}
+    ]
 
     # xlsx written next to configured output path
     xlsx_path = _REPO_ROOT / "output" / "diagnosis_results.xlsx"

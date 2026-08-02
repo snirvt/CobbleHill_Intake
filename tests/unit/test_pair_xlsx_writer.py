@@ -4,6 +4,8 @@ import openpyxl
 import pytest
 
 from classifier.models import (
+    Diagnosis,
+    DiagnosisCheck,
     DocumentMetadata,
     IdentityMatchResult,
     NurseVisitFields,
@@ -11,7 +13,7 @@ from classifier.models import (
     PairPipelineResult,
     PatientMetadata,
 )
-from classifier.output.csv_writer import resolve_folder, write_pair_xlsx
+from classifier.output.csv_writer import format_diagnoses, resolve_folder, write_pair_xlsx
 
 
 def _make_pair_result(
@@ -20,6 +22,8 @@ def _make_pair_result(
     overall: str = "MATCH",
     clinical_verdict: str = "MATCH",
     document_metadata: DocumentMetadata | None = None,
+    diagnosis_check: DiagnosisCheck | None = None,
+    diagnoses: list[Diagnosis] | None = None,
 ) -> PairPipelineResult:
     result = PairClassificationResult(
         dr_file_path=dr,
@@ -32,6 +36,8 @@ def _make_pair_result(
         overall=overall,
         dr_metadata=document_metadata or DocumentMetadata(file_path=dr, raw_text="", meta=PatientMetadata()),
         nurse_fields=NurseVisitFields(),
+        diagnosis_check=diagnosis_check,
+        diagnoses=diagnoses or [],
     )
     return PairPipelineResult(
         dr_file_path=dr, nurse_file_path=nurse, success=True, result=result
@@ -228,3 +234,73 @@ def test_verbose_true_populates_detail_columns(tmp_path: Path) -> None:
     data = rows[1]
     idx = header.index("identity_match")
     assert data[idx] not in ("", None)
+
+
+# ---------------------------------------------------------------------------
+# Diagnosis check columns
+# ---------------------------------------------------------------------------
+
+def _row_value(ws: openpyxl.worksheet.worksheet.Worksheet, column: str, row_index: int = 1) -> object:
+    rows = _sheet_rows(ws)
+    return rows[row_index][list(rows[0]).index(column)]
+
+
+def test_diagnosis_columns_present_in_both_modes(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    for verbose in (False, True):
+        out = tmp_path / f"results_{verbose}.xlsx"
+        write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
+        header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
+        assert "diagnosis_check" in header
+        assert "diagnoses" in header
+
+
+def test_diagnosis_proof_lists_source_and_icd_code(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    result = _make_pair_result(
+        dr,
+        nurse,
+        diagnosis_check=DiagnosisCheck.EXISTS,
+        diagnoses=[
+            Diagnosis(name="Colic", icd_code="R10.83", source="dr"),
+            Diagnosis(name="Reflux", source="nurse"),
+        ],
+    )
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "diagnosis_check") == "EXISTS"
+    assert _row_value(ws, "diagnoses") == "dr: Colic (R10.83); nurse: Reflux"
+
+
+def test_missing_diagnosis_row_lands_in_issues_sheet(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    result = _make_pair_result(dr, nurse, overall="MATCH", diagnosis_check=DiagnosisCheck.MISSING)
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["Issues"].max_row == 2  # header + 1
+    assert wb["No Issues"].max_row == 1  # header only
+
+
+def test_skipped_diagnosis_check_is_not_an_issue(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "peds_dr_a.pdf", tmp_path / "peds_nurse_a.pdf"
+    result = _make_pair_result(dr, nurse, overall="MATCH", diagnosis_check=None)
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["No Issues"].max_row == 2  # header + 1
+    assert not _row_value(wb["All"], "diagnosis_check")  # blank cells read back as None
+
+
+def test_failed_result_leaves_diagnosis_columns_blank(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_make_failure(dr, nurse)], out)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert not _row_value(ws, "diagnosis_check")
+    assert not _row_value(ws, "diagnoses")
+
+
+def test_format_diagnoses_empty_list_is_blank() -> None:
+    assert format_diagnoses([]) == ""
