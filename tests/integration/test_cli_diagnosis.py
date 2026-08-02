@@ -1,7 +1,8 @@
 """Integration test for the --diagnosis CLI flag.
 
-Uses txt notes only (plaintext extractor — no npm/OCR) and stub mode (deterministic
-LLM output), so it needs no external services. Marked integration; skipped by default.
+Uses txt notes only (plaintext extractor — no npm/OCR), but hits the configured
+ollama model, so it needs that service running. Assertions are model-agnostic:
+they check routing and output shape, not which diagnoses come back.
 
 Run with: pytest -m integration
 """
@@ -37,9 +38,8 @@ def test_cli_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     output = json.loads(result.stdout)
     assert len(output) == 1
     assert output[0]["file"].endswith("dr_progress_note.txt")
-    assert output[0]["diagnoses"] == [
-        {"name": "STUB_DIAGNOSIS", "icd_code": "Z00.0", "source": None}
-    ]
+    assert isinstance(output[0]["diagnoses"], list)
+    assert all({"name", "icd_code", "source"} <= d.keys() for d in output[0]["diagnoses"])
 
     # xlsx written next to configured output path
     xlsx_path = _REPO_ROOT / "output" / "diagnosis_results.xlsx"
@@ -48,7 +48,4 @@ def test_cli_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))  # type: ignore[union-attr]
     assert rows[0] == ("file_path", "diagnosis", "icd_code")
-    assert any(
-        r[1] == "STUB_DIAGNOSIS" and str(r[0]).endswith("dr_progress_note.txt")
-        for r in rows[1:]
-    )
+    assert any(str(r[0]).endswith("dr_progress_note.txt") for r in rows[1:])
