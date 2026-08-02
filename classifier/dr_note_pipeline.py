@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 from classifier.models import DocumentMetadata, PatientMetadata
-from classifier.pair_pipeline import _DR_PREFIX
+from classifier.naming import parse_note
 from classifier.protocols import FileRouter
 from config.settings import settings
 
@@ -15,23 +15,18 @@ T = TypeVar("T")
 
 
 def scan_dr_notes(folder: Path) -> list[Path]:
-    """Return dr_* notes with supported extensions in folder, recursively, sorted.
+    """Return dr notes with supported extensions in folder, recursively, sorted.
 
-    Nurse notes (and any non-dr_* files) are excluded.
+    Any category prefix is accepted (dr_*, hospital_dr_*, peds_dr_*). Nurse notes
+    and non-note files are excluded.
     """
-    return [
-        f
-        for f in sorted(folder.rglob("*"))
-        if f.is_file()
-        and f.name.lower().startswith(_DR_PREFIX)
-        and f.suffix.lower() in settings.supported_extensions
-    ]
+    return [f for f in sorted(folder.rglob("*")) if parse_note(f, role="dr") is not None]
 
 
 class DrNotePipeline(Generic[T]):
     """Generic dr-note pipeline: route → extract text → apply an extractor fn.
 
-    Processes dr_* notes only (nurse notes ignored). ``extract_fn`` receives the
+    Processes dr notes only (any category; nurse notes ignored). ``extract_fn`` receives the
     document metadata (raw text populated) and returns a result of type T. On a
     routing/IO failure, ``error_fn`` produces a fallback T so a bad file never
     aborts the batch.
@@ -69,8 +64,8 @@ class DrNotePipeline(Generic[T]):
         return list(await asyncio.gather(*[process(f) for f in files]))
 
     async def run_folder(self, folder: Path) -> list[T]:
-        """Scan folder recursively for dr_* notes and process them."""
+        """Scan folder recursively for dr notes and process them."""
         files = scan_dr_notes(folder)
         if not files:
-            logger.warning("No dr_* notes found in %s", folder)
+            logger.warning("No dr notes found in %s", folder)
         return await self.run(files)
