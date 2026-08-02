@@ -92,11 +92,19 @@ class ClassificationResult(BaseModel):
     metadata: DocumentMetadata
 
 
+class DiagnosisCheck(StrEnum):
+    """Whether a note pair carries at least one diagnosis."""
+
+    EXISTS = "EXISTS"
+    MISSING = "MISSING"
+
+
 class Diagnosis(BaseModel):
-    """A single diagnosis extracted from a dr note."""
+    """A single diagnosis extracted from a note."""
 
     name: str
     icd_code: str | None = None
+    source: str | None = None  # which note it came from, e.g. "dr" / "nurse"
 
 
 class DiagnosisExtractionResult(BaseModel):
@@ -169,6 +177,7 @@ class PairDocumentMetadata(BaseModel):
     dr: DocumentMetadata
     nurse: NurseVisitFields
     nurse_raw_text: str = ""
+    category: str | None = None  # note-name category prefix, e.g. "hospital" / "peds"
 
 
 class PairClassificationResult(BaseModel):
@@ -182,6 +191,9 @@ class PairClassificationResult(BaseModel):
     overall: ClinicalVerdict
     dr_metadata: "DocumentMetadata"
     nurse_fields: NurseVisitFields
+    # None when the check did not apply to this pair's category.
+    diagnosis_check: DiagnosisCheck | None = None
+    diagnoses: list[Diagnosis] = []
 
 
 class PairPipelineResult(BaseModel):
