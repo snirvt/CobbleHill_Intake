@@ -1,7 +1,8 @@
 """Integration test for the --treatment-request CLI flag.
 
-Uses txt notes only (plaintext extractor — no npm/OCR) and stub mode (deterministic
-LLM output), so it needs no external services. Marked integration; skipped by default.
+Uses txt notes only (plaintext extractor — no npm/OCR), but hits the configured
+ollama model, so it needs that service running. Assertions are model-agnostic:
+they check routing and output shape, not the verdict itself.
 
 Run with: pytest -m integration
 """
@@ -36,9 +37,7 @@ def test_cli_treatment_request_processes_dr_notes_only(tmp_path: Path) -> None:
     output = json.loads(result.stdout)
     assert len(output) == 1
     assert output[0]["file"].endswith("dr_progress_note.txt")
-    # stub mode → deterministic False
-    assert output[0]["treatment_requested"] is False
-    assert "STUB" in output[0]["reasoning"]
+    assert isinstance(output[0]["treatment_requested"], bool)
 
     xlsx_path = _REPO_ROOT / "output" / "treatment_request_results.xlsx"
     assert xlsx_path.exists()
