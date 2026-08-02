@@ -132,12 +132,18 @@ def build_pipeline() -> Pipeline:
 
 
 def build_pair_pipeline() -> PairPipeline:
-    """Wire up all components and return a ready-to-use PairPipeline."""
+    """Wire up all components and return a ready-to-use PairPipeline.
+
+    The pair classifier gets a diagnosis extractor so pairs in
+    ``settings.diagnosis_check_categories`` are checked for missing diagnoses.
+    """
     _make_env()
     llm = _make_llm()
     return PairPipeline(
         router=_make_router(),
         dr_meta_extractor=ProgressNoteExtractor(),
         nurse_meta_extractor=NurseVisitExtractor(),
-        pair_classifier=DrNurseMatchClassifier(llm=llm),
+        pair_classifier=DrNurseMatchClassifier(
+            llm=llm, diagnosis_extractor=build_diagnosis_extractor()
+        ),
     )
