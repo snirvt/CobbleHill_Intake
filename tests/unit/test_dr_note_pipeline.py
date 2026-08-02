@@ -86,3 +86,15 @@ def test_scan_dr_notes_filters_and_sorts(tmp_path: Path) -> None:
     found = [p.name for p in scan_dr_notes(tmp_path)]
 
     assert found == ["dr_a.txt", "dr_b.pdf"]
+
+
+def test_scan_dr_notes_includes_all_categories(tmp_path: Path) -> None:
+    (tmp_path / "dr_a.pdf").write_text("x")
+    (tmp_path / "hospital_dr_b.pdf").write_text("x")
+    (tmp_path / "peds_dr_c.pdf").write_text("x")
+    (tmp_path / "hospital_nurse_d.pdf").write_text("y")
+    (tmp_path / "peds_summary.pdf").write_text("z")
+
+    found = [p.name for p in scan_dr_notes(tmp_path)]
+
+    assert found == ["dr_a.pdf", "hospital_dr_b.pdf", "peds_dr_c.pdf"]

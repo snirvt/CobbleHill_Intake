@@ -70,6 +70,51 @@ def test_scan_pairs_includes_all_notes_sorted(tmp_path: Path) -> None:
     assert [p.name for p in pairs[0][1]] == ["nurse_aaa.pdf"]
 
 
+def test_scan_pairs_matches_category_prefixed_notes(tmp_path: Path) -> None:
+    (tmp_path / "hospital_dr_note.pdf").write_bytes(b"%PDF")
+    (tmp_path / "hospital_nurse_visit.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert [p.name for p in pairs[0][0]] == ["hospital_dr_note.pdf"]
+    assert [p.name for p in pairs[0][1]] == ["hospital_nurse_visit.pdf"]
+
+
+def test_scan_pairs_separates_categories_in_one_folder(tmp_path: Path) -> None:
+    (tmp_path / "hospital_dr_a.pdf").write_bytes(b"%PDF")
+    (tmp_path / "hospital_nurse_a.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_dr_b.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_nurse_b.pdf").write_bytes(b"%PDF")
+    (tmp_path / "dr_c.pdf").write_bytes(b"%PDF")
+    (tmp_path / "nurse_c.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert [([d.name for d in dr], [n.name for n in nurse]) for dr, nurse in pairs] == [
+        (["dr_c.pdf"], ["nurse_c.pdf"]),
+        (["hospital_dr_a.pdf"], ["hospital_nurse_a.pdf"]),
+        (["peds_dr_b.pdf"], ["peds_nurse_b.pdf"]),
+    ]
+
+
+def test_scan_pairs_does_not_cross_pair_categories(tmp_path: Path) -> None:
+    (tmp_path / "hospital_dr_a.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_nurse_b.pdf").write_bytes(b"%PDF")
+    assert scan_pairs(tmp_path) == []
+
+
+def test_scan_pairs_appends_multiple_notes_within_a_category(tmp_path: Path) -> None:
+    (tmp_path / "peds_dr_zzz.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_dr_aaa.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_nurse_a.pdf").write_bytes(b"%PDF")
+    pairs = scan_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert [p.name for p in pairs[0][0]] == ["peds_dr_aaa.pdf", "peds_dr_zzz.pdf"]
+
+
+def test_scan_pairs_ignores_category_prefix_without_role(tmp_path: Path) -> None:
+    (tmp_path / "peds_summary.pdf").write_bytes(b"%PDF")
+    (tmp_path / "peds_nurse_visit.pdf").write_bytes(b"%PDF")
+    assert scan_pairs(tmp_path) == []
+
+
 def test_scan_pairs_ignores_unsupported_extensions(tmp_path: Path) -> None:
     (tmp_path / "dr_note.txt").write_bytes(b"text")
     (tmp_path / "nurse_visit.txt").write_bytes(b"text")
