@@ -23,10 +23,6 @@ from classifier.models import DiagnosisExtractionResult, TreatmentRequestResult
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
-from classifier.providers.stub import (
-    STUB_TREATMENT_REQUEST_RESPONSE,
-    create_stub_chat_model,
-)
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
 
@@ -71,10 +67,9 @@ def _make_router() -> DefaultFileRouter:
     )
 
 
-def build_diagnosis_extractor() -> DiagnosisExtractionClassifier:
-    """Wire up the diagnosis-extraction classifier (stub or ollama per settings)."""
-    llm = create_stub_chat_model() if settings.stub_mode else _make_llm()
-    return DiagnosisExtractionClassifier(llm=llm)
+def build_diagnosis_extractor(llm: BaseChatModel | None = None) -> DiagnosisExtractionClassifier:
+    """Wire up the diagnosis-extraction classifier; builds its own LLM if none given."""
+    return DiagnosisExtractionClassifier(llm=llm or _make_llm())
 
 
 def build_diagnosis_pipeline() -> DrNotePipeline[DiagnosisExtractionResult]:
@@ -90,14 +85,11 @@ def build_diagnosis_pipeline() -> DrNotePipeline[DiagnosisExtractionResult]:
     )
 
 
-def build_treatment_request_extractor() -> TreatmentRequestClassifier:
-    """Wire up the treatment-request classifier (stub or ollama per settings)."""
-    llm = (
-        create_stub_chat_model(STUB_TREATMENT_REQUEST_RESPONSE)
-        if settings.stub_mode
-        else _make_llm()
-    )
-    return TreatmentRequestClassifier(llm=llm)
+def build_treatment_request_extractor(
+    llm: BaseChatModel | None = None,
+) -> TreatmentRequestClassifier:
+    """Wire up the treatment-request classifier; builds its own LLM if none given."""
+    return TreatmentRequestClassifier(llm=llm or _make_llm())
 
 
 def build_treatment_request_pipeline() -> DrNotePipeline[TreatmentRequestResult]:
@@ -137,7 +129,8 @@ def build_pair_pipeline() -> PairPipeline:
     The pair classifier gets a diagnosis extractor (pairs in
     ``settings.diagnosis_check_categories`` are checked for missing diagnoses) and a
     care extractor (pairs in ``settings.care_check_categories`` are checked for a
-    treatment request or medical necessity).
+    treatment request or medical necessity). All three share one chat model, so the
+    whole pipeline honours a single max_concurrent_llm_calls budget.
     """
     _make_env()
     llm = _make_llm()
@@ -147,7 +140,7 @@ def build_pair_pipeline() -> PairPipeline:
         nurse_meta_extractor=NurseVisitExtractor(),
         pair_classifier=DrNurseMatchClassifier(
             llm=llm,
-            diagnosis_extractor=build_diagnosis_extractor(),
-            care_extractor=build_treatment_request_extractor(),
+            diagnosis_extractor=build_diagnosis_extractor(llm),
+            care_extractor=build_treatment_request_extractor(llm),
         ),
     )

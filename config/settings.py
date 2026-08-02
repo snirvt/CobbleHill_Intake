@@ -45,8 +45,6 @@ class Settings(BaseSettings):
     ocr_model_dir: str | None = None
     # Let easyocr fetch model weights on first run (weights only, no patient data).
     ocr_download: bool = True
-    # True = LLM calls return deterministic constants (laptop dev, sensitive data).
-    stub_mode: bool = True
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:1b"
     # ollama_model: str = "medgemma:27b"

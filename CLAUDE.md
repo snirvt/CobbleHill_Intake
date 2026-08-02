@@ -68,7 +68,7 @@ project-root/
 │       │   └── plaintext.py
 │       ├── providers/        # LLMProvider implementations
 │       │   ├── __init__.py
-│       │   ├── stub.py       # Deterministic constants — for dev on personal laptop
+│       │   ├── stub.py       # Deterministic constants — test double only, never wired in main.py
 │       │   ├── local.py      # Ollama / local model
 │       │   └── anthropic.py  # Claude API (or other vendors)
 │       ├── classifiers/      # Classifier implementations
@@ -103,8 +103,7 @@ All hard-coded values, thresholds, model names, file-type mappings, API endpoint
 # Pattern — not the literal file, just the shape:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
-    llm_provider: str = "local"           # "local" | "anthropic" | "openai" | "stub"
-    stub_mode: bool = False               # True = all LLM calls return deterministic constants
+    llm_provider: str = "local"           # "local" | "anthropic" | "openai"
     local_model_url: str = "http://localhost:11434"
     supported_extensions: dict[str, str]   # {".pdf": "pdf", ".png": "image", ...}
     max_concurrent_files: int = 10
@@ -114,16 +113,20 @@ class Settings(BaseSettings):
 
 **Never scatter magic strings or config values in business logic.** Always import from `settings`.
 
-### Stub Mode (Sensitive Data / Personal Laptop)
+### Sensitive Data
 
-Data is sensitive and must not leave the company network. When developing on a personal laptop:
+Data is sensitive and must not leave the company network. The only LLM provider wired up is
+local ollama, so prompts never leave the machine.
 
-- Set `llm_provider=stub` (or `stub_mode=True`) — every `LLMProvider` call returns a **fixed, deterministic constant response** defined in the stub implementation. No real model is invoked, no data is sent anywhere.
-- The `StubProvider` lives in `src/classifier/providers/stub.py`. It implements the same `LLMProvider` protocol and returns predefined classification results (e.g. `{"category": "STUB_CATEGORY", "confidence": 0.99}`).
-- Stub responses should be realistic in **shape** (same Pydantic models, same fields) but obviously fake in **content** so they're never mistaken for real results.
-- Use stub fixtures in `fixtures/` for development — never copy real sensitive files to a personal machine.
-- Final validation with real data and real models happens **only on the company computer**.
-- The DI container in `main.py` selects `StubProvider` when stub mode is active — no other code needs to know or care.
+- There is **no runtime stub mode**. Every builder in `main.py` returns a real chat model; a
+  run that reaches an LLM needs ollama up.
+- `classifier/providers/stub.py` still exists, but only as a **test double**: unit tests inject
+  `create_stub_chat_model()` to get a deterministic response without a model. Never wire it into
+  `main.py` — a hidden constant-returning provider silently disables every check.
+- Stub responses should be realistic in **shape** (same Pydantic models, same fields) but
+  obviously fake in **content** so they're never mistaken for real results.
+- Use synthetic fixtures for development — never copy real sensitive files to a personal machine.
+- Final validation with real data happens **only on the company computer**.
 
 ---
 
@@ -215,4 +218,4 @@ uvicorn classifier.api:app --reload
 - Do NOT write a test that depends on a real external service without the `@pytest.mark.integration` marker.
 - Do NOT create god classes. If a class does more than one thing, split it.
 - Do NOT commit real/sensitive data files to the repo. Test fixtures must use synthetic data only.
-- Do NOT bypass stub mode by hardcoding a real provider. If `stub_mode` is on, every LLM call must return the constant.
+- Do NOT wire a constant-returning provider into `main.py`. A check backed by a stub always passes, so it silently stops catching anything.

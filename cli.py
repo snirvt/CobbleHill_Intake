@@ -327,8 +327,7 @@ uv run python -m cli --input ./data/1/dr_progress_note.pdf --treatment-request
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --diagnosis --upload-results
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --treatment-request --upload-results
 
-# Real extraction instead of stub (needs ollama running)
-COBBLEHILL_STUB_MODE=false uv run python -m cli --input ./data --diagnosis
-COBBLEHILL_STUB_MODE=false uv run python -m cli --input ./data --treatment-request
+# Every LLM call goes to the configured ollama model, so ollama must be running.
+# Point it elsewhere with COBBLEHILL_OLLAMA_URL / COBBLEHILL_OLLAMA_MODEL.
 
 """
