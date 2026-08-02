@@ -78,7 +78,7 @@ def build_diagnosis_extractor() -> DiagnosisExtractionClassifier:
 
 
 def build_diagnosis_pipeline() -> DrNotePipeline[DiagnosisExtractionResult]:
-    """Wire up a folder-capable diagnosis pipeline (dr_* notes only)."""
+    """Wire up a folder-capable diagnosis pipeline (dr notes only)."""
     _make_env()
     extractor = build_diagnosis_extractor()
     return DrNotePipeline(
@@ -101,7 +101,7 @@ def build_treatment_request_extractor() -> TreatmentRequestClassifier:
 
 
 def build_treatment_request_pipeline() -> DrNotePipeline[TreatmentRequestResult]:
-    """Wire up a folder-capable treatment-request pipeline (dr_* notes only)."""
+    """Wire up a folder-capable treatment-request pipeline (dr notes only)."""
     _make_env()
     extractor = build_treatment_request_extractor()
     return DrNotePipeline(
