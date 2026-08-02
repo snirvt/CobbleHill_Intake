@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Optional category prefixes that may precede the role prefix, e.g. hospital_nurse_x.pdf.
     # A note without any of these has category None. Pairing happens within one category.
     note_categories: list[str] = ["hospital", "peds"]
+    # Categories the pair diagnosis check runs on. Other categories are skipped
+    # entirely (no LLM call, no issue flagged).
+    diagnosis_check_categories: list[str] = ["hospital"]
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]

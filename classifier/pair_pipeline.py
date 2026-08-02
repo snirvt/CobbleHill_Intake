@@ -113,12 +113,14 @@ class PairPipeline:
                         procedure_codes=dr_fields.procedure_codes,
                         preventive_medicine=dr_fields.preventive_medicine,
                     )
+                    parsed = parse_note(dr_path)
                     pair = PairDocumentMetadata(
                         dr_file_path=dr_path,
                         nurse_file_path=nurse_path,
                         dr=dr_meta,
                         nurse=nurse_fields,
                         nurse_raw_text=nurse_full,
+                        category=parsed.category if parsed else None,
                     )
                     result = await self._pair_clf.classify_pair(pair)
                     return PairPipelineResult(
