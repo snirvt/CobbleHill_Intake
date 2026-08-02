@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Optional
@@ -10,10 +11,16 @@ from pydantic import BaseModel
 
 from classifier.models import (
     ClinicalVerdict,
+    Diagnosis,
+    DiagnosisCheck,
+    DocumentMetadata,
     IdentityMatchResult,
     PairClassificationResult,
     PairDocumentMetadata,
+    PatientMetadata,
 )
+from classifier.protocols import DiagnosisExtractor
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +52,11 @@ Output instructions:
 class DrNurseMatchClassifier:
     """Compares a dr progress note with a nurse visit note for patient and clinical consistency."""
 
-    def __init__(self, llm: BaseChatModel) -> None:
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        diagnosis_extractor: DiagnosisExtractor | None = None,
+    ) -> None:
         parser: PydanticOutputParser[ClinicalMatchOutput] = PydanticOutputParser(
             pydantic_object=ClinicalMatchOutput
         )
@@ -53,12 +64,17 @@ class DrNurseMatchClassifier:
             format_instructions=parser.get_format_instructions()
         )
         self._chain = prompt | llm | parser
+        self._diagnosis_extractor = diagnosis_extractor
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult:
         identity = self._compare_identity(pair)
-        clinical_verdict, clinical_reasoning = await self._compare_clinical(pair)
+        (clinical_verdict, clinical_reasoning), (diagnosis_check, diagnoses) = (
+            await asyncio.gather(self._compare_clinical(pair), self._check_diagnoses(pair))
+        )
 
         overall = clinical_verdict
+        if diagnosis_check is DiagnosisCheck.MISSING:
+            overall = ClinicalVerdict.MISMATCH
 
         return PairClassificationResult(
             dr_file_path=pair.dr_file_path,
@@ -69,7 +85,46 @@ class DrNurseMatchClassifier:
             overall=overall,
             dr_metadata=pair.dr,
             nurse_fields=pair.nurse,
+            diagnosis_check=diagnosis_check,
+            diagnoses=diagnoses,
         )
+
+    async def _check_diagnoses(
+        self, pair: PairDocumentMetadata
+    ) -> tuple[DiagnosisCheck | None, list[Diagnosis]]:
+        """Extract diagnoses from both notes; MISSING when neither note has any.
+
+        Returns (None, []) when the pair's category is out of scope for the check
+        or no diagnosis extractor was injected — the check is then skipped entirely.
+        """
+        if self._diagnosis_extractor is None:
+            return None, []
+        if pair.category not in settings.diagnosis_check_categories:
+            return None, []
+
+        nurse_doc = DocumentMetadata(
+            file_path=pair.nurse_file_path,
+            raw_text=pair.nurse_raw_text,
+            meta=PatientMetadata(),
+        )
+        dr_result, nurse_result = await asyncio.gather(
+            self._diagnosis_extractor.extract_diagnoses(pair.dr),
+            self._diagnosis_extractor.extract_diagnoses(nurse_doc),
+        )
+        diagnoses = [
+            d.model_copy(update={"source": source})
+            for source, result in (("dr", dr_result), ("nurse", nurse_result))
+            for d in result.diagnoses
+        ]
+        check = DiagnosisCheck.EXISTS if diagnoses else DiagnosisCheck.MISSING
+        if check is DiagnosisCheck.MISSING:
+            logger.info(
+                "No diagnosis found for %s pair %s / %s",
+                pair.category,
+                pair.dr_file_path,
+                pair.nurse_file_path,
+            )
+        return check, diagnoses
 
     def _compare_identity(self, pair: PairDocumentMetadata) -> IdentityMatchResult:
         dr = pair.dr.meta
