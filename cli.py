@@ -85,6 +85,8 @@ def _pair_result_to_dict(
         "overall": res.overall,
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
+        "diagnosis_check": res.diagnosis_check or "",
+        "diagnoses": [d.model_dump() for d in res.diagnoses],
     }
     if verbose:
         out["identity_match"] = res.identity_match.model_dump()
