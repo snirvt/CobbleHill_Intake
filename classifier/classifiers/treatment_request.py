@@ -20,25 +20,35 @@ class TreatmentRequestOutput(BaseModel):
 
 
 _PROMPT_TEMPLATE = """\
-You are a medical records auditor. Read the doctor's note below and decide whether \
-ANYONE indicates the patient should receive treatment — this includes the patient \
+You are a medical records auditor. Read the note(s) below and decide whether the \
+patient needs care or treatment. This is true in either of two ways:
+
+1. REQUEST — anyone indicates the patient should receive treatment: the patient \
 requesting it, a family member/caregiver requesting it, or a clinician/provider \
 recommending or ordering it (e.g. a procedure, medication, referral, or intervention).
+2. MEDICAL NECESSITY — the documented clinical situation itself requires care \
+(e.g. an active diagnosis, abnormal findings, or ongoing condition being managed), \
+even when nobody explicitly requests treatment.
 
 Rules:
-- Answer true if any such request or recommendation for treatment is present, from any source.
-- Answer false only when the note contains no indication that the patient should be treated.
-- Give a brief reasoning citing the relevant wording when present.
+- Answer true if EITHER a request or a medical necessity is present, from any source or note.
+- Answer false only when the note(s) contain no indication that the patient needs care.
+- Give a brief reasoning citing the relevant wording, and say which of the two grounds applies.
 
 {format_instructions}
 
---- DOCTOR NOTE ---
-{dr_full_text}
+--- NOTE(S) ---
+{note_text}
 --- END ---"""
 
 
 class TreatmentRequestClassifier:
-    """Determines whether anyone indicates the patient should receive treatment, from a dr note."""
+    """Determines whether a note's text shows the patient needs care.
+
+    True on either ground: someone requested/recommended treatment, or the documented
+    clinical situation itself requires care. Works on any note text — a single dr note
+    or several notes concatenated.
+    """
 
     def __init__(self, llm: BaseChatModel) -> None:
         parser: PydanticOutputParser[TreatmentRequestOutput] = PydanticOutputParser(
@@ -52,13 +62,13 @@ class TreatmentRequestClassifier:
     async def extract_treatment_request(
         self, metadata: DocumentMetadata
     ) -> TreatmentRequestResult:
-        """Return whether anyone indicates treatment is needed; defaults to False on failure."""
+        """Return whether the patient needs care; defaults to False on failure."""
         try:
             output: TreatmentRequestOutput = await self._chain.ainvoke(
-                {"dr_full_text": metadata.raw_text or "None"}
+                {"note_text": metadata.raw_text or "None"}
             )
             logger.debug(
-                "Treatment requested=%s for %s",
+                "Care needed=%s for %s",
                 output.treatment_requested,
                 metadata.file_path,
             )

@@ -7,6 +7,7 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.models import (
+    CareCheck,
     Diagnosis,
     DiagnosisCheck,
     DiagnosisExtractionResult,
@@ -15,6 +16,7 @@ from classifier.models import (
     NurseVisitFields,
     PairDocumentMetadata,
     PatientMetadata,
+    TreatmentRequestResult,
 )
 
 
@@ -306,3 +308,82 @@ async def test_diagnosis_check_reads_nurse_raw_text() -> None:
     await clf.classify_pair(pair)
     texts = [call.args[0].raw_text for call in extractor.extract_diagnoses.await_args_list]
     assert "Nurse text here" in texts
+
+
+# ---------------------------------------------------------------------------
+# Care-needed check (peds pairs only)
+# ---------------------------------------------------------------------------
+
+def _fake_care_extractor(needed: bool, reasoning: str = "Because.") -> MagicMock:
+    extractor = MagicMock()
+    extractor.extract_treatment_request = AsyncMock(
+        side_effect=lambda meta: TreatmentRequestResult(
+            file_path=meta.file_path, treatment_requested=needed, reasoning=reasoning
+        )
+    )
+    return extractor
+
+
+async def test_care_check_needed_for_peds_pair() -> None:
+    extractor = _fake_care_extractor(True, "Provider ordered home nursing.")
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), care_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="peds"))
+    assert result.care_check == CareCheck.NEEDED
+    assert result.care_reasoning == "Provider ordered home nursing."
+    assert result.overall == "MATCH"
+
+
+async def test_care_not_needed_forces_overall_mismatch() -> None:
+    extractor = _fake_care_extractor(False, "No request and no active condition.")
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), care_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="peds"))
+    assert result.care_check == CareCheck.NOT_NEEDED
+    assert result.clinical_verdict == "MATCH"  # clinical verdict itself untouched
+    assert result.overall == "MISMATCH"
+
+
+@pytest.mark.parametrize("category", [None, "hospital"])
+async def test_care_check_skipped_for_other_categories(category: str | None) -> None:
+    extractor = _fake_care_extractor(False)
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), care_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category=category))
+    assert result.care_check is None
+    assert result.care_reasoning == ""
+    assert result.overall == "MATCH"
+    extractor.extract_treatment_request.assert_not_awaited()
+
+
+async def test_care_check_skipped_when_no_extractor_injected() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="peds"))
+    assert result.care_check is None
+    assert result.overall == "MATCH"
+
+
+async def test_care_check_reads_both_notes_in_one_call() -> None:
+    extractor = _fake_care_extractor(True)
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), care_extractor=extractor)
+    pair = _make_pair(
+        _make_dr_meta(raw_text="Physician documented persistent fever."),
+        _make_nurse_fields(),
+        nurse_raw_text="Nurse requested home visits twice weekly.",
+        category="peds",
+    )
+    await clf.classify_pair(pair)
+    extractor.extract_treatment_request.assert_awaited_once()
+    text = extractor.extract_treatment_request.await_args.args[0].raw_text
+    assert "persistent fever" in text
+    assert "home visits twice weekly" in text
+
+
+async def test_diagnosis_and_care_checks_do_not_interfere() -> None:
+    """A peds pair runs the care check only; a hospital pair the diagnosis check only."""
+    diagnosis = _fake_diagnosis_extractor()
+    care = _fake_care_extractor(True)
+    clf = DrNurseMatchClassifier(
+        llm=_fake_llm("MATCH"), diagnosis_extractor=diagnosis, care_extractor=care
+    )
+    peds = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="peds"))
+    assert peds.diagnosis_check is None
+    assert peds.care_check == CareCheck.NEEDED
+    diagnosis.extract_diagnoses.assert_not_awaited()

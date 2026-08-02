@@ -4,6 +4,7 @@ import openpyxl
 import pytest
 
 from classifier.models import (
+    CareCheck,
     Diagnosis,
     DiagnosisCheck,
     DocumentMetadata,
@@ -24,6 +25,8 @@ def _make_pair_result(
     document_metadata: DocumentMetadata | None = None,
     diagnosis_check: DiagnosisCheck | None = None,
     diagnoses: list[Diagnosis] | None = None,
+    care_check: CareCheck | None = None,
+    care_reasoning: str = "",
 ) -> PairPipelineResult:
     result = PairClassificationResult(
         dr_file_path=dr,
@@ -38,6 +41,8 @@ def _make_pair_result(
         nurse_fields=NurseVisitFields(),
         diagnosis_check=diagnosis_check,
         diagnoses=diagnoses or [],
+        care_check=care_check,
+        care_reasoning=care_reasoning,
     )
     return PairPipelineResult(
         dr_file_path=dr, nurse_file_path=nurse, success=True, result=result
@@ -304,3 +309,50 @@ def test_failed_result_leaves_diagnosis_columns_blank(tmp_path: Path) -> None:
 
 def test_format_diagnoses_empty_list_is_blank() -> None:
     assert format_diagnoses([]) == ""
+
+
+# ---------------------------------------------------------------------------
+# Care check columns
+# ---------------------------------------------------------------------------
+
+def test_care_columns_present_in_both_modes(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "peds_dr_a.pdf", tmp_path / "peds_nurse_a.pdf"
+    for verbose in (False, True):
+        out = tmp_path / f"care_{verbose}.xlsx"
+        write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
+        header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
+        assert "care_check" in header
+        assert "care_reasoning" in header
+
+
+def test_care_needed_row_is_clean(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "peds_dr_a.pdf", tmp_path / "peds_nurse_a.pdf"
+    result = _make_pair_result(
+        dr, nurse, care_check=CareCheck.NEEDED, care_reasoning="Home nursing ordered."
+    )
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["No Issues"].max_row == 2  # header + 1
+    assert _row_value(wb["All"], "care_check") == "NEEDED"
+    assert _row_value(wb["All"], "care_reasoning") == "Home nursing ordered."
+
+
+def test_care_not_needed_row_lands_in_issues_sheet(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "peds_dr_a.pdf", tmp_path / "peds_nurse_a.pdf"
+    result = _make_pair_result(dr, nurse, overall="MATCH", care_check=CareCheck.NOT_NEEDED)
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["Issues"].max_row == 2  # header + 1
+    assert wb["No Issues"].max_row == 1  # header only
+
+
+def test_skipped_care_check_is_not_an_issue(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "hospital_dr_a.pdf", tmp_path / "hospital_nurse_a.pdf"
+    result = _make_pair_result(dr, nurse, overall="MATCH", care_check=None)
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["No Issues"].max_row == 2  # header + 1
+    assert not _row_value(wb["All"], "care_check")
