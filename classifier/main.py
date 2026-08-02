@@ -134,8 +134,10 @@ def build_pipeline() -> Pipeline:
 def build_pair_pipeline() -> PairPipeline:
     """Wire up all components and return a ready-to-use PairPipeline.
 
-    The pair classifier gets a diagnosis extractor so pairs in
-    ``settings.diagnosis_check_categories`` are checked for missing diagnoses.
+    The pair classifier gets a diagnosis extractor (pairs in
+    ``settings.diagnosis_check_categories`` are checked for missing diagnoses) and a
+    care extractor (pairs in ``settings.care_check_categories`` are checked for a
+    treatment request or medical necessity).
     """
     _make_env()
     llm = _make_llm()
@@ -144,6 +146,8 @@ def build_pair_pipeline() -> PairPipeline:
         dr_meta_extractor=ProgressNoteExtractor(),
         nurse_meta_extractor=NurseVisitExtractor(),
         pair_classifier=DrNurseMatchClassifier(
-            llm=llm, diagnosis_extractor=build_diagnosis_extractor()
+            llm=llm,
+            diagnosis_extractor=build_diagnosis_extractor(),
+            care_extractor=build_treatment_request_extractor(),
         ),
     )

@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     # Categories the pair diagnosis check runs on. Other categories are skipped
     # entirely (no LLM call, no issue flagged).
     diagnosis_check_categories: list[str] = ["hospital"]
+    # Categories the pair care-needed check runs on (request or medical necessity).
+    care_check_categories: list[str] = ["peds"]
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]

@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
 from classifier.models import (
+    CareCheck,
     Diagnosis,
     DiagnosisCheck,
     DiagnosisExtractionResult,
@@ -26,6 +27,7 @@ _CLEAN_VALUES: dict[str, set[object]] = {
     "errors": {"", None},
     # "" = check did not apply to this pair's category.
     "diagnosis_check": {"", DiagnosisCheck.EXISTS},
+    "care_check": {"", CareCheck.NEEDED},
 }
 
 # Fixed patient metadata columns in output order
@@ -42,11 +44,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses", "errors",
+    "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
+    "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
+    "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
     "errors",
 ]
@@ -144,6 +148,7 @@ def _pair_result_to_row(
         base.update({
             "overall": "", "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "",
+            "care_check": "", "care_reasoning": "",
         })
         if verbose:
             base.update({"identity_match": "", "dr_fields": "", "nurse_fields": ""})
@@ -156,6 +161,8 @@ def _pair_result_to_row(
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
         "diagnoses": format_diagnoses(r.diagnoses),
+        "care_check": r.care_check or "",
+        "care_reasoning": r.care_reasoning,
     })
     if verbose:
         base.update({

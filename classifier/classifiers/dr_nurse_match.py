@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.models import (
+    CareCheck,
     ClinicalVerdict,
     Diagnosis,
     DiagnosisCheck,
@@ -19,7 +20,7 @@ from classifier.models import (
     PairDocumentMetadata,
     PatientMetadata,
 )
-from classifier.protocols import DiagnosisExtractor
+from classifier.protocols import DiagnosisExtractor, TreatmentRequestExtractor
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class DrNurseMatchClassifier:
         self,
         llm: BaseChatModel,
         diagnosis_extractor: DiagnosisExtractor | None = None,
+        care_extractor: TreatmentRequestExtractor | None = None,
     ) -> None:
         parser: PydanticOutputParser[ClinicalMatchOutput] = PydanticOutputParser(
             pydantic_object=ClinicalMatchOutput
@@ -65,15 +67,22 @@ class DrNurseMatchClassifier:
         )
         self._chain = prompt | llm | parser
         self._diagnosis_extractor = diagnosis_extractor
+        self._care_extractor = care_extractor
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult:
         identity = self._compare_identity(pair)
-        (clinical_verdict, clinical_reasoning), (diagnosis_check, diagnoses) = (
-            await asyncio.gather(self._compare_clinical(pair), self._check_diagnoses(pair))
+        (
+            (clinical_verdict, clinical_reasoning),
+            (diagnosis_check, diagnoses),
+            (care_check, care_reasoning),
+        ) = await asyncio.gather(
+            self._compare_clinical(pair),
+            self._check_diagnoses(pair),
+            self._check_care_needed(pair),
         )
 
         overall = clinical_verdict
-        if diagnosis_check is DiagnosisCheck.MISSING:
+        if diagnosis_check is DiagnosisCheck.MISSING or care_check is CareCheck.NOT_NEEDED:
             overall = ClinicalVerdict.MISMATCH
 
         return PairClassificationResult(
@@ -87,6 +96,46 @@ class DrNurseMatchClassifier:
             nurse_fields=pair.nurse,
             diagnosis_check=diagnosis_check,
             diagnoses=diagnoses,
+            care_check=care_check,
+            care_reasoning=care_reasoning,
+        )
+
+    async def _check_care_needed(
+        self, pair: PairDocumentMetadata
+    ) -> tuple[CareCheck | None, str]:
+        """Decide whether the pair shows the patient needs care, from both notes.
+
+        Care counts as needed on either ground: someone requested/recommended it, or
+        the clinical situation itself requires it. Returns (None, "") when the pair's
+        category is out of scope or no care extractor was injected.
+        """
+        if self._care_extractor is None:
+            return None, ""
+        if pair.category not in settings.care_check_categories:
+            return None, ""
+
+        combined = DocumentMetadata(
+            file_path=pair.dr_file_path,
+            raw_text=self._combined_note_text(pair),
+            meta=pair.dr.meta,
+        )
+        result = await self._care_extractor.extract_treatment_request(combined)
+        check = CareCheck.NEEDED if result.treatment_requested else CareCheck.NOT_NEEDED
+        if check is CareCheck.NOT_NEEDED:
+            logger.info(
+                "No care need found for %s pair %s / %s",
+                pair.category,
+                pair.dr_file_path,
+                pair.nurse_file_path,
+            )
+        return check, result.reasoning or ""
+
+    @staticmethod
+    def _combined_note_text(pair: PairDocumentMetadata) -> str:
+        """Both notes in one text block, each under a role header."""
+        return (
+            f"--- DR NOTE(S) ---\n{pair.dr.raw_text or 'None'}\n\n"
+            f"--- NURSE NOTE(S) ---\n{pair.nurse_raw_text or 'None'}"
         )
 
     async def _check_diagnoses(

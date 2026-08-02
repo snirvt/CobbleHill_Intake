@@ -99,6 +99,13 @@ class DiagnosisCheck(StrEnum):
     MISSING = "MISSING"
 
 
+class CareCheck(StrEnum):
+    """Whether a note pair shows the patient needs care (request or medical necessity)."""
+
+    NEEDED = "NEEDED"
+    NOT_NEEDED = "NOT_NEEDED"
+
+
 class Diagnosis(BaseModel):
     """A single diagnosis extracted from a note."""
 
@@ -194,6 +201,8 @@ class PairClassificationResult(BaseModel):
     # None when the check did not apply to this pair's category.
     diagnosis_check: DiagnosisCheck | None = None
     diagnoses: list[Diagnosis] = []
+    care_check: CareCheck | None = None
+    care_reasoning: str = ""
 
 
 class PairPipelineResult(BaseModel):
