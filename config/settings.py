@@ -26,6 +26,11 @@ class Settings(BaseSettings):
         ".png": "image",
     }
     max_concurrent_files: int = 10
+    # Role prefix a note filename must start with (after an optional category prefix).
+    note_role_prefixes: dict[str, str] = {"dr": "dr_", "nurse": "nurse_"}
+    # Optional category prefixes that may precede the role prefix, e.g. hospital_nurse_x.pdf.
+    # A note without any of these has category None. Pairing happens within one category.
+    note_categories: list[str] = ["hospital", "peds"]
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]
