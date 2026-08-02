@@ -3,22 +3,21 @@ import logging
 from pathlib import Path
 
 from classifier.models import DocumentMetadata, PairDocumentMetadata, PairPipelineResult
+from classifier.naming import category_order, label, parse_note
 from classifier.protocols import FileRouter, NoteExtractor, NurseNoteExtractor, PairClassifier
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-_DR_PREFIX = "dr_"
-_NURSE_PREFIX = "nurse_"
-
 
 def scan_pairs(root: Path) -> list[tuple[list[Path], list[Path]]]:
-    """Recursively find dr_* + nurse_* pairs in root and its subdirectories.
+    """Recursively find dr + nurse pairs in root and its subdirectories.
 
-    Each folder (including root) that contains at least one dr_* and one nurse_*
-    supported file yields one pair. When a folder holds multiple dr_* or nurse_*
-    files, ALL of them are included (sorted alphabetically); their extracted text
-    is appended downstream.
+    Pairing happens per category: hospital_dr_* pairs with hospital_nurse_*, peds_
+    with peds_, and uncategorized dr_* with uncategorized nurse_*. One folder can
+    therefore yield several pairs. When a folder holds multiple notes for the same
+    category and role, ALL of them are included (sorted alphabetically); their
+    extracted text is appended downstream.
     """
     pairs: list[tuple[list[Path], list[Path]]] = []
     _collect_pairs(root, pairs)
@@ -26,21 +25,24 @@ def scan_pairs(root: Path) -> list[tuple[list[Path], list[Path]]]:
 
 
 def _collect_pairs(folder: Path, pairs: list[tuple[list[Path], list[Path]]]) -> None:
-    exts = set(settings.supported_extensions.keys())
-    dr_files = sorted(
-        f for f in folder.iterdir()
-        if f.is_file() and f.name.lower().startswith(_DR_PREFIX) and f.suffix.lower() in exts
-    )
-    nurse_files = sorted(
-        f for f in folder.iterdir()
-        if f.is_file() and f.name.lower().startswith(_NURSE_PREFIX) and f.suffix.lower() in exts
-    )
-    if dr_files and nurse_files:
+    by_category: dict[str | None, dict[str, list[Path]]] = {}
+    for f in sorted(folder.iterdir()):
+        parsed = parse_note(f)
+        if parsed is None:
+            continue
+        by_category.setdefault(parsed.category, {}).setdefault(parsed.role, []).append(f)
+
+    for category in category_order():
+        roles = by_category.get(category, {})
+        dr_files, nurse_files = roles.get("dr", []), roles.get("nurse", [])
+        if not (dr_files and nurse_files):
+            continue
         pairs.append((dr_files, nurse_files))
         if len(dr_files) > 1 or len(nurse_files) > 1:
             logger.info(
-                "Folder %s has multiple notes — appending dr_*=%s, nurse_*=%s",
+                "Folder %s has multiple %s notes — appending dr=%s, nurse=%s",
                 folder,
+                label(category),
                 [f.name for f in dr_files],
                 [f.name for f in nurse_files],
             )
@@ -141,8 +143,8 @@ class PairPipeline:
         return list(await asyncio.gather(*[process(dr, nurse) for dr, nurse in pairs]))
 
     async def run_folder(self, root: Path) -> list[PairPipelineResult]:
-        """Scan root for dr_*/nurse_* pairs and run the pair pipeline."""
+        """Scan root for dr/nurse pairs and run the pair pipeline."""
         pairs = scan_pairs(root)
         if not pairs:
-            logger.warning("No dr_*/nurse_* pairs found in %s", root)
+            logger.warning("No dr/nurse note pairs found in %s", root)
         return await self.run_pairs(pairs)
