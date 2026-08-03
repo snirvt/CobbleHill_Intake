@@ -14,7 +14,12 @@ from classifier.models import (
     PairPipelineResult,
     PatientMetadata,
 )
-from classifier.output.csv_writer import format_diagnoses, resolve_folder, write_pair_xlsx
+from classifier.output.csv_writer import (
+    format_diagnoses,
+    relative_file_names,
+    resolve_folder,
+    write_pair_xlsx,
+)
 
 
 def _make_pair_result(
@@ -356,3 +361,54 @@ def test_skipped_care_check_is_not_an_issue(tmp_path: Path) -> None:
     wb = openpyxl.load_workbook(out)
     assert wb["No Issues"].max_row == 2  # header + 1
     assert not _row_value(wb["All"], "care_check")
+
+
+# ---------------------------------------------------------------------------
+# File-list columns
+# ---------------------------------------------------------------------------
+
+def _multi_file_result(root: Path) -> PairPipelineResult:
+    dr_paths = [root / "pt_a" / "dr_a.pdf", root / "pt_a" / "dr_b.pdf"]
+    nurse_paths = [root / "pt_a" / "nurse_a.pdf", root / "pt_a" / "nurse_b.pdf"]
+    base = _make_pair_result(dr_paths[0], nurse_paths[0])
+    return base.model_copy(update={"dr_paths": dr_paths, "nurse_paths": nurse_paths})
+
+
+def test_all_files_listed_relative_to_root(tmp_path: Path) -> None:
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_multi_file_result(tmp_path)], out, local_root=tmp_path)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "dr_file_path") == "pt_a/dr_a.pdf; pt_a/dr_b.pdf"
+    assert _row_value(ws, "nurse_file_path") == "pt_a/nurse_a.pdf; pt_a/nurse_b.pdf"
+
+
+def test_file_list_falls_back_to_names_without_root(tmp_path: Path) -> None:
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_multi_file_result(tmp_path)], out)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "dr_file_path") == "dr_a.pdf; dr_b.pdf"
+
+
+def test_file_list_falls_back_to_name_when_outside_root(tmp_path: Path) -> None:
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_multi_file_result(tmp_path)], out, local_root=Path("/elsewhere"))
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "dr_file_path") == "dr_a.pdf; dr_b.pdf"
+
+
+def test_single_file_pair_still_lists_one_path(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_make_pair_result(dr, nurse)], out, local_root=tmp_path)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "dr_file_path") == "dr_a.pdf"
+
+
+def test_relative_file_names_returns_one_entry_per_file(tmp_path: Path) -> None:
+    paths = [tmp_path / "pt_a" / "dr_a.pdf", tmp_path / "pt_a" / "dr_b.pdf"]
+    assert relative_file_names(paths, paths[0], tmp_path) == ["pt_a/dr_a.pdf", "pt_a/dr_b.pdf"]
+
+
+def test_relative_file_names_uses_fallback_when_list_empty(tmp_path: Path) -> None:
+    fallback = tmp_path / "pt_a" / "dr_a.pdf"
+    assert relative_file_names([], fallback, tmp_path) == ["pt_a/dr_a.pdf"]

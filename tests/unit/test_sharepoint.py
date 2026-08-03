@@ -1,4 +1,4 @@
-"""Unit tests for classifier.ingest.sharepoint."""
+"""Unit tests for classifier.ingest.sharepoint and the CLI's upload target."""
 
 import asyncio
 from pathlib import Path
@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from cli import resolve_results_folder
 from classifier.ingest.sharepoint import (
     SharePointFileUploader,
     SharePointFolderDownloader,
@@ -13,6 +14,7 @@ from classifier.ingest.sharepoint import (
     download_folder,
     upload_file,
 )
+from config.settings import settings
 
 # ---------------------------------------------------------------------------
 # authenticate_to_graph
@@ -225,3 +227,25 @@ async def test_file_uploader_calls_upload_file(
     assert call_args[0] == "did"
     assert call_args[1] == "Some/Results"
     assert call_args[2] == local_file
+
+
+# ---------------------------------------------------------------------------
+# Results-folder resolution
+# ---------------------------------------------------------------------------
+
+def test_results_folder_defaults_to_sharepoint_input_folder() -> None:
+    assert (
+        resolve_results_folder(None, "Patient Encounters/Physician Notes")
+        == "Patient Encounters/Physician Notes"
+    )
+
+
+def test_explicit_results_folder_wins_over_input_folder() -> None:
+    assert (
+        resolve_results_folder("Some/Other/Folder", "Patient Encounters/Physician Notes")
+        == "Some/Other/Folder"
+    )
+
+
+def test_local_run_falls_back_to_configured_results_folder() -> None:
+    assert resolve_results_folder(None, None) == settings.sharepoint_results_folder
