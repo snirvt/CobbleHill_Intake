@@ -87,8 +87,10 @@ def write_pair_xlsx(
     """Write pair pipeline results to a 3-sheet Excel workbook.
 
     Sheets: All (every row), No Issues (clean rows), Issues (rows with problems).
+    Each row lists ALL files of the pair in dr_file_path / nurse_file_path.
     Pass verbose=True to include identity_match, dr_fields, nurse_fields columns.
-    Pass local_root + sp_web_url to show SharePoint paths instead of local tmp paths.
+    Pass local_root to list those files relative to the scanned root (bare names
+    otherwise); add sp_web_url to show SharePoint folder links instead of tmp paths.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     columns = _PAIR_COLUMNS_VERBOSE if verbose else _PAIR_COLUMNS_BASE
@@ -114,9 +116,29 @@ def write_pair_xlsx(
     )
 
 
-def _join_names(paths: list[Path], fallback: Path) -> str:
-    """Join file names with '; '. Falls back to the representative path if empty."""
-    return "; ".join(p.name for p in (paths or [fallback]))
+def relative_file_names(
+    paths: list[Path], fallback: Path, local_root: Path | None = None
+) -> list[str]:
+    """Every file of one pair side, as paths relative to local_root.
+
+    Falls back to the bare file name when the path lies outside local_root or no
+    root is given, and to the representative path when the list is empty.
+    """
+    names = []
+    for p in paths or [fallback]:
+        if local_root is not None:
+            try:
+                names.append(p.relative_to(local_root).as_posix())
+                continue
+            except ValueError:
+                pass
+        names.append(p.name)
+    return names
+
+
+def _join_names(paths: list[Path], fallback: Path, local_root: Path | None = None) -> str:
+    """Join a pair side's files with '; ' for a single spreadsheet cell."""
+    return "; ".join(relative_file_names(paths, fallback, local_root))
 
 
 def resolve_folder(file_path: Path, local_root: Path | None, sp_web_url: str | None) -> str:
@@ -139,8 +161,8 @@ def _pair_result_to_row(
     base: dict[str, object] = {
         "folder": resolve_folder(result.dr_file_path, local_root, sp_web_url),
         "patient_name": result.dr_file_path.parent.name,
-        "dr_file_path": _join_names(result.dr_paths, result.dr_file_path),
-        "nurse_file_path": _join_names(result.nurse_paths, result.nurse_file_path),
+        "dr_file_path": _join_names(result.dr_paths, result.dr_file_path, local_root),
+        "nurse_file_path": _join_names(result.nurse_paths, result.nurse_file_path, local_root),
         "success": result.success,
         "errors": result.error or "",
     }
