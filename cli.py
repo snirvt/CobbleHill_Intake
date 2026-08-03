@@ -19,14 +19,15 @@ from classifier.models import (
     PipelineResult,
     TreatmentRequestResult,
 )
+from classifier.naming import parse_note
 from classifier.output.csv_writer import (
+    relative_file_names,
     resolve_folder,
     write_diagnosis_xlsx,
     write_pair_xlsx,
     write_treatment_request_xlsx,
     write_xlsx,
 )
-from classifier.naming import parse_note
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -65,8 +66,8 @@ def _pair_result_to_dict(
     local_root: Path | None = None,
     sp_web_url: str | None = None,
 ) -> dict:  # type: ignore[type-arg]
-    dr_names = "; ".join(p.name for p in (r.dr_paths or [r.dr_file_path]))
-    nurse_names = "; ".join(p.name for p in (r.nurse_paths or [r.nurse_file_path]))
+    dr_names = relative_file_names(r.dr_paths, r.dr_file_path, local_root)
+    nurse_names = relative_file_names(r.nurse_paths, r.nurse_file_path, local_root)
     if not r.success or r.result is None:
         return {
             "dr_file": dr_names,
@@ -156,6 +157,18 @@ async def _run_treatment_request(input_path: Path) -> tuple[int, Path | None]:
     return 0, out_path
 
 
+def resolve_results_folder(
+    results_folder: str | None, sharepoint_folder: str | None
+) -> str:
+    """Pick the SharePoint folder the results xlsx is uploaded into.
+
+    An explicit --results-folder wins; otherwise results land back in the
+    --sharepoint-folder the notes were read from; local runs fall back to the
+    configured results folder.
+    """
+    return results_folder or sharepoint_folder or settings.sharepoint_results_folder
+
+
 def _is_pair_folder(path: Path) -> bool:
     """Return True if path contains any dr or nurse note (recursively, any category)."""
     return any(parse_note(f) is not None for f in path.rglob("*"))
@@ -175,10 +188,17 @@ async def _run(
             logger.error("No dr/nurse note pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
-        output = [_pair_result_to_dict(r, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url) for r in results]
+        # Without SharePoint, the scanned folder is the root file paths are shown relative to.
+        path_root = local_root or input_path
+        output = [
+            _pair_result_to_dict(r, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url)
+            for r in results
+        ]
         print(json.dumps(output, indent=2, default=str))
         pair_path = settings.output_path.parent / "pair_results.xlsx"
-        write_pair_xlsx(results, pair_path, verbose=verbose, local_root=local_root, sp_web_url=sp_web_url)
+        write_pair_xlsx(
+            results, pair_path, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url
+        )
         return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
@@ -225,15 +245,19 @@ def main() -> None:
         action="store_true",
         default=False,
         help=(
-            f"Upload the results CSV to SharePoint after processing "
-            f"(default folder: {settings.sharepoint_results_folder!r})"
+            "Upload the results xlsx to SharePoint after processing. Defaults to the "
+            "--sharepoint-folder the notes came from, or "
+            f"{settings.sharepoint_results_folder!r} for local runs"
         ),
     )
     parser.add_argument(
         "--results-folder",
-        default=settings.sharepoint_results_folder,
+        default=None,
         type=str,
-        help="SharePoint folder to upload results CSV into",
+        help=(
+            "SharePoint folder to upload the results xlsx into "
+            "(default: the --sharepoint-folder used for input)"
+        ),
     )
     parser.add_argument(
         "--verbose",
@@ -287,7 +311,8 @@ def main() -> None:
 
     if args.upload_results and written_csv and written_csv.exists():
         uploader = SharePointFileUploader(**_sp_kwargs)
-        asyncio.run(uploader.upload(written_csv, args.results_folder))
+        folder = resolve_results_folder(args.results_folder, args.sharepoint_folder)
+        asyncio.run(uploader.upload(written_csv, folder))
 
     sys.exit(exit_code)
 
@@ -295,13 +320,17 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 """
+# Results are uploaded back into the same SharePoint folder the notes came from
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --upload-results
 
 # Download to persistent dir
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --download-dir ./downloads
 
-# or override the results folder:
-uv run python -m cli --input ./data --upload-results --results-folder "Some/Other/Folder"
+# Upload somewhere else instead:
+uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --upload-results --results-folder "Some/Other/Folder"
+
+# Local input + upload: no --sharepoint-folder to inherit, so settings.sharepoint_results_folder is used
+uv run python -m cli --input ./data --upload-results
 
 # Local files (unchanged)
 uv run python -m cli --input ./data
