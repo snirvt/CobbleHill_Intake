@@ -162,11 +162,15 @@ def resolve_results_folder(
 ) -> str:
     """Pick the SharePoint folder the results xlsx is uploaded into.
 
-    An explicit --results-folder wins; otherwise results land back in the
-    --sharepoint-folder the notes were read from; local runs fall back to the
-    configured results folder.
+    An explicit --results-folder wins; otherwise results land in a subfolder of the
+    --sharepoint-folder the notes were read from; local runs, which have no input
+    folder to inherit, fall back to the configured results folder.
     """
-    return results_folder or sharepoint_folder or settings.sharepoint_results_folder
+    if results_folder:
+        return results_folder
+    if sharepoint_folder:
+        return f"{sharepoint_folder.rstrip('/')}/{settings.sharepoint_results_subfolder}"
+    return settings.sharepoint_results_folder
 
 
 def _is_pair_folder(path: Path) -> bool:
@@ -246,8 +250,8 @@ def main() -> None:
         default=False,
         help=(
             "Upload the results xlsx to SharePoint after processing. Defaults to the "
-            "--sharepoint-folder the notes came from, or "
-            f"{settings.sharepoint_results_folder!r} for local runs"
+            f"{settings.sharepoint_results_subfolder!r} subfolder of --sharepoint-folder, "
+            f"or {settings.sharepoint_results_folder!r} for local runs"
         ),
     )
     parser.add_argument(
@@ -256,7 +260,7 @@ def main() -> None:
         type=str,
         help=(
             "SharePoint folder to upload the results xlsx into "
-            "(default: the --sharepoint-folder used for input)"
+            f"(default: <--sharepoint-folder>/{settings.sharepoint_results_subfolder})"
         ),
     )
     parser.add_argument(
@@ -320,7 +324,8 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 """
-# Results are uploaded back into the same SharePoint folder the notes came from
+# Results are uploaded into a "results" subfolder of the SharePoint folder the notes came from,
+# e.g. "Patient Encounters/Medical Notes/Non-Admits/results"
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --upload-results
 
 # Download to persistent dir
