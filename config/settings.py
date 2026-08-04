@@ -1,9 +1,25 @@
 from pathlib import Path
-from pydantic import computed_field, model_validator
+from pydantic import BaseModel, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from _SECRETS._secrets import CLIENT_ID, TENANT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+class PageTargetRule(BaseModel):
+    """Extract only the page holding ``section_header`` for a matching note.
+
+    A note whose parsed (role, category) equals this rule's has its content
+    narrowed to the single page containing ``section_header`` instead of the
+    whole document. ``page_hint`` (1-indexed) is tried first; if the header is
+    not on it, all pages are scanned. Notes that never contain the header fall
+    back to full text.
+    """
+
+    role: str
+    category: str | None
+    section_header: str
+    page_hint: int  # 1-indexed page most likely to hold the section
 
 
 class Settings(BaseSettings):
@@ -31,6 +47,16 @@ class Settings(BaseSettings):
     # Optional category prefixes that may precede the role prefix, e.g. hospital_nurse_x.pdf.
     # A note without any of these has category None. Pairing happens within one category.
     note_categories: list[str] = ["hospital", "peds"]
+    # Notes matching (role, category) are narrowed to a single section page
+    # instead of their full (50+ page) text. Add a rule to target more sections.
+    page_target_rules: list[PageTargetRule] = [
+        PageTargetRule(
+            role="nurse",
+            category="hospital",
+            section_header="Admission/ROC Summary",
+            page_hint=48,
+        ),
+    ]
     # Categories the pair diagnosis check runs on. Other categories are skipped
     # entirely (no LLM call, no issue flagged).
     diagnosis_check_categories: list[str] = ["hospital"]
@@ -51,6 +77,9 @@ class Settings(BaseSettings):
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
+    # Subfolder of the SharePoint input folder that results are uploaded into.
+    sharepoint_results_subfolder: str = "results"
+    # Upload target for local runs, which have no SharePoint input folder to inherit.
     sharepoint_results_folder: str = "Patient Encounters/Medical Notes/results"
     output_path: Path = Path("output/results.xlsx")
     sharepoint_client_id: str = CLIENT_ID
