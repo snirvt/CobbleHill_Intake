@@ -233,17 +233,24 @@ async def test_file_uploader_calls_upload_file(
 # Results-folder resolution
 # ---------------------------------------------------------------------------
 
-def test_results_folder_defaults_to_sharepoint_input_folder() -> None:
+def test_results_folder_defaults_to_results_subfolder_of_input() -> None:
     assert (
         resolve_results_folder(None, "Patient Encounters/Physician Notes")
-        == "Patient Encounters/Physician Notes"
+        == "Patient Encounters/Physician Notes/results"
+    )
+
+
+def test_results_folder_does_not_double_up_trailing_slash() -> None:
+    assert (
+        resolve_results_folder(None, "Patient Encounters/Physician Notes/")
+        == "Patient Encounters/Physician Notes/results"
     )
 
 
 def test_explicit_results_folder_wins_over_input_folder() -> None:
     assert (
         resolve_results_folder("Some/Other/Folder", "Patient Encounters/Physician Notes")
-        == "Some/Other/Folder"
+        == "Some/Other/Folder"  # used verbatim, no results subfolder appended
     )
 
 

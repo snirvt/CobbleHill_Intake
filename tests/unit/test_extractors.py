@@ -76,6 +76,108 @@ async def test_pdf_extractor_sets_path_env(tmp_path: Path) -> None:
     assert "/custom/node/bin" in os.environ.get("PATH", "")
 
 
+def _page(page_num: int, text: str) -> MagicMock:
+    page = MagicMock()
+    page.pageNum = page_num
+    page.text = text
+    return page
+
+
+def _result(pages: list[MagicMock], num_pages: int = 50) -> MagicMock:
+    result = MagicMock()
+    result.pages = pages
+    result.text = "\n".join(p.text for p in pages)
+    result.num_pages = num_pages
+    return result
+
+
+HEADER = "Admission/ROC Summary"
+
+
+async def test_pdf_extractor_returns_hinted_page_when_header_present(
+    tmp_path: Path,
+) -> None:
+    pdf = tmp_path / "hospital_nurse_visit.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    hinted = _result([_page(48, f"{HEADER}\nvitals stable")])
+
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        instance = MockLiteParse.return_value
+        instance.parse_async = AsyncMock(return_value=hinted)
+
+        extractor = PdfExtractor(node_bin_path="/fake/bin")
+        result = await extractor.extract(pdf)
+
+    assert result.text == f"{HEADER}\nvitals stable"
+    # header found on the hinted page — no full-document reparse needed
+    assert instance.parse_async.await_count == 1
+    assert instance.parse_async.await_args.kwargs["target_pages"] == "48"
+
+
+async def test_pdf_extractor_scans_all_pages_when_hint_misses(
+    tmp_path: Path,
+) -> None:
+    pdf = tmp_path / "hospital_nurse_visit.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    hint_miss = _result([_page(48, "unrelated content on wrong page")])
+    full = _result(
+        [_page(48, "unrelated"), _page(49, f"case-INSENSITIVE {HEADER.upper()} here")]
+    )
+
+    def parse_side_effect(_path: Path, *, dpi: int, target_pages: str | None):
+        return hint_miss if target_pages == "48" else full
+
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        instance = MockLiteParse.return_value
+        instance.parse_async = AsyncMock(side_effect=parse_side_effect)
+
+        extractor = PdfExtractor(node_bin_path="/fake/bin")
+        result = await extractor.extract(pdf)
+
+    assert HEADER.upper() in result.text
+    assert instance.parse_async.await_count == 2
+
+
+async def test_pdf_extractor_falls_back_to_full_text_when_header_absent(
+    tmp_path: Path,
+) -> None:
+    pdf = tmp_path / "hospital_nurse_visit.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    hint_miss = _result([_page(48, "no header here")])
+    full = _result([_page(1, "page one"), _page(2, "page two")])
+
+    def parse_side_effect(_path: Path, *, dpi: int, target_pages: str | None):
+        return hint_miss if target_pages == "48" else full
+
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        instance = MockLiteParse.return_value
+        instance.parse_async = AsyncMock(side_effect=parse_side_effect)
+
+        extractor = PdfExtractor(node_bin_path="/fake/bin")
+        result = await extractor.extract(pdf)
+
+    assert result.text == full.text
+    assert result.num_pages == 50
+
+
+async def test_pdf_extractor_ignores_targeting_for_non_matching_name(
+    tmp_path: Path, mock_parse_result: MagicMock
+) -> None:
+    # dr note has no page-target rule — full text, no target_pages narrowing
+    pdf = tmp_path / "dr_note.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        instance = MockLiteParse.return_value
+        instance.parse_async = AsyncMock(return_value=mock_parse_result)
+
+        extractor = PdfExtractor(node_bin_path="/fake/bin")
+        result = await extractor.extract(pdf)
+
+    assert result.text == "extracted text content"
+    assert instance.parse_async.await_args.kwargs["target_pages"] is None
+
+
 async def test_image_extractor_converts_and_delegates_to_pdf(tmp_path: Path) -> None:
     img = tmp_path / "note.jpg"
     img.write_bytes(b"\xff\xd8\xff\xe0fakejpeg")
