@@ -20,7 +20,11 @@ from classifier.models import (
     PairDocumentMetadata,
     PatientMetadata,
 )
-from classifier.protocols import DiagnosisExtractor, TreatmentRequestExtractor
+from classifier.protocols import (
+    DiagnosisExtractor,
+    MainDiagnosisExtractor,
+    TreatmentRequestExtractor,
+)
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,7 @@ class DrNurseMatchClassifier:
         llm: BaseChatModel,
         diagnosis_extractor: DiagnosisExtractor | None = None,
         care_extractor: TreatmentRequestExtractor | None = None,
+        main_diagnosis_extractor: MainDiagnosisExtractor | None = None,
     ) -> None:
         parser: PydanticOutputParser[ClinicalMatchOutput] = PydanticOutputParser(
             pydantic_object=ClinicalMatchOutput
@@ -68,6 +73,7 @@ class DrNurseMatchClassifier:
         self._chain = prompt | llm | parser
         self._diagnosis_extractor = diagnosis_extractor
         self._care_extractor = care_extractor
+        self._main_diagnosis_extractor = main_diagnosis_extractor
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult:
         identity = self._compare_identity(pair)
@@ -75,10 +81,12 @@ class DrNurseMatchClassifier:
             (clinical_verdict, clinical_reasoning),
             (diagnosis_check, diagnoses),
             (care_check, care_reasoning),
+            main_diagnosis,
         ) = await asyncio.gather(
             self._compare_clinical(pair),
             self._check_diagnoses(pair),
             self._check_care_needed(pair),
+            self._extract_main_diagnosis(pair),
         )
 
         overall = clinical_verdict
@@ -98,6 +106,7 @@ class DrNurseMatchClassifier:
             diagnoses=diagnoses,
             care_check=care_check,
             care_reasoning=care_reasoning,
+            main_diagnosis=main_diagnosis,
         )
 
     async def _check_care_needed(
@@ -129,6 +138,16 @@ class DrNurseMatchClassifier:
                 pair.nurse_file_path,
             )
         return check, result.reasoning or ""
+
+    async def _extract_main_diagnosis(self, pair: PairDocumentMetadata) -> str | None:
+        """Short main-diagnosis label from the dr note, for grouping; never affects overall.
+
+        Runs on every category. Returns None when no extractor was injected.
+        """
+        if self._main_diagnosis_extractor is None:
+            return None
+        result = await self._main_diagnosis_extractor.extract_main_diagnosis(pair.dr)
+        return result.main_diagnosis
 
     @staticmethod
     def _combined_note_text(pair: PairDocumentMetadata) -> str:

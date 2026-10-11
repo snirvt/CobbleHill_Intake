@@ -8,6 +8,7 @@ from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClass
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
+from classifier.classifiers.main_diagnosis import MainDiagnosisClassifier
 from classifier.classifiers.treatment_request import TreatmentRequestClassifier
 from classifier.dr_note_pipeline import DrNotePipeline
 from classifier.extractors.easyocr_extractor import (
@@ -19,7 +20,11 @@ from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
-from classifier.models import DiagnosisExtractionResult, TreatmentRequestResult
+from classifier.models import (
+    DiagnosisExtractionResult,
+    MainDiagnosisResult,
+    TreatmentRequestResult,
+)
 from classifier.pair_pipeline import PairPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
@@ -107,6 +112,26 @@ def build_treatment_request_pipeline() -> DrNotePipeline[TreatmentRequestResult]
     )
 
 
+def build_main_diagnosis_extractor(
+    llm: BaseChatModel | None = None,
+) -> MainDiagnosisClassifier:
+    """Wire up the main-diagnosis classifier; builds its own LLM if none given."""
+    return MainDiagnosisClassifier(llm=llm or _make_llm())
+
+
+def build_main_diagnosis_pipeline() -> DrNotePipeline[MainDiagnosisResult]:
+    """Wire up a folder-capable main-diagnosis pipeline (dr notes only)."""
+    _make_env()
+    extractor = build_main_diagnosis_extractor()
+    return DrNotePipeline(
+        router=_make_router(),
+        extract_fn=extractor.extract_main_diagnosis,
+        error_fn=lambda path, exc: MainDiagnosisResult(
+            file_path=path, reasoning=f"Pipeline error: {exc}"
+        ),
+    )
+
+
 def build_pipeline() -> Pipeline:
     """Wire up all components and return a ready-to-use Pipeline."""
     _make_env()
@@ -129,7 +154,8 @@ def build_pair_pipeline() -> PairPipeline:
     The pair classifier gets a diagnosis extractor (pairs in
     ``settings.diagnosis_check_categories`` are checked for missing diagnoses) and a
     care extractor (pairs in ``settings.care_check_categories`` are checked for a
-    treatment request or medical necessity). All three share one chat model, so the
+    treatment request or medical necessity), plus a main-diagnosis extractor that labels
+    every pair for grouping. All share one chat model, so the
     whole pipeline honours a single max_concurrent_llm_calls budget.
     """
     _make_env()
@@ -142,5 +168,6 @@ def build_pair_pipeline() -> PairPipeline:
             llm=llm,
             diagnosis_extractor=build_diagnosis_extractor(llm),
             care_extractor=build_treatment_request_extractor(llm),
+            main_diagnosis_extractor=build_main_diagnosis_extractor(llm),
         ),
     )

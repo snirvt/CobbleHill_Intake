@@ -129,6 +129,14 @@ class TreatmentRequestResult(BaseModel):
     reasoning: str | None = None
 
 
+class MainDiagnosisResult(BaseModel):
+    """Short (1-2 word) primary-diagnosis label for one dr note, used to group cases."""
+
+    file_path: Path
+    main_diagnosis: str | None = None  # None = no diagnosis found, or the call failed
+    reasoning: str | None = None
+
+
 class PipelineResult(BaseModel):
     """Outcome of the full pipeline for one file."""
 
@@ -203,6 +211,8 @@ class PairClassificationResult(BaseModel):
     diagnoses: list[Diagnosis] = []
     care_check: CareCheck | None = None
     care_reasoning: str = ""
+    # Short primary-diagnosis label (dr note only) for grouping; not a check.
+    main_diagnosis: str | None = None
 
 
 class PairPipelineResult(BaseModel):

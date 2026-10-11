@@ -9,10 +9,14 @@ _BASE = settings.base_path
 
 @dataclass(frozen=True)
 class PairExample:
-    """One labeled dr+nurse file pair with ground-truth overall verdict."""
+    """One labeled dr+nurse example with ground-truth overall verdict.
 
-    dr_path: Path
-    nurse_path: Path
+    Each side is a list of paths; when it holds more than one file, their
+    extracted text is appended (same behavior as the pair pipeline).
+    """
+
+    dr_paths: list[Path]
+    nurse_paths: list[Path]
     expected: ClinicalVerdict
     description: str = ""
 
@@ -22,14 +26,15 @@ class PairExample:
 # ---------------------------------------------------------------------------
 EXAMPLES: list[PairExample] = [
     PairExample(
-        dr_path=_BASE / "cases/Active/ABAYEV, JONAH/dr_note.pdf",
-        nurse_path=_BASE / "cases/Active/ABAYEV, JONAH/nurse_note.pdf",
+        dr_paths=[_BASE / "cases/Active/ABAYEV, JONAH/dr_note.pdf"],
+        nurse_paths=[_BASE / "cases/Active/ABAYEV, JONAH/nurse_note.pdf"],
         expected=ClinicalVerdict.MATCH,
         description="Same patient, same visit date",
     ),
+    # Multiple notes per side — texts are appended:
     # PairExample(
-    #     dr_path=Path("./classifier_data/case2/dr_note.pdf"),
-    #     nurse_path=Path("./classifier_data/case2/nurse_note.pdf"),
+    #     dr_paths=[_BASE / "cases/case2/dr_note.pdf", _BASE / "cases/case2/dr_note_2.pdf"],
+    #     nurse_paths=[_BASE / "cases/case2/nurse_note.pdf"],
     #     expected=ClinicalVerdict.MISMATCH,
     #     description="Different patients, swapped files",
     # ),

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     diagnosis_check_categories: list[str] = ["hospital"]
     # Categories the pair care-needed check runs on (request or medical necessity).
     care_check_categories: list[str] = ["peds"]
+    # Max words in a main-diagnosis grouping label; longer LLM labels are truncated.
+    main_diagnosis_max_words: int = 2
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]

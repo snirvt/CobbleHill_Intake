@@ -7,6 +7,7 @@ from classifier.models import (
     DocumentMetadata,
     ExtractedFields,
     ExtractedText,
+    MainDiagnosisResult,
     NurseVisitFields,
     PairClassificationResult,
     PairDocumentMetadata,
@@ -81,3 +82,12 @@ class TreatmentRequestExtractor(Protocol):
     async def extract_treatment_request(
         self, metadata: DocumentMetadata
     ) -> TreatmentRequestResult: ...
+
+
+@runtime_checkable
+class MainDiagnosisExtractor(Protocol):
+    """Extracts a short primary-diagnosis label from a dr note, for grouping cases."""
+
+    async def extract_main_diagnosis(
+        self, metadata: DocumentMetadata
+    ) -> MainDiagnosisResult: ...
