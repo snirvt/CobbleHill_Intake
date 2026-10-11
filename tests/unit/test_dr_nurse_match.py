@@ -12,6 +12,7 @@ from classifier.models import (
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DocumentMetadata,
+    MainDiagnosisResult,
     NursePatientMeta,
     NurseVisitFields,
     PairDocumentMetadata,
@@ -387,3 +388,53 @@ async def test_diagnosis_and_care_checks_do_not_interfere() -> None:
     assert peds.diagnosis_check is None
     assert peds.care_check == CareCheck.NEEDED
     diagnosis.extract_diagnoses.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Main diagnosis (grouping label, all categories, dr note only)
+# ---------------------------------------------------------------------------
+
+def _fake_main_diagnosis_extractor(label: str | None) -> MagicMock:
+    extractor = MagicMock()
+    extractor.extract_main_diagnosis = AsyncMock(
+        side_effect=lambda meta: MainDiagnosisResult(file_path=meta.file_path, main_diagnosis=label)
+    )
+    return extractor
+
+
+@pytest.mark.parametrize("category", [None, "hospital", "peds"])
+async def test_main_diagnosis_populated_for_every_category(category: str | None) -> None:
+    extractor = _fake_main_diagnosis_extractor("Pneumonia")
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), main_diagnosis_extractor=extractor)
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category=category)
+    result = await clf.classify_pair(pair)
+    assert result.main_diagnosis == "Pneumonia"
+
+
+async def test_main_diagnosis_none_when_no_extractor_injected() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert result.main_diagnosis is None
+
+
+async def test_missing_main_diagnosis_does_not_change_overall() -> None:
+    extractor = _fake_main_diagnosis_extractor(None)
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), main_diagnosis_extractor=extractor)
+    result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert result.main_diagnosis is None
+    assert result.overall == "MATCH"
+
+
+async def test_main_diagnosis_reads_dr_note_only() -> None:
+    extractor = _fake_main_diagnosis_extractor("Asthma")
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), main_diagnosis_extractor=extractor)
+    pair = _make_pair(
+        _make_dr_meta(raw_text="Physician: asthma exacerbation."),
+        _make_nurse_fields(),
+        nurse_raw_text="Nurse text here",
+    )
+    await clf.classify_pair(pair)
+    extractor.extract_main_diagnosis.assert_awaited_once()
+    text = extractor.extract_main_diagnosis.await_args.args[0].raw_text
+    assert "asthma exacerbation" in text
+    assert "Nurse text here" not in text

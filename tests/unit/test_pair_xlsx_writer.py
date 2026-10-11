@@ -32,6 +32,7 @@ def _make_pair_result(
     diagnoses: list[Diagnosis] | None = None,
     care_check: CareCheck | None = None,
     care_reasoning: str = "",
+    main_diagnosis: str | None = None,
 ) -> PairPipelineResult:
     result = PairClassificationResult(
         dr_file_path=dr,
@@ -48,6 +49,7 @@ def _make_pair_result(
         diagnoses=diagnoses or [],
         care_check=care_check,
         care_reasoning=care_reasoning,
+        main_diagnosis=main_diagnosis,
     )
     return PairPipelineResult(
         dr_file_path=dr, nurse_file_path=nurse, success=True, result=result
@@ -412,3 +414,39 @@ def test_relative_file_names_returns_one_entry_per_file(tmp_path: Path) -> None:
 def test_relative_file_names_uses_fallback_when_list_empty(tmp_path: Path) -> None:
     fallback = tmp_path / "pt_a" / "dr_a.pdf"
     assert relative_file_names([], fallback, tmp_path) == ["pt_a/dr_a.pdf"]
+
+
+# ---------------------------------------------------------------------------
+# Main diagnosis column
+# ---------------------------------------------------------------------------
+
+def test_main_diagnosis_column_present_in_both_modes(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    for verbose in (False, True):
+        out = tmp_path / f"results_{verbose}.xlsx"
+        write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
+        header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
+        assert header[header.index("overall") + 1] == "main_diagnosis"
+
+
+def test_main_diagnosis_value_written(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_make_pair_result(dr, nurse, main_diagnosis="Pneumonia")], out)
+    assert _row_value(openpyxl.load_workbook(out)["All"], "main_diagnosis") == "Pneumonia"
+
+
+def test_missing_main_diagnosis_is_not_an_issue(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_make_pair_result(dr, nurse, main_diagnosis=None)], out)
+    wb = openpyxl.load_workbook(out)
+    assert wb["No Issues"].max_row == 2  # header + 1
+    assert not _row_value(wb["All"], "main_diagnosis")
+
+
+def test_failed_result_leaves_main_diagnosis_blank(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([_make_failure(dr, nurse)], out)
+    assert not _row_value(openpyxl.load_workbook(out)["All"], "main_diagnosis")
