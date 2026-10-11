@@ -225,3 +225,56 @@ class PairPipelineResult(BaseModel):
     success: bool
     result: PairClassificationResult | None = None
     error: str | None = None
+
+
+class PatientAgeResult(BaseModel):
+    """Patient age read from a dr note; age_years is None when it cannot be determined."""
+
+    file_path: Path
+    age_years: float | None = None
+    dob: str | None = None
+    date_of_service: str | None = None
+    reasoning: str | None = None
+
+
+class PatientGroup(StrEnum):
+    """Which dr-validity rule set applies, decided by age."""
+
+    PEDIATRIC = "PEDIATRIC"
+    ADULT = "ADULT"
+    UNKNOWN = "UNKNOWN"
+
+
+class ValidityVerdict(StrEnum):
+    """Whether a patient's dr notes satisfy the intake rules for their age group."""
+
+    VALID = "VALID"
+    INVALID = "INVALID"
+    UNKNOWN_AGE = "UNKNOWN_AGE"
+
+
+class DrValidityResult(BaseModel):
+    """Dr-note validity for one patient (all of the patient's dr notes combined)."""
+
+    patient_folder: Path
+    dr_paths: list[Path] = []
+    age_years: float | None = None
+    patient_group: PatientGroup
+    diagnosis_check: DiagnosisCheck
+    diagnoses: list[Diagnosis] = []
+    # None for adults: medical necessity is not required for them.
+    care_check: CareCheck | None = None
+    care_reasoning: str = ""
+    main_diagnosis: str | None = None
+    verdict: ValidityVerdict
+    reasons: list[str] = []
+
+
+class DrValidityPipelineResult(BaseModel):
+    """Outcome of the dr-validity pipeline for one patient folder."""
+
+    patient_folder: Path
+    dr_paths: list[Path] = []
+    success: bool
+    result: DrValidityResult | None = None
+    error: str | None = None
