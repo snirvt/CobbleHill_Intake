@@ -1,5 +1,6 @@
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from urllib.parse import quote
 
@@ -11,6 +12,7 @@ from classifier.models import (
     Diagnosis,
     DiagnosisCheck,
     DiagnosisExtractionResult,
+    MainDiagnosisResult,
     PairPipelineResult,
     PipelineResult,
     TreatmentRequestResult,
@@ -44,11 +46,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
+    "main_diagnosis",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
+    "main_diagnosis",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
@@ -168,7 +172,7 @@ def _pair_result_to_row(
     }
     if not result.success or result.result is None:
         base.update({
-            "overall": "", "clinical_verdict": "", "clinical_reasoning": "",
+            "overall": "", "main_diagnosis": "", "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "",
             "care_check": "", "care_reasoning": "",
         })
@@ -179,6 +183,7 @@ def _pair_result_to_row(
     r = result.result
     base.update({
         "overall": r.overall,
+        "main_diagnosis": r.main_diagnosis or "",
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
@@ -281,6 +286,47 @@ def write_treatment_request_xlsx(
     wb.save(output_path)
     logger.info(
         "Treatment-request XLSX written to %s (%d rows)", output_path, len(results)
+    )
+
+
+_MAIN_DIAGNOSIS_COLUMNS = ["file_path", "main_diagnosis", "reasoning"]
+_MAIN_DIAGNOSIS_GROUP_COLUMNS = ["main_diagnosis", "count"]
+# Group label for notes with no main diagnosis (none found, or the call failed).
+_UNKNOWN_DIAGNOSIS = "Unknown"
+
+
+def write_main_diagnosis_xlsx(
+    results: list[MainDiagnosisResult], output_path: Path
+) -> None:
+    """Write main-diagnosis results to a two-sheet Excel workbook.
+
+    Sheets: MainDiagnosis (one row per file: file_path, main_diagnosis, reasoning) and
+    Groups (main_diagnosis, count — most common first; no diagnosis counts as "Unknown").
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "MainDiagnosis"
+    ws.append(_MAIN_DIAGNOSIS_COLUMNS)
+    for result in results:
+        ws.append(
+            [str(result.file_path), result.main_diagnosis or "", result.reasoning or ""]
+        )
+
+    counts = Counter(r.main_diagnosis or _UNKNOWN_DIAGNOSIS for r in results)
+    groups = wb.create_sheet("Groups")
+    groups.append(_MAIN_DIAGNOSIS_GROUP_COLUMNS)
+    # Count descending, then label ascending, so ties have a stable order.
+    for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        groups.append([label, count])
+
+    wb.save(output_path)
+    logger.info(
+        "Main-diagnosis XLSX written to %s (%d files, %d groups)",
+        output_path,
+        len(results),
+        len(counts),
     )
 
 
