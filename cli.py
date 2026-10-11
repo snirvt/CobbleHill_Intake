@@ -9,6 +9,7 @@ from pathlib import Path
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import (
     build_diagnosis_pipeline,
+    build_dr_validity_pipeline,
     build_main_diagnosis_pipeline,
     build_pair_pipeline,
     build_pipeline,
@@ -16,6 +17,7 @@ from classifier.main import (
 )
 from classifier.models import (
     DiagnosisExtractionResult,
+    DrValidityPipelineResult,
     MainDiagnosisResult,
     PairPipelineResult,
     PipelineResult,
@@ -26,6 +28,7 @@ from classifier.output.csv_writer import (
     relative_file_names,
     resolve_folder,
     write_diagnosis_xlsx,
+    write_dr_validity_xlsx,
     write_main_diagnosis_xlsx,
     write_pair_xlsx,
     write_treatment_request_xlsx,
@@ -185,6 +188,51 @@ async def _run_main_diagnosis(input_path: Path) -> tuple[int, Path | None]:
     return 0, out_path
 
 
+def _dr_validity_result_to_dict(
+    r: DrValidityPipelineResult, local_root: Path | None = None
+) -> dict:  # type: ignore[type-arg]
+    out: dict = {  # type: ignore[type-arg]
+        "patient": r.patient_folder.name,
+        "dr_files": relative_file_names(r.dr_paths, r.patient_folder, local_root),
+        "success": r.success,
+    }
+    if not r.success or r.result is None:
+        out["error"] = r.error
+        return out
+    res = r.result
+    out.update({
+        "verdict": res.verdict,
+        "reasons": res.reasons,
+        "patient_group": res.patient_group,
+        "age": res.age_years,
+        "main_diagnosis": res.main_diagnosis,
+        "diagnosis_check": res.diagnosis_check,
+        "diagnoses": [d.model_dump() for d in res.diagnoses],
+        "care_check": res.care_check,
+        "care_reasoning": res.care_reasoning,
+    })
+    return out
+
+
+async def _run_dr_validity(
+    input_path: Path,
+    *,
+    local_root: Path | None = None,
+    sp_web_url: str | None = None,
+) -> tuple[int, Path | None]:
+    """Check each patient folder's dr notes (combined) against the intake rules."""
+    if not input_path.is_dir():
+        logger.error("--dr-validity needs a folder of patient folders: %s", input_path)
+        return 1, None
+    results = await build_dr_validity_pipeline().run_folder(input_path)
+    path_root = local_root or input_path
+    output = [_dr_validity_result_to_dict(r, path_root) for r in results]
+    print(json.dumps(output, indent=2, default=str))
+    out_path = settings.output_path.parent / "dr_validity_results.xlsx"
+    write_dr_validity_xlsx(results, out_path, local_root=path_root, sp_web_url=sp_web_url)
+    return sum(1 for r in results if not r.success), out_path
+
+
 def resolve_results_folder(
     results_folder: str | None, sharepoint_folder: str | None
 ) -> str:
@@ -315,6 +363,15 @@ def main() -> None:
         default=False,
         help="Extract a short (1-2 word) main diagnosis per dr note, to group cases; prints JSON",
     )
+    parser.add_argument(
+        "--dr-validity",
+        action="store_true",
+        default=False,
+        help=(
+            "Check each patient folder's dr notes: under 18 needs diagnosis + medical "
+            "necessity, adults need a diagnosis; also labels the main diagnosis"
+        ),
+    )
     args = parser.parse_args()
 
     _sp_kwargs = dict(
@@ -335,6 +392,10 @@ def main() -> None:
                 exit_code, written_csv = asyncio.run(_run_treatment_request(local_dir))
             elif args.main_diagnosis:
                 exit_code, written_csv = asyncio.run(_run_main_diagnosis(local_dir))
+            elif args.dr_validity:
+                exit_code, written_csv = asyncio.run(
+                    _run_dr_validity(local_dir, local_root=local_dir, sp_web_url=sp_web_url)
+                )
             else:
                 exit_code, written_csv = asyncio.run(
                     _run(local_dir, verbose=args.verbose, local_root=local_dir, sp_web_url=sp_web_url)
@@ -348,6 +409,8 @@ def main() -> None:
         exit_code, written_csv = asyncio.run(_run_treatment_request(Path(args.input)))
     elif args.main_diagnosis:
         exit_code, written_csv = asyncio.run(_run_main_diagnosis(Path(args.input)))
+    elif args.dr_validity:
+        exit_code, written_csv = asyncio.run(_run_dr_validity(Path(args.input)))
     else:
         exit_code, written_csv = asyncio.run(_run(Path(args.input), verbose=args.verbose))
 
@@ -401,8 +464,15 @@ uv run python -m cli --input ./data/1/dr_progress_note.pdf --treatment-request
 # also adds a main_diagnosis column to pair_results.xlsx.
 uv run python -m cli --input ./data --main-diagnosis
 
+# Dr-note validity — one row per patient folder, all of its dr_ notes combined.
+# Under 18: needs a diagnosis AND medical necessity; 18+: needs a diagnosis.
+# Writes output/dr_validity_results.xlsx (All / Valid / Needs Review / Groups)
+uv run python -m cli --input ./data --dr-validity
+uv run python -m cli --sharepoint-folder "Patient Encounters/Physician Notes/Pending" \
+    --dr-validity --upload-results
+
 # From SharePoint, then upload the results xlsx back
-# (works with --diagnosis, --treatment-request or --main-diagnosis)
+# (works with --diagnosis, --treatment-request, --main-diagnosis or --dr-validity)
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --diagnosis --upload-results
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --treatment-request --upload-results
 uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-Admits" --main-diagnosis --upload-results

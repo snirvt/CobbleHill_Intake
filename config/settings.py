@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     care_check_categories: list[str] = ["peds"]
     # Max words in a main-diagnosis grouping label; longer LLM labels are truncated.
     main_diagnosis_max_words: int = 2
+    # Dr-validity check: patients younger than this (years) need a diagnosis AND medical
+    # necessity; older patients need only a diagnosis.
+    pediatric_age_threshold: float = 18
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]

@@ -7,8 +7,10 @@ from langchain_core.language_models import BaseChatModel
 from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
+from classifier.classifiers.dr_validity import DrNoteValidityClassifier
 from classifier.classifiers.llm_classifier import LLMClassifier
 from classifier.classifiers.main_diagnosis import MainDiagnosisClassifier
+from classifier.classifiers.patient_age import PatientAgeClassifier
 from classifier.classifiers.treatment_request import TreatmentRequestClassifier
 from classifier.dr_note_pipeline import DrNotePipeline
 from classifier.extractors.easyocr_extractor import (
@@ -26,6 +28,7 @@ from classifier.models import (
     TreatmentRequestResult,
 )
 from classifier.pair_pipeline import PairPipeline
+from classifier.patient_pipeline import DrValidityPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
 from classifier.routing import DefaultFileRouter
@@ -128,6 +131,30 @@ def build_main_diagnosis_pipeline() -> DrNotePipeline[MainDiagnosisResult]:
         extract_fn=extractor.extract_main_diagnosis,
         error_fn=lambda path, exc: MainDiagnosisResult(
             file_path=path, reasoning=f"Pipeline error: {exc}"
+        ),
+    )
+
+
+def build_patient_age_extractor(llm: BaseChatModel | None = None) -> PatientAgeClassifier:
+    """Wire up the patient-age classifier; builds its own LLM if none given."""
+    return PatientAgeClassifier(llm=llm or _make_llm())
+
+
+def build_dr_validity_pipeline() -> DrValidityPipeline:
+    """Wire up the per-patient dr-note validity pipeline (dr notes only).
+
+    Age, diagnosis, medical-necessity and main-diagnosis extractors share one chat
+    model, so the pipeline honours a single max_concurrent_llm_calls budget.
+    """
+    _make_env()
+    llm = _make_llm()
+    return DrValidityPipeline(
+        router=_make_router(),
+        classifier=DrNoteValidityClassifier(
+            age_extractor=build_patient_age_extractor(llm),
+            diagnosis_extractor=build_diagnosis_extractor(llm),
+            care_extractor=build_treatment_request_extractor(llm),
+            main_diagnosis_extractor=build_main_diagnosis_extractor(llm),
         ),
     )
 
