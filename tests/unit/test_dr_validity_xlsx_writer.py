@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import openpyxl
+import pytest
 
 from classifier.models import (
     CareCheck,
@@ -11,7 +12,11 @@ from classifier.models import (
     PatientGroup,
     ValidityVerdict,
 )
-from classifier.output.csv_writer import patient_display_name, write_dr_validity_xlsx
+from classifier.output.csv_writer import (
+    format_age,
+    patient_display_name,
+    write_dr_validity_xlsx,
+)
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
@@ -79,7 +84,7 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["dr_file_path"] == "DOE, JANE/dr_a.pdf; DOE, JANE/dr_b.pdf"
     assert row["verdict"] == "VALID"
     assert row["patient_group"] == "PEDIATRIC"
-    assert row["age"] == 0.5
+    assert row["age"] == "6 months"
     assert row["main_diagnosis"] == "GERD"
     assert row["diagnoses"] == "GERD (K21.9)"
     assert row["care_check"] == "NEEDED"
@@ -160,3 +165,30 @@ def test_single_patient_download_written_with_sharepoint_name(tmp_path: Path) ->
     )
 
     assert _rows(out, "All")[0]["patient_name"] == "EISENBERG, SHEINDY"
+
+
+# ---------------------------------------------------------------------------
+# format_age
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("age_years", "expected"),
+    [
+        (None, ""),
+        (-1, ""),
+        (0.0, "0 days"),
+        (1 / 365.25, "1 day"),
+        (0.02, "7 days"),
+        (0.04, "2 weeks"),
+        (0.1, "5 weeks"),
+        (0.17, "2 months"),
+        (0.67, "8 months"),
+        (1.0, "12 months"),
+        (1.99, "23 months"),
+        (2.0, "2 years"),
+        (17.9, "17 years"),
+        (82.4, "82 years"),
+    ],
+)
+def test_format_age_is_human_readable(age_years: float | None, expected: str) -> None:
+    assert format_age(age_years) == expected

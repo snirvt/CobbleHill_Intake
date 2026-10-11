@@ -26,6 +26,7 @@ from classifier.models import (
 from classifier.naming import parse_note
 from classifier.output.csv_writer import (
     relative_file_names,
+    format_age,
     patient_display_name,
     resolve_folder,
     write_diagnosis_xlsx,
@@ -205,7 +206,8 @@ def _dr_validity_result_to_dict(
         "verdict": res.verdict,
         "reasons": res.reasons,
         "patient_group": res.patient_group,
-        "age": res.age_years,
+        "age": format_age(res.age_years),
+        "age_years": res.age_years,
         "main_diagnosis": res.main_diagnosis,
         "diagnosis_check": res.diagnosis_check,
         "diagnoses": [d.model_dump() for d in res.diagnoses],

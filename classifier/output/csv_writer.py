@@ -385,6 +385,33 @@ def write_dr_validity_xlsx(
     )
 
 
+_DAYS_PER_YEAR = 365.25
+# Absorbs float noise so e.g. 0.5 years floors to 6 months, not 5.
+_AGE_EPSILON = 1e-6
+
+
+def _plural(n: int, unit: str) -> str:
+    return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
+
+
+def format_age(age_years: float | None) -> str:
+    """Render an age in years the way a clinician would say it; "" when unknown.
+
+    Under 2 weeks -> days, under 2 months -> weeks, under 2 years -> months, otherwise
+    whole years. Units are floored, so 17.9 reads "17 years" (still pediatric).
+    """
+    if age_years is None or age_years < 0:
+        return ""
+    days = int(age_years * _DAYS_PER_YEAR + _AGE_EPSILON)
+    if days < 14:
+        return _plural(days, "day")
+    if days < 60:
+        return _plural(days // 7, "week")
+    if age_years < 2:
+        return _plural(int(age_years * 12 + _AGE_EPSILON), "month")
+    return _plural(int(age_years + _AGE_EPSILON), "year")
+
+
 def patient_display_name(
     patient_folder: Path, local_root: Path | None = None, root_name: str | None = None
 ) -> str:
@@ -420,7 +447,7 @@ def _dr_validity_row(
         "verdict": r.verdict,
         "reasons": "; ".join(r.reasons),
         "patient_group": r.patient_group,
-        "age": r.age_years if r.age_years is not None else "",
+        "age": format_age(r.age_years),
         "main_diagnosis": r.main_diagnosis or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
