@@ -29,6 +29,16 @@ STUB_MAIN_DIAGNOSIS_RESPONSE = json.dumps(
 )
 
 
+STUB_PATIENT_AGE_RESPONSE = json.dumps(
+    {
+        "age_years": 99.0,
+        "dob": "01/01/1900",
+        "date_of_service": "01/01/1999",
+        "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
+    }
+)
+
+
 def create_stub_chat_model(response: str | None = None) -> BaseChatModel:
     """Return a fake chat model that always emits a fixed, deterministic response.
 
