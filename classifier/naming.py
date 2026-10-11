@@ -73,3 +73,8 @@ def parse_note(path: Path, role: NoteRole | None = None) -> NoteName | None:
 def label(category: str | None) -> str:
     """Human-readable category label used in log messages."""
     return category or "uncategorized"
+
+
+def concat_notes(paths: list[Path], texts: list[str]) -> str:
+    """Append multiple note texts, each prefixed with a filename header marker."""
+    return "\n\n".join(f"--- {p.name} ---\n{t}" for p, t in zip(paths, texts))
