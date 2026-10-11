@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from classifier.models import DocumentMetadata, PairDocumentMetadata, PairPipelineResult
-from classifier.naming import category_order, label, parse_note
+from classifier.naming import category_order, concat_notes, label, parse_note
 from classifier.protocols import FileRouter, NoteExtractor, NurseNoteExtractor, PairClassifier
 from config.settings import settings
 
@@ -51,11 +51,6 @@ def _collect_pairs(folder: Path, pairs: list[tuple[list[Path], list[Path]]]) -> 
             _collect_pairs(child, pairs)
 
 
-def _concat_notes(paths: list[Path], texts: list[str]) -> str:
-    """Append multiple note texts, each prefixed with a filename header marker."""
-    return "\n\n".join(f"--- {p.name} ---\n{t}" for p, t in zip(paths, texts))
-
-
 class PairPipeline:
     """Orchestrates: route → extract both docs → parse both → classify pair."""
 
@@ -92,8 +87,8 @@ class PairPipeline:
                     nurse_extracted = await asyncio.gather(
                         *(self._router.route(p).extract(p) for p in nurse_paths)
                     )
-                    dr_full = _concat_notes(dr_paths, [x.text for x in dr_extracted])
-                    nurse_full = _concat_notes(nurse_paths, [x.text for x in nurse_extracted])
+                    dr_full = concat_notes(dr_paths, [x.text for x in dr_extracted])
+                    nurse_full = concat_notes(nurse_paths, [x.text for x in nurse_extracted])
                     dr_fields = self._dr_meta.extract(dr_full)
                     nurse_fields = self._nurse_meta.extract(nurse_full)
                     dr_meta = DocumentMetadata(
