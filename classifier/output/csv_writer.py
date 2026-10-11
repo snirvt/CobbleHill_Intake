@@ -351,14 +351,17 @@ def write_dr_validity_xlsx(
     *,
     local_root: Path | None = None,
     sp_web_url: str | None = None,
+    root_name: str | None = None,
 ) -> None:
     """Write per-patient dr-validity results to a four-sheet Excel workbook.
 
     Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), and Groups
     (main diagnosis -> patient count). Pass local_root / sp_web_url as for write_pair_xlsx.
+    Pass root_name to name a patient whose notes sit directly in local_root (see
+    ``patient_display_name``).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    rows = [_dr_validity_row(r, local_root, sp_web_url) for r in results]
+    rows = [_dr_validity_row(r, local_root, sp_web_url, root_name) for r in results]
     valid_rows = [r for r in rows if r["verdict"] == ValidityVerdict.VALID]
     review_rows = [r for r in rows if r["verdict"] != ValidityVerdict.VALID]
 
@@ -382,13 +385,30 @@ def write_dr_validity_xlsx(
     )
 
 
+def patient_display_name(
+    patient_folder: Path, local_root: Path | None = None, root_name: str | None = None
+) -> str:
+    """Patient name shown in reports: the name of the folder holding the patient's dr notes.
+
+    When the notes sit directly in local_root (the input was a single patient folder),
+    that folder may be a temp/download dir, so root_name — the real (e.g. SharePoint)
+    folder name — is used instead when given.
+    """
+    if root_name and local_root is not None and patient_folder == local_root:
+        return root_name
+    return patient_folder.name or patient_folder.resolve().name
+
+
 def _dr_validity_row(
-    result: DrValidityPipelineResult, local_root: Path | None, sp_web_url: str | None
+    result: DrValidityPipelineResult,
+    local_root: Path | None,
+    sp_web_url: str | None,
+    root_name: str | None = None,
 ) -> dict[str, object]:
     first = result.dr_paths[0] if result.dr_paths else result.patient_folder
     row: dict[str, object] = {
         "folder": resolve_folder(first, local_root, sp_web_url),
-        "patient_name": result.patient_folder.name,
+        "patient_name": patient_display_name(result.patient_folder, local_root, root_name),
         "dr_file_path": _join_names(result.dr_paths, first, local_root),
         "errors": result.error or "",
     }

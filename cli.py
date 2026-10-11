@@ -4,7 +4,7 @@ import json
 import logging
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolderDownloader
 from classifier.main import (
@@ -26,6 +26,7 @@ from classifier.models import (
 from classifier.naming import parse_note
 from classifier.output.csv_writer import (
     relative_file_names,
+    patient_display_name,
     resolve_folder,
     write_diagnosis_xlsx,
     write_dr_validity_xlsx,
@@ -189,10 +190,10 @@ async def _run_main_diagnosis(input_path: Path) -> tuple[int, Path | None]:
 
 
 def _dr_validity_result_to_dict(
-    r: DrValidityPipelineResult, local_root: Path | None = None
+    r: DrValidityPipelineResult, local_root: Path | None = None, root_name: str | None = None
 ) -> dict:  # type: ignore[type-arg]
     out: dict = {  # type: ignore[type-arg]
-        "patient": r.patient_folder.name,
+        "patient": patient_display_name(r.patient_folder, local_root, root_name),
         "dr_files": relative_file_names(r.dr_paths, r.patient_folder, local_root),
         "success": r.success,
     }
@@ -219,17 +220,25 @@ async def _run_dr_validity(
     *,
     local_root: Path | None = None,
     sp_web_url: str | None = None,
+    root_name: str | None = None,
 ) -> tuple[int, Path | None]:
-    """Check each patient folder's dr notes (combined) against the intake rules."""
+    """Check each patient folder's dr notes (combined) against the intake rules.
+
+    input_path may be a folder of patient folders or a single patient folder. root_name
+    names the patient whose notes sit directly in input_path (e.g. the SharePoint folder
+    name, since a download lands in a temp dir).
+    """
     if not input_path.is_dir():
         logger.error("--dr-validity needs a folder of patient folders: %s", input_path)
         return 1, None
     results = await build_dr_validity_pipeline().run_folder(input_path)
     path_root = local_root or input_path
-    output = [_dr_validity_result_to_dict(r, path_root) for r in results]
+    output = [_dr_validity_result_to_dict(r, path_root, root_name) for r in results]
     print(json.dumps(output, indent=2, default=str))
     out_path = settings.output_path.parent / "dr_validity_results.xlsx"
-    write_dr_validity_xlsx(results, out_path, local_root=path_root, sp_web_url=sp_web_url)
+    write_dr_validity_xlsx(
+        results, out_path, local_root=path_root, sp_web_url=sp_web_url, root_name=root_name
+    )
     return sum(1 for r in results if not r.success), out_path
 
 
@@ -394,7 +403,12 @@ def main() -> None:
                 exit_code, written_csv = asyncio.run(_run_main_diagnosis(local_dir))
             elif args.dr_validity:
                 exit_code, written_csv = asyncio.run(
-                    _run_dr_validity(local_dir, local_root=local_dir, sp_web_url=sp_web_url)
+                    _run_dr_validity(
+                        local_dir,
+                        local_root=local_dir,
+                        sp_web_url=sp_web_url,
+                        root_name=PurePosixPath(args.sharepoint_folder.rstrip("/")).name,
+                    )
                 )
             else:
                 exit_code, written_csv = asyncio.run(

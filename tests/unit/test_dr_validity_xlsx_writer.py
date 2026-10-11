@@ -11,7 +11,7 @@ from classifier.models import (
     PatientGroup,
     ValidityVerdict,
 )
-from classifier.output.csv_writer import write_dr_validity_xlsx
+from classifier.output.csv_writer import patient_display_name, write_dr_validity_xlsx
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
@@ -121,3 +121,42 @@ def test_groups_sheet_counts_patients_by_main_diagnosis(tmp_path: Path) -> None:
 
     rows = list(openpyxl.load_workbook(out)["Groups"].iter_rows(values_only=True))
     assert rows == [("main_diagnosis", "count"), ("Dementia", 2), ("GERD", 1), ("Unknown", 1)]
+
+
+# ---------------------------------------------------------------------------
+# Patient name when the input is a single patient folder
+# ---------------------------------------------------------------------------
+
+def _root_patient(root: Path) -> DrValidityPipelineResult:
+    """A patient whose dr notes sit directly in the (temp download) root."""
+    return _ok(root.parent, root.name, ValidityVerdict.VALID)
+
+
+def test_patient_display_name_uses_folder_name(tmp_path: Path) -> None:
+    folder = tmp_path / "EISENBERG, SHEINDY"
+    assert patient_display_name(folder, tmp_path, "ignored") == "EISENBERG, SHEINDY"
+
+
+def test_patient_display_name_uses_root_name_for_notes_in_root(tmp_path: Path) -> None:
+    root = tmp_path / "cobblehill_sp_x1y2"
+    assert patient_display_name(root, root, "EISENBERG, SHEINDY") == "EISENBERG, SHEINDY"
+
+
+def test_patient_display_name_falls_back_to_root_folder_name(tmp_path: Path) -> None:
+    root = tmp_path / "EISENBERG, SHEINDY"
+    assert patient_display_name(root, root) == "EISENBERG, SHEINDY"
+
+
+def test_patient_display_name_resolves_dot_path() -> None:
+    assert patient_display_name(Path("."), Path(".")) == Path.cwd().name
+
+
+def test_single_patient_download_written_with_sharepoint_name(tmp_path: Path) -> None:
+    root = tmp_path / "cobblehill_sp_x1y2"
+    out = tmp_path / "dr_validity_results.xlsx"
+
+    write_dr_validity_xlsx(
+        [_root_patient(root)], out, local_root=root, root_name="EISENBERG, SHEINDY"
+    )
+
+    assert _rows(out, "All")[0]["patient_name"] == "EISENBERG, SHEINDY"
