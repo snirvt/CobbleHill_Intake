@@ -12,10 +12,12 @@ from classifier.models import (
     Diagnosis,
     DiagnosisCheck,
     DiagnosisExtractionResult,
+    DrValidityPipelineResult,
     MainDiagnosisResult,
     PairPipelineResult,
     PipelineResult,
     TreatmentRequestResult,
+    ValidityVerdict,
 )
 
 logger = logging.getLogger(__name__)
@@ -314,20 +316,98 @@ def write_main_diagnosis_xlsx(
             [str(result.file_path), result.main_diagnosis or "", result.reasoning or ""]
         )
 
-    counts = Counter(r.main_diagnosis or _UNKNOWN_DIAGNOSIS for r in results)
-    groups = wb.create_sheet("Groups")
-    groups.append(_MAIN_DIAGNOSIS_GROUP_COLUMNS)
-    # Count descending, then label ascending, so ties have a stable order.
-    for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
-        groups.append([label, count])
+    group_count = _write_groups_sheet(wb.create_sheet("Groups"), [r.main_diagnosis for r in results])
 
     wb.save(output_path)
     logger.info(
         "Main-diagnosis XLSX written to %s (%d files, %d groups)",
         output_path,
         len(results),
-        len(counts),
+        group_count,
     )
+
+
+def _write_groups_sheet(ws: Worksheet, labels: list[str | None]) -> int:
+    """Write main_diagnosis/count rows, most common first; return the number of groups.
+
+    A missing label counts as "Unknown"; ties are ordered by label for stable output.
+    """
+    counts = Counter(label or _UNKNOWN_DIAGNOSIS for label in labels)
+    ws.append(_MAIN_DIAGNOSIS_GROUP_COLUMNS)
+    for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        ws.append([label, count])
+    return len(counts)
+
+
+_DR_VALIDITY_COLUMNS = [
+    "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
+    "main_diagnosis", "diagnosis_check", "diagnoses", "care_check", "care_reasoning", "errors",
+]
+
+
+def write_dr_validity_xlsx(
+    results: list[DrValidityPipelineResult],
+    output_path: Path,
+    *,
+    local_root: Path | None = None,
+    sp_web_url: str | None = None,
+) -> None:
+    """Write per-patient dr-validity results to a four-sheet Excel workbook.
+
+    Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), and Groups
+    (main diagnosis -> patient count). Pass local_root / sp_web_url as for write_pair_xlsx.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [_dr_validity_row(r, local_root, sp_web_url) for r in results]
+    valid_rows = [r for r in rows if r["verdict"] == ValidityVerdict.VALID]
+    review_rows = [r for r in rows if r["verdict"] != ValidityVerdict.VALID]
+
+    wb = openpyxl.Workbook()
+    wb.active.title = "All"  # type: ignore[union-attr]
+    _write_pair_sheet(wb.active, rows, _DR_VALIDITY_COLUMNS)  # type: ignore[arg-type]
+    _write_pair_sheet(wb.create_sheet("Valid"), valid_rows, _DR_VALIDITY_COLUMNS)
+    _write_pair_sheet(wb.create_sheet("Needs Review"), review_rows, _DR_VALIDITY_COLUMNS)
+    _write_groups_sheet(
+        wb.create_sheet("Groups"),
+        [r.result.main_diagnosis if r.result else None for r in results],
+    )
+
+    wb.save(output_path)
+    logger.info(
+        "Dr-validity XLSX written to %s (%d patients, %d valid, %d need review)",
+        output_path,
+        len(rows),
+        len(valid_rows),
+        len(review_rows),
+    )
+
+
+def _dr_validity_row(
+    result: DrValidityPipelineResult, local_root: Path | None, sp_web_url: str | None
+) -> dict[str, object]:
+    first = result.dr_paths[0] if result.dr_paths else result.patient_folder
+    row: dict[str, object] = {
+        "folder": resolve_folder(first, local_root, sp_web_url),
+        "patient_name": result.patient_folder.name,
+        "dr_file_path": _join_names(result.dr_paths, first, local_root),
+        "errors": result.error or "",
+    }
+    r = result.result
+    if not result.success or r is None:
+        row.update({col: "" for col in _DR_VALIDITY_COLUMNS if col not in row})
+        return row
+    row.update({
+        "verdict": r.verdict,
+        "reasons": "; ".join(r.reasons),
+        "patient_group": r.patient_group,
+        "age": r.age_years if r.age_years is not None else "",
+        "main_diagnosis": r.main_diagnosis or "",
+        "diagnosis_check": r.diagnosis_check,
+        "diagnoses": format_diagnoses(r.diagnoses),
+        "care_check": r.care_check or "",
+        "care_reasoning": r.care_reasoning,
+    })
+    return row
 
 
 def _result_to_row(result: PipelineResult, task_names: list[str]) -> dict[str, object]:
