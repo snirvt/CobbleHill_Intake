@@ -5,12 +5,14 @@ from classifier.models import (
     ClassificationResult,
     DiagnosisExtractionResult,
     DocumentMetadata,
+    DrValidityResult,
     ExtractedFields,
     ExtractedText,
     MainDiagnosisResult,
     NurseVisitFields,
     PairClassificationResult,
     PairDocumentMetadata,
+    PatientAgeResult,
     TreatmentRequestResult,
 )
 
@@ -91,3 +93,19 @@ class MainDiagnosisExtractor(Protocol):
     async def extract_main_diagnosis(
         self, metadata: DocumentMetadata
     ) -> MainDiagnosisResult: ...
+
+
+@runtime_checkable
+class PatientAgeExtractor(Protocol):
+    """Reads the patient's age (years) from a dr note."""
+
+    async def extract_age(self, metadata: DocumentMetadata) -> PatientAgeResult: ...
+
+
+@runtime_checkable
+class DrValidityClassifier(Protocol):
+    """Decides whether a patient's combined dr notes satisfy the intake rules."""
+
+    async def classify(
+        self, metadata: DocumentMetadata, dr_paths: list[Path]
+    ) -> DrValidityResult: ...
