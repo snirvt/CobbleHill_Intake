@@ -21,6 +21,14 @@ STUB_TREATMENT_REQUEST_RESPONSE = json.dumps(
 )
 
 
+STUB_MAIN_DIAGNOSIS_RESPONSE = json.dumps(
+    {
+        "main_diagnosis": "STUB DIAGNOSIS",
+        "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
+    }
+)
+
+
 def create_stub_chat_model(response: str | None = None) -> BaseChatModel:
     """Return a fake chat model that always emits a fixed, deterministic response.
 
