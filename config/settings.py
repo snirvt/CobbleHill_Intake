@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     sharepoint_tenant_id: str = TENANT_ID
     sharepoint_client_secret: str = CLIENT_SECRET
     sharepoint_drive_id: str = GRAPH_DRIVE_ID
+    # FastAPI server (classifier/api.py). Localhost only: there is no auth.
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
 
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> "Settings":

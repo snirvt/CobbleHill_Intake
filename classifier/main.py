@@ -13,12 +13,14 @@ from classifier.classifiers.main_diagnosis import MainDiagnosisClassifier
 from classifier.classifiers.patient_age import PatientAgeClassifier
 from classifier.classifiers.treatment_request import TreatmentRequestClassifier
 from classifier.dr_note_pipeline import DrNotePipeline
+from classifier.dr_validity_service import DrValidityService
 from classifier.extractors.easyocr_extractor import (
     EasyOcrExtractor,
     OcrReader,
     create_easyocr_reader,
 )
 from classifier.extractors.pdf import PdfExtractor
+from classifier.ingest.sharepoint import SharePointFolderDownloader
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
@@ -157,6 +159,17 @@ def build_dr_validity_pipeline() -> DrValidityPipeline:
             main_diagnosis_extractor=build_main_diagnosis_extractor(llm),
         ),
     )
+
+
+def build_dr_validity_service() -> DrValidityService:
+    """Wire the SharePoint downloader and dr-validity pipeline for the API server."""
+    downloader = SharePointFolderDownloader(
+        client_id=settings.sharepoint_client_id,
+        client_secret=settings.sharepoint_client_secret,
+        tenant_id=settings.sharepoint_tenant_id,
+        drive_id=settings.sharepoint_drive_id,
+    )
+    return DrValidityService(downloader=downloader, pipeline=build_dr_validity_pipeline())
 
 
 def build_pipeline() -> Pipeline:

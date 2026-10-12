@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 
 
+class SharePointAuthError(RuntimeError):
+    """Acquiring a Microsoft Graph access token failed."""
+
+
 def authenticate_to_graph(client_id: str, client_secret: str, tenant_id: str) -> str:
     """Acquire a Graph API access token via MSAL client credentials flow."""
     if ConfidentialClientApplication is None:
@@ -30,7 +34,7 @@ def authenticate_to_graph(client_id: str, client_secret: str, tenant_id: str) ->
     )
     result = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
     if "access_token" not in result:
-        raise RuntimeError(
+        raise SharePointAuthError(
             f"MSAL authentication failed: {result.get('error_description', result.get('error'))}"
         )
     return result["access_token"]  # type: ignore[return-value]
@@ -136,7 +140,10 @@ class SharePointFileUploader:
 
     async def upload(self, local_file: Path, folder_path: str) -> str:
         """Upload *local_file* to *folder_path*, returning the remote filename."""
-        access_token = authenticate_to_graph(self._client_id, self._client_secret, self._tenant_id)
+        # Sync MSAL call: run in a thread so it never blocks the event loop.
+        access_token = await asyncio.to_thread(
+            authenticate_to_graph, self._client_id, self._client_secret, self._tenant_id
+        )
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/octet-stream",
@@ -168,7 +175,10 @@ class SharePointFolderDownloader:
         if local_dir is None:
             local_dir = Path(tempfile.mkdtemp(prefix="cobblehill_sp_"))
 
-        access_token = authenticate_to_graph(self._client_id, self._client_secret, self._tenant_id)
+        # Sync MSAL call: run in a thread so it never blocks the event loop.
+        access_token = await asyncio.to_thread(
+            authenticate_to_graph, self._client_id, self._client_secret, self._tenant_id
+        )
         headers = {"Authorization": f"Bearer {access_token}"}
         semaphore = asyncio.Semaphore(settings.sharepoint_download_concurrency)
 

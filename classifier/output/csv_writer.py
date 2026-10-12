@@ -327,16 +327,22 @@ def write_main_diagnosis_xlsx(
     )
 
 
-def _write_groups_sheet(ws: Worksheet, labels: list[str | None]) -> int:
-    """Write main_diagnosis/count rows, most common first; return the number of groups.
+def count_main_diagnoses(labels: list[str | None]) -> list[tuple[str, int]]:
+    """Count patients per main diagnosis, most common first.
 
     A missing label counts as "Unknown"; ties are ordered by label for stable output.
     """
     counts = Counter(label or _UNKNOWN_DIAGNOSIS for label in labels)
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _write_groups_sheet(ws: Worksheet, labels: list[str | None]) -> int:
+    """Write main_diagnosis/count rows, most common first; return the number of groups."""
+    groups = count_main_diagnoses(labels)
     ws.append(_MAIN_DIAGNOSIS_GROUP_COLUMNS)
-    for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+    for label, count in groups:
         ws.append([label, count])
-    return len(counts)
+    return len(groups)
 
 
 _DR_VALIDITY_COLUMNS = [

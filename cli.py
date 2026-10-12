@@ -17,7 +17,6 @@ from classifier.main import (
 )
 from classifier.models import (
     DiagnosisExtractionResult,
-    DrValidityPipelineResult,
     MainDiagnosisResult,
     PairPipelineResult,
     PipelineResult,
@@ -26,8 +25,6 @@ from classifier.models import (
 from classifier.naming import parse_note
 from classifier.output.csv_writer import (
     relative_file_names,
-    format_age,
-    patient_display_name,
     resolve_folder,
     write_diagnosis_xlsx,
     write_dr_validity_xlsx,
@@ -36,6 +33,7 @@ from classifier.output.csv_writer import (
     write_treatment_request_xlsx,
     write_xlsx,
 )
+from classifier.output.dr_validity_report import dr_validity_patient_dict
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -190,33 +188,6 @@ async def _run_main_diagnosis(input_path: Path) -> tuple[int, Path | None]:
     return 0, out_path
 
 
-def _dr_validity_result_to_dict(
-    r: DrValidityPipelineResult, local_root: Path | None = None, root_name: str | None = None
-) -> dict:  # type: ignore[type-arg]
-    out: dict = {  # type: ignore[type-arg]
-        "patient": patient_display_name(r.patient_folder, local_root, root_name),
-        "dr_files": relative_file_names(r.dr_paths, r.patient_folder, local_root),
-        "success": r.success,
-    }
-    if not r.success or r.result is None:
-        out["error"] = r.error
-        return out
-    res = r.result
-    out.update({
-        "verdict": res.verdict,
-        "reasons": res.reasons,
-        "patient_group": res.patient_group,
-        "age": format_age(res.age_years),
-        "age_years": res.age_years,
-        "main_diagnosis": res.main_diagnosis,
-        "diagnosis_check": res.diagnosis_check,
-        "diagnoses": [d.model_dump() for d in res.diagnoses],
-        "care_check": res.care_check,
-        "care_reasoning": res.care_reasoning,
-    })
-    return out
-
-
 async def _run_dr_validity(
     input_path: Path,
     *,
@@ -235,7 +206,7 @@ async def _run_dr_validity(
         return 1, None
     results = await build_dr_validity_pipeline().run_folder(input_path)
     path_root = local_root or input_path
-    output = [_dr_validity_result_to_dict(r, path_root, root_name) for r in results]
+    output = [dr_validity_patient_dict(r, path_root, root_name) for r in results]
     print(json.dumps(output, indent=2, default=str))
     out_path = settings.output_path.parent / "dr_validity_results.xlsx"
     write_dr_validity_xlsx(
@@ -486,6 +457,11 @@ uv run python -m cli --input ./data --main-diagnosis
 uv run python -m cli --input ./data --dr-validity
 uv run python -m cli --sharepoint-folder "Patient Encounters/Physician Notes/Pending" \
     --dr-validity --upload-results
+
+# Same check over HTTP (FastAPI, localhost only, no auth). Blocks until done, returns JSON:
+uv run cobblehill-api
+curl -X POST localhost:8000/dr-validity -H 'Content-Type: application/json' \
+    -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}'
 
 # From SharePoint, then upload the results xlsx back
 # (works with --diagnosis, --treatment-request, --main-diagnosis or --dr-validity)
