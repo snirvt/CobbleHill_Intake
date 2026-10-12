@@ -1,7 +1,7 @@
 from pathlib import Path
-from pydantic import BaseModel, computed_field, model_validator
+from pydantic import BaseModel, SecretStr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from _SECRETS._secrets import CLIENT_ID, TENANT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID
+from _SECRETS._secrets import API_TOKEN, CLIENT_ID, TENANT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -91,9 +91,13 @@ class Settings(BaseSettings):
     sharepoint_tenant_id: str = TENANT_ID
     sharepoint_client_secret: str = CLIENT_SECRET
     sharepoint_drive_id: str = GRAPH_DRIVE_ID
-    # FastAPI server (classifier/api.py). Localhost only: there is no auth.
+    # FastAPI server (classifier/api.py). Default localhost; override with --host / --port
+    # or COBBLEHILL_API_HOST / COBBLEHILL_API_PORT.
     api_host: str = "127.0.0.1"
     api_port: int = 8010
+    # Shared secret clients send as the X-API-Key header. Comes from _SECRETS API_TOKEN
+    # (never committed); COBBLEHILL_API_KEY overrides it. Required beyond localhost.
+    api_key: SecretStr | None = SecretStr(API_TOKEN)
 
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> "Settings":

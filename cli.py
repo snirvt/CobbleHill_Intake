@@ -460,7 +460,10 @@ uv run python -m cli --sharepoint-folder "Patient Encounters/Physician Notes/Pen
 
 # Same check over HTTP (FastAPI, localhost only, no auth). Blocks until done, returns JSON:
 uv run cobblehill-api
-curl -X POST localhost:8010/dr-validity -H 'Content-Type: application/json' \
+# Reachable from the local network — needs an API key (clients send X-API-Key):
+# Key = API_TOKEN in _SECRETS/_secrets.py
+uv run cobblehill-api --host 0.0.0.0 --port 8010
+curl -H "X-API-Key: <key>" -X POST localhost:8010/dr-validity -H 'Content-Type: application/json' \
     -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}'
 
 # From SharePoint, then upload the results xlsx back

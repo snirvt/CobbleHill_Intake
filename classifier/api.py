@@ -1,17 +1,31 @@
 """FastAPI server: run the dr-validity check on a SharePoint folder, return JSON.
 
 Run: ``uv run cobblehill-api`` (binds settings.api_host:api_port, localhost by default).
-There is no auth, so keep it bound to localhost.
+
+Exposing it on the local network requires an API key (the server refuses to start
+without one). The key is ``API_TOKEN`` in ``_SECRETS/_secrets.py`` (override with the
+COBBLEHILL_API_KEY env var)::
+
+    uv run cobblehill-api --host 0.0.0.0
+
+Clients then send it on every request except GET /health::
+
+    curl -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+         -d '{"sharepoint_folder": "..."}' http://<host>:8010/dr-validity
 """
 
+import argparse
 import logging
+import secrets
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, field_validator
 
 from classifier.dr_validity_service import DrValidityService
@@ -35,8 +49,38 @@ class DrValidityRequest(BaseModel):
         return folder
 
 
-def create_app(service: DrValidityService | None = None) -> FastAPI:
-    """Build the app; the real service is created once at startup unless one is injected."""
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+# Distinguishes "use settings.api_key" from an explicit "no key" (None).
+_FROM_SETTINGS = object()
+
+
+def _settings_api_key() -> str | None:
+    """The configured key, or None when unset or blank (an empty env var is not a key)."""
+    if settings.api_key is None:
+        return None
+    return settings.api_key.get_secret_value().strip() or None
+
+
+def create_app(
+    service: DrValidityService | None = None, api_key: str | None | object = _FROM_SETTINGS
+) -> FastAPI:
+    """Build the app; the real service is created once at startup unless one is injected.
+
+    api_key defaults to settings.api_key. When set, every route except /health requires a
+    matching X-API-Key header; when None, the API is open (localhost-only use).
+    """
+    expected_key = (
+        _settings_api_key() if api_key is _FROM_SETTINGS else cast("str | None", api_key) or None
+    )
+
+    async def require_api_key(provided: str | None = Security(_API_KEY_HEADER)) -> None:
+        """Reject the request unless it carries the configured API key."""
+        if expected_key is None:
+            return
+        if provided is None or not secrets.compare_digest(
+            provided.encode(), expected_key.encode()
+        ):
+            raise HTTPException(401, "Invalid or missing API key")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -55,7 +99,7 @@ def create_app(service: DrValidityService | None = None) -> FastAPI:
         """Liveness check."""
         return {"status": "ok"}
 
-    @app.post("/dr-validity")
+    @app.post("/dr-validity", dependencies=[Depends(require_api_key)])
     async def dr_validity(body: DrValidityRequest, request: Request) -> dict[str, Any]:
         """Check every patient's dr notes in the SharePoint folder; blocks until done."""
         svc: DrValidityService = request.app.state.service
@@ -83,10 +127,31 @@ def create_app(service: DrValidityService | None = None) -> FastAPI:
 app = create_app()
 
 
-def main() -> None:
-    """Entry point for ``uv run cobblehill-api``."""
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point for ``uv run cobblehill-api [--host HOST] [--port PORT]``."""
+    parser = argparse.ArgumentParser(description="CobbleHill dr-validity API server")
+    parser.add_argument(
+        "--host",
+        default=settings.api_host,
+        help="Interface to bind; use 0.0.0.0 to listen on all interfaces (local network)",
+    )
+    parser.add_argument("--port", type=int, default=settings.api_port, help="Port to listen on")
+    args = parser.parse_args(argv)
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port)
+    if args.host not in _LOOPBACK_HOSTS:
+        if _settings_api_key() is None:
+            sys.exit(
+                f"Refusing to listen on {args.host}: the API returns patient data and no API "
+                "key is set. Set API_TOKEN in _SECRETS/_secrets.py (or COBBLEHILL_API_KEY)."
+            )
+        logger.warning(
+            "API reachable from the network on %s:%s; X-API-Key required", args.host, args.port
+        )
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
