@@ -1,0 +1,146 @@
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import httpx
+import pytest
+
+from classifier.dr_validity_service import DrValidityService
+from classifier.models import (
+    DiagnosisCheck,
+    DrValidityPipelineResult,
+    DrValidityResult,
+    PatientGroup,
+    ValidityVerdict,
+)
+from classifier.patient_pipeline import scan_patient_dr_notes
+
+
+def _downloader(files: list[str], web_url: str = "https://sp/folder") -> MagicMock:
+    """Fake downloader that writes the given relative files into local_dir."""
+
+    async def download(folder_path: str, local_dir: Path | None = None) -> tuple[Path, str]:
+        assert local_dir is not None
+        for rel in files:
+            path = local_dir / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("note")
+        return local_dir, web_url
+
+    downloader = MagicMock()
+    downloader.download = AsyncMock(side_effect=download)
+    return downloader
+
+
+def _pipeline() -> MagicMock:
+    """Fake pipeline: every scanned patient is VALID with main diagnosis GERD."""
+
+    async def run_folder(root: Path) -> list[DrValidityPipelineResult]:
+        out = []
+        for paths in scan_patient_dr_notes(root):
+            folder = paths[0].parent
+            out.append(
+                DrValidityPipelineResult(
+                    patient_folder=folder,
+                    dr_paths=paths,
+                    success=True,
+                    result=DrValidityResult(
+                        patient_folder=folder,
+                        dr_paths=paths,
+                        age_years=80,
+                        patient_group=PatientGroup.ADULT,
+                        diagnosis_check=DiagnosisCheck.EXISTS,
+                        main_diagnosis="GERD",
+                        verdict=ValidityVerdict.VALID,
+                    ),
+                )
+            )
+        return out
+
+    pipeline = MagicMock()
+    pipeline.run_folder = AsyncMock(side_effect=run_folder)
+    return pipeline
+
+
+async def test_run_returns_report_for_folder_of_patients() -> None:
+    downloader = _downloader(["A, B/dr_a.pdf", "A, B/nurse_x.pdf", "C, D/dr_c.pdf"])
+    service = DrValidityService(downloader=downloader, pipeline=_pipeline())
+
+    report = await service.run("/Patient Encounters/Physician Notes/Pending/")
+
+    downloader.download.assert_awaited_once()
+    assert downloader.download.await_args.args[0] == "Patient Encounters/Physician Notes/Pending"
+    assert report["sharepoint_folder"] == "Patient Encounters/Physician Notes/Pending"
+    assert report["web_url"] == "https://sp/folder"
+    assert report["summary"] == {
+        "total": 2, "valid": 2, "invalid": 0, "unknown_age": 0, "failed": 0,
+    }
+    assert report["groups"] == [{"main_diagnosis": "GERD", "count": 2}]
+    patients = report["patients"]
+    assert isinstance(patients, list)
+    assert [p["patient"] for p in patients] == ["A, B", "C, D"]
+    assert patients[0]["dr_files"] == ["A, B/dr_a.pdf"]
+
+
+async def test_single_patient_folder_named_from_sharepoint_path() -> None:
+    service = DrValidityService(
+        downloader=_downloader(["dr_EISENBERG, SHEINDY note.pdf"]), pipeline=_pipeline()
+    )
+
+    report = await service.run("Patient Encounters/Physician Notes/Pending/EISENBERG, SHEINDY")
+
+    patients = report["patients"]
+    assert isinstance(patients, list)
+    assert patients[0]["patient"] == "EISENBERG, SHEINDY"
+
+
+async def test_empty_folder_returns_no_patients() -> None:
+    service = DrValidityService(downloader=_downloader([]), pipeline=_pipeline())
+
+    report = await service.run("Pending")
+
+    assert report["patients"] == []
+    assert report["summary"] == {
+        "total": 0, "valid": 0, "invalid": 0, "unknown_age": 0, "failed": 0,
+    }
+
+
+async def test_download_dir_deleted_after_success() -> None:
+    downloader = _downloader(["P/dr_a.pdf"])
+    service = DrValidityService(downloader=downloader, pipeline=_pipeline())
+
+    await service.run("Pending")
+
+    local_dir = downloader.download.await_args.args[1]
+    assert not local_dir.exists()
+
+
+async def test_download_dir_deleted_when_pipeline_fails() -> None:
+    downloader = _downloader(["P/dr_a.pdf"])
+    pipeline = MagicMock()
+    pipeline.run_folder = AsyncMock(side_effect=RuntimeError("boom"))
+    service = DrValidityService(downloader=downloader, pipeline=pipeline)
+
+    with pytest.raises(RuntimeError):
+        await service.run("Pending")
+
+    assert not downloader.download.await_args.args[1].exists()
+
+
+async def test_download_dir_deleted_when_download_fails() -> None:
+    seen: list[Path] = []
+
+    async def download(folder_path: str, local_dir: Path | None = None) -> tuple[Path, str]:
+        assert local_dir is not None
+        seen.append(local_dir)
+        (local_dir / "partial.pdf").write_text("half")
+        request = httpx.Request("GET", "https://graph")
+        raise httpx.HTTPStatusError("404", request=request, response=httpx.Response(404))
+
+    downloader = MagicMock()
+    downloader.download = AsyncMock(side_effect=download)
+    service = DrValidityService(downloader=downloader, pipeline=_pipeline())
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await service.run("Missing")
+
+    assert seen and not seen[0].exists()
