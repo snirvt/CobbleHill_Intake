@@ -1,9 +1,24 @@
+import logging
+import platform
 from pathlib import Path
+from typing import Any
+
 from pydantic import BaseModel, SecretStr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from _SECRETS._secrets import API_TOKEN, CLIENT_ID, TENANT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID
+
+from _SECRETS._secrets import API_TOKEN, CLIENT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID, TENANT_ID
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger(__name__)
+
+
+def is_dgx_spark() -> bool:
+    """True on the DGX Spark prod box (the only aarch64 Linux machine we run on).
+
+    Apple Silicon reports ``arm64``, not ``aarch64``, so a Mac is treated as a laptop.
+    """
+    return platform.machine().lower() == "aarch64"
 
 
 class PageTargetRule(BaseModel):
@@ -70,15 +85,21 @@ class Settings(BaseSettings):
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]
-    # CPU by default; portable across machines, no CUDA needed.
-    ocr_gpu: bool = False
+    # easyocr GPU per machine. ocr_gpu is auto-filled from these (Spark vs laptop)
+    # unless set explicitly, e.g. COBBLEHILL_OCR_GPU=false.
+    ocr_gpu_laptop: bool = False
+    ocr_gpu_spark: bool = True
+    ocr_gpu: bool = False  # placeholder; _apply_machine_profile fills it
     # Custom weights dir; pair with ocr_download=False for offline/air-gapped use.
     ocr_model_dir: str | None = None
     # Let easyocr fetch model weights on first run (weights only, no patient data).
     ocr_download: bool = True
     ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma3:1b"
-    # ollama_model: str = "medgemma:27b"
+    # Ollama model per machine. ollama_model is auto-filled from these (Spark vs laptop)
+    # unless set explicitly, e.g. COBBLEHILL_OLLAMA_MODEL=gemma3:1b.
+    ollama_model_laptop: str = "gemma3:1b"
+    ollama_model_spark: str = "medgemma:27b"
+    ollama_model: str = ""  # placeholder; _apply_machine_profile fills it
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
@@ -98,6 +119,25 @@ class Settings(BaseSettings):
     # Shared secret clients send as the X-API-Key header. Comes from _SECRETS API_TOKEN
     # (never committed); COBBLEHILL_API_KEY overrides it. Required beyond localhost.
     api_key: SecretStr | None = SecretStr(API_TOKEN)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_machine_profile(cls, data: Any) -> Any:
+        """Fill ollama_model / ocr_gpu for this machine unless explicitly provided."""
+        if not isinstance(data, dict):
+            return data
+        profile = "spark" if is_dgx_spark() else "laptop"
+        for name in ("ollama_model", "ocr_gpu"):
+            if name not in data:
+                source = f"{name}_{profile}"
+                data[name] = data.get(source, cls.model_fields[source].default)
+        logger.info(
+            "Machine profile %s: ollama_model=%s ocr_gpu=%s",
+            profile,
+            data["ollama_model"],
+            data["ocr_gpu"],
+        )
+        return data
 
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> "Settings":
