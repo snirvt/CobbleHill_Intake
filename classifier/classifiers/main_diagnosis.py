@@ -22,17 +22,30 @@ class MainDiagnosisOutput(BaseModel):
 
 _PROMPT_TEMPLATE = """\
 You are a medical records assistant. Read the doctor's note below and identify the \
-patient's MAIN diagnosis — the primary condition this encounter is about. The label \
-is used to group similar cases together, so it must be short and generic.
+patient's MAIN diagnosis — the condition the doctor/medical professional concluded \
+the patient has. The label is used to group similar cases together, so it must be \
+short and generic.
+
+Where to take the diagnosis from, in priority order:
+1. The doctor's/medical professional's own conclusion: the Assessment, Impression, \
+Diagnosis, or Assessment & Plan section, or diagnoses with ICD codes.
+2. Only if the note has no clinician diagnosis at all, fall back to the condition \
+described in the HPI or chief complaint.
+
+The clinician's diagnosis always wins over the patient's or family's complaint. \
+Complaints and symptoms (e.g. "cough", "fever", "fussy", "not eating") are NOT the \
+main diagnosis when the doctor names a condition — e.g. chief complaint "cough and \
+fever" with assessment "community-acquired pneumonia" → "Pneumonia".
 
 Rules:
-- Pick exactly one diagnosis: the primary reason for the encounter.
+- Pick exactly one diagnosis: the doctor's primary diagnosis for this encounter (if \
+several are listed, the first/primary one).
 - Answer in 1-2 words, using the general condition name (e.g. "Pneumonia", \
 "Otitis Media", "Asthma", "UTI", "Fracture").
 - Prefer the shortest common name or a standard abbreviation over a long name.
 - Do not include ICD codes, laterality, severity, stage, or other qualifiers.
 - If the note contains no diagnosis, return null for main_diagnosis.
-- Give a brief reasoning citing the relevant wording.
+- Give a brief reasoning citing the relevant wording and which section it came from.
 
 {format_instructions}
 

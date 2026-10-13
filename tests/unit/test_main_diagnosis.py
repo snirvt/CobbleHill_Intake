@@ -122,3 +122,13 @@ async def test_stub_provider_returns_obviously_fake_label() -> None:
 
     assert result.main_diagnosis == "STUB Diagnosis"
     assert result.reasoning is not None and "STUB" in result.reasoning
+
+
+def test_prompt_prefers_clinician_diagnosis_over_complaint() -> None:
+    from classifier.classifiers.main_diagnosis import _PROMPT_TEMPLATE
+
+    prompt = _PROMPT_TEMPLATE.lower()
+    assert "assessment" in prompt and "impression" in prompt
+    assert "clinician's diagnosis always wins over the patient's or family's complaint" in prompt
+    # Fallback to the complaint only exists when there is no clinician diagnosis.
+    assert prompt.index("assessment") < prompt.index("chief complaint")
