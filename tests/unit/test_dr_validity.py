@@ -188,3 +188,29 @@ async def test_classify_calls_every_extractor_once_with_combined_text() -> None:
     for mock in mocks.values():
         mock.assert_awaited_once()
         assert mock.await_args.args[0].raw_text == metadata.raw_text
+
+
+async def test_classify_attributes_llm_calls_to_named_steps() -> None:
+    from classifier.timing import PatientTimings, current_timings, record_llm_call
+
+    clf, mocks = _make_classifier(age=80)
+    for name, mock in mocks.items():
+        original = mock.side_effect
+
+        def recording(m, _orig=original):  # type: ignore[no-untyped-def]
+            record_llm_call(wait_s=0, call_s=0, prompt_tokens=1, completion_tokens=1,
+                            answer_chars=0)
+            return _orig(m)
+
+        mock.side_effect = recording
+
+    timings = PatientTimings(patient="P")
+    token = current_timings.set(timings)
+    try:
+        await clf.classify(_metadata(), _DR_PATHS)
+    finally:
+        current_timings.reset(token)
+
+    assert sorted(c.step for c in timings.llm_calls) == [
+        "age", "care", "diagnosis", "main_diagnosis",
+    ]

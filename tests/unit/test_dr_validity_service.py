@@ -144,3 +144,16 @@ async def test_download_dir_deleted_when_download_fails() -> None:
         await service.run("Missing")
 
     assert seen and not seen[0].exists()
+
+
+async def test_run_logs_request_timing(caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    service = DrValidityService(downloader=_downloader(["A, B/dr_a.pdf"]), pipeline=_pipeline())
+
+    with caplog.at_level(logging.INFO, logger="classifier.dr_validity_service"):
+        await service.run("Pending")
+
+    [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("timing")]
+    assert line.startswith("timing request folder=Pending download ")
+    assert line.endswith("| patients=1")

@@ -1,5 +1,8 @@
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from classifier.models import (
     DiagnosisCheck,
@@ -135,3 +138,38 @@ async def test_run_folder_scans_patients(tmp_path: Path) -> None:
 
     assert [r.patient_folder.name for r in results] == ["A", "B"]
     assert clf.classify.await_count == 2
+
+
+async def test_pipeline_logs_timing_per_patient(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    a = tmp_path / "P" / "dr_a.pdf"
+    pipeline = DrValidityPipeline(router=_router({"dr_a.pdf": "ok"}), classifier=_classifier())
+
+    with caplog.at_level(logging.INFO, logger="classifier.timing"):
+        await pipeline.run([[a]])
+
+    messages = [r.getMessage() for r in caplog.records if r.name == "classifier.timing"]
+    assert any(
+        m.startswith("timing patient=P extract file=dr_a.pdf extractor=MagicMock pages=1 ")
+        for m in messages
+    )
+    assert any(m.startswith("timing patient=P TOTAL ") for m in messages)
+
+
+async def test_pipeline_logs_timing_even_when_patient_fails(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bad = tmp_path / "BAD" / "dr_b.pdf"
+    pipeline = DrValidityPipeline(
+        router=_router({"dr_b.pdf": "ok"}, failing={"dr_b.pdf"}), classifier=_classifier()
+    )
+
+    with caplog.at_level(logging.INFO, logger="classifier.timing"):
+        await pipeline.run([[bad]])
+
+    assert any(
+        r.getMessage().startswith("timing patient=BAD TOTAL ")
+        for r in caplog.records
+        if r.name == "classifier.timing"
+    )
