@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections.abc import Callable
 from functools import cache
 
 from langchain_core.language_models import BaseChatModel
@@ -33,6 +34,7 @@ from classifier.pair_pipeline import PairPipeline
 from classifier.patient_pipeline import DrValidityPipeline
 from classifier.pipeline import Pipeline
 from classifier.providers.ollama import create_ollama_chat_model
+from classifier.providers.vllm import create_vllm_chat_model
 from classifier.routing import DefaultFileRouter
 from config.settings import settings
 
@@ -57,13 +59,36 @@ def _make_ocr_reader() -> OcrReader:
     )
 
 
-def _make_llm() -> BaseChatModel:
-    semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
+def _make_ollama_llm(semaphore: asyncio.Semaphore) -> BaseChatModel:
+    """Build the local Ollama chat model (laptop default)."""
     return create_ollama_chat_model(
         url=settings.ollama_url,
         model=settings.ollama_model,
         semaphore=semaphore,
     )
+
+
+def _make_vllm_llm(semaphore: asyncio.Semaphore) -> BaseChatModel:
+    """Build the on-prem vLLM chat model (DGX Spark)."""
+    return create_vllm_chat_model(
+        base_url=settings.vllm_base_url,
+        model=settings.vllm_model,
+        temperature=settings.vllm_temperature,
+        top_p=settings.vllm_top_p,
+        semaphore=semaphore,
+    )
+
+
+_LLM_BUILDERS: dict[str, Callable[[asyncio.Semaphore], BaseChatModel]] = {
+    "ollama": _make_ollama_llm,
+    "vllm": _make_vllm_llm,
+}
+
+
+def _make_llm() -> BaseChatModel:
+    """Build the chat model for the configured backend (settings.llm_backend)."""
+    semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
+    return _LLM_BUILDERS[settings.llm_backend](semaphore)
 
 
 def _make_router() -> DefaultFileRouter:

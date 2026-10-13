@@ -1,7 +1,7 @@
 import logging
 import platform
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, SecretStr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -95,11 +95,18 @@ class Settings(BaseSettings):
     # Let easyocr fetch model weights on first run (weights only, no patient data).
     ocr_download: bool = True
     ollama_url: str = "http://localhost:11434"
-    # Ollama model per machine. ollama_model is auto-filled from these (Spark vs laptop)
-    # unless set explicitly, e.g. COBBLEHILL_OLLAMA_MODEL=gemma3:1b.
-    ollama_model_laptop: str = "gemma3:1b"
-    ollama_model_spark: str = "medgemma:27b"
-    ollama_model: str = ""  # placeholder; _apply_machine_profile fills it
+    # Which server runs the LLM. "ollama" (default) is the single-user laptop path;
+    # "vllm" is the on-prem DGX Spark path. Opt in with COBBLEHILL_LLM_BACKEND=vllm.
+    llm_backend: Literal["ollama", "vllm"] = "ollama"
+    ollama_model: str = "gemma3:1b"
+    # ollama_model: str = "medgemma:27b"
+    # vLLM: OpenAI-compatible server shared with NurseBookSkill on the Spark. Must be
+    # on-prem (loopback / private address) — the provider refuses public hosts.
+    vllm_base_url: str = "http://localhost:8001"
+    vllm_model: str = "nemotron-3.5-lightning"  # the server's --served-model-name
+    # Sampling per the Nemotron model card.
+    vllm_temperature: float = 0.6
+    vllm_top_p: float = 0.95
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 3
     sharepoint_download_concurrency: int = 5
@@ -123,20 +130,14 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _apply_machine_profile(cls, data: Any) -> Any:
-        """Fill ollama_model / ocr_gpu for this machine unless explicitly provided."""
+        """Fill ocr_gpu for this machine unless explicitly provided."""
         if not isinstance(data, dict):
             return data
         profile = "spark" if is_dgx_spark() else "laptop"
-        for name in ("ollama_model", "ocr_gpu"):
-            if name not in data:
-                source = f"{name}_{profile}"
-                data[name] = data.get(source, cls.model_fields[source].default)
-        logger.info(
-            "Machine profile %s: ollama_model=%s ocr_gpu=%s",
-            profile,
-            data["ollama_model"],
-            data["ocr_gpu"],
-        )
+        if "ocr_gpu" not in data:
+            source = f"ocr_gpu_{profile}"
+            data["ocr_gpu"] = data.get(source, cls.model_fields[source].default)
+        logger.info("Machine profile %s: ocr_gpu=%s", profile, data["ocr_gpu"])
         return data
 
     @model_validator(mode="after")
