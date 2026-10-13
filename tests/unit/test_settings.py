@@ -1,6 +1,7 @@
-"""Tests for machine-profile auto-detection in config.settings."""
+"""Tests for machine-profile auto-detection and backend selection in config.settings."""
 
 import pytest
+from pydantic import ValidationError
 
 from config import settings as settings_module
 from config.settings import Settings, is_dgx_spark
@@ -8,9 +9,9 @@ from config.settings import Settings, is_dgx_spark
 
 @pytest.fixture
 def on_machine(monkeypatch: pytest.MonkeyPatch):
-    """Return a setter that fakes platform.machine() and clears profile env overrides."""
-    monkeypatch.delenv("COBBLEHILL_OLLAMA_MODEL", raising=False)
-    monkeypatch.delenv("COBBLEHILL_OCR_GPU", raising=False)
+    """Return a setter that fakes platform.machine() and clears related env overrides."""
+    for var in ("COBBLEHILL_OCR_GPU", "COBBLEHILL_LLM_BACKEND", "COBBLEHILL_OLLAMA_MODEL"):
+        monkeypatch.delenv(var, raising=False)
 
     def _set(arch: str) -> None:
         monkeypatch.setattr(settings_module.platform, "machine", lambda: arch)
@@ -29,36 +30,39 @@ def test_is_dgx_spark_false_on_other_architectures(on_machine, arch: str) -> Non
     assert is_dgx_spark() is False
 
 
-def test_settings_picks_spark_model_and_gpu_on_aarch64(on_machine) -> None:
+def test_settings_enables_ocr_gpu_on_spark(on_machine) -> None:
     on_machine("aarch64")
-    s = Settings(_env_file=None)
-    assert s.ollama_model == s.ollama_model_spark == "medgemma:27b"
-    assert s.ocr_gpu is True
+    assert Settings(_env_file=None).ocr_gpu is True
 
 
-def test_settings_picks_laptop_model_and_cpu_ocr_on_x86_64(on_machine) -> None:
+def test_settings_disables_ocr_gpu_on_laptop(on_machine) -> None:
     on_machine("x86_64")
-    s = Settings(_env_file=None)
-    assert s.ollama_model == s.ollama_model_laptop == "gemma3:1b"
-    assert s.ocr_gpu is False
-
-
-def test_settings_uses_overridden_profile_model(on_machine) -> None:
-    on_machine("aarch64")
-    s = Settings(_env_file=None, ollama_model_spark="custom:7b")
-    assert s.ollama_model == "custom:7b"
-
-
-def test_ollama_model_env_overrides_auto_detection(
-    on_machine, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    on_machine("aarch64")
-    monkeypatch.setenv("COBBLEHILL_OLLAMA_MODEL", "gemma3:1b")
-    s = Settings(_env_file=None)
-    assert s.ollama_model == "gemma3:1b"
+    assert Settings(_env_file=None).ocr_gpu is False
 
 
 def test_ocr_gpu_kwarg_overrides_auto_detection(on_machine) -> None:
     on_machine("aarch64")
-    s = Settings(_env_file=None, ocr_gpu=False)
-    assert s.ocr_gpu is False
+    assert Settings(_env_file=None, ocr_gpu=False).ocr_gpu is False
+
+
+@pytest.mark.parametrize("arch", ["aarch64", "x86_64"])
+def test_llm_backend_defaults_to_ollama_on_every_machine(on_machine, arch: str) -> None:
+    on_machine(arch)
+    s = Settings(_env_file=None)
+    assert s.llm_backend == "ollama"
+    assert s.ollama_model == "gemma3:1b"
+
+
+def test_llm_backend_env_selects_vllm(on_machine, monkeypatch: pytest.MonkeyPatch) -> None:
+    on_machine("aarch64")
+    monkeypatch.setenv("COBBLEHILL_LLM_BACKEND", "vllm")
+    s = Settings(_env_file=None)
+    assert s.llm_backend == "vllm"
+    assert s.vllm_base_url == "http://localhost:8001"
+    assert s.vllm_model == "nemotron-3.5-lightning"
+
+
+def test_llm_backend_rejects_unknown_value(on_machine) -> None:
+    on_machine("x86_64")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, llm_backend="openai")
