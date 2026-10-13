@@ -2,6 +2,7 @@ import asyncio
 import logging
 import shutil
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
@@ -45,9 +46,21 @@ class DrValidityService:
         folder = sharepoint_folder.strip("/")
         # Created here (not by the downloader) so a failed download is cleaned up too.
         local_dir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="cobblehill_api_"))
+        started = time.perf_counter()
         try:
             _, web_url = await self._downloader.download(folder, local_dir)
+            downloaded = time.perf_counter()
             results = await self._pipeline.run_folder(local_dir)
+            finished = time.perf_counter()
+            logger.info(
+                "timing request folder=%s download %.2fs | pipeline %.2fs | total %.2fs "
+                "| patients=%d",
+                folder,
+                downloaded - started,
+                finished - downloaded,
+                finished - started,
+                len(results),
+            )
             # Names a patient whose notes sit directly in the temp download dir.
             root_name = PurePosixPath(folder).name
             return {

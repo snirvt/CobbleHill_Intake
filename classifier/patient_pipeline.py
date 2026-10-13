@@ -1,10 +1,17 @@
 import asyncio
 import logging
+import time
 from pathlib import Path
 
-from classifier.models import DocumentMetadata, DrValidityPipelineResult, PatientMetadata
+from classifier.models import (
+    DocumentMetadata,
+    DrValidityPipelineResult,
+    ExtractedText,
+    PatientMetadata,
+)
 from classifier.naming import concat_notes, parse_note
-from classifier.protocols import DrValidityClassifier, FileRouter
+from classifier.protocols import ContentExtractor, DrValidityClassifier, FileRouter
+from classifier.timing import ExtractTiming, PatientTimings, current_timings
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -49,16 +56,22 @@ class DrValidityPipeline:
         async def process(dr_paths: list[Path]) -> DrValidityPipelineResult:
             folder = dr_paths[0].parent
             async with sem:
+                timings = PatientTimings(patient=folder.name)
+                current_timings.set(timings)
+                started = time.perf_counter()
                 try:
                     extracted = await asyncio.gather(
-                        *(self._router.route(p).extract(p) for p in dr_paths)
+                        *(self._timed_extract(p, timings) for p in dr_paths)
                     )
+                    timings.extract_wall_s = time.perf_counter() - started
                     metadata = DocumentMetadata(
                         file_path=dr_paths[0],
                         raw_text=concat_notes(dr_paths, [x.text for x in extracted]),
                         meta=PatientMetadata(),
                     )
+                    classify_started = time.perf_counter()
                     result = await self._classifier.classify(metadata, dr_paths)
+                    timings.classify_wall_s = time.perf_counter() - classify_started
                     return DrValidityPipelineResult(
                         patient_folder=folder, dr_paths=dr_paths, success=True, result=result
                     )
@@ -67,8 +80,26 @@ class DrValidityPipeline:
                     return DrValidityPipelineResult(
                         patient_folder=folder, dr_paths=dr_paths, success=False, error=str(exc)
                     )
+                finally:
+                    timings.total_s = time.perf_counter() - started
+                    timings.log()
 
         return list(await asyncio.gather(*[process(p) for p in patients]))
+
+    async def _timed_extract(self, path: Path, timings: PatientTimings) -> ExtractedText:
+        """Extract one file and record how long it took and with which extractor."""
+        extractor: ContentExtractor = self._router.route(path)
+        started = time.perf_counter()
+        extracted = await extractor.extract(path)
+        timings.extracts.append(
+            ExtractTiming(
+                file=path.name,
+                extractor=type(extractor).__name__,
+                pages=extracted.num_pages,
+                seconds=time.perf_counter() - started,
+            )
+        )
+        return extracted
 
     async def run_folder(self, root: Path) -> list[DrValidityPipelineResult]:
         """Scan root for patient folders with dr notes and process them."""

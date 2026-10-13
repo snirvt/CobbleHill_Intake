@@ -16,6 +16,7 @@ from classifier.protocols import (
     PatientAgeExtractor,
     TreatmentRequestExtractor,
 )
+from classifier.timing import step
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -54,10 +55,13 @@ class DrNoteValidityClassifier:
         ``metadata.file_path`` is the patient's first dr note; its folder is the patient folder.
         """
         age, diagnoses, care, main = await asyncio.gather(
-            self._age_extractor.extract_age(metadata),
-            self._diagnosis_extractor.extract_diagnoses(metadata),
-            self._care_extractor.extract_treatment_request(metadata),
-            self._main_diagnosis_extractor.extract_main_diagnosis(metadata),
+            step("age", self._age_extractor.extract_age(metadata)),
+            step("diagnosis", self._diagnosis_extractor.extract_diagnoses(metadata)),
+            step("care", self._care_extractor.extract_treatment_request(metadata)),
+            step(
+                "main_diagnosis",
+                self._main_diagnosis_extractor.extract_main_diagnosis(metadata),
+            ),
         )
         group = self._patient_group(age.age_years)
         diagnosis_check = DiagnosisCheck.EXISTS if diagnoses.diagnoses else DiagnosisCheck.MISSING
