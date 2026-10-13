@@ -69,3 +69,16 @@ def test_create_vllm_chat_model_refuses_public_base_url() -> None:
             temperature=0.6,
             top_p=0.95,
         )
+
+
+def test_create_vllm_chat_model_passes_extra_body() -> None:
+    body = {"chat_template_kwargs": {"enable_thinking": False}}
+    model = create_vllm_chat_model(
+        base_url="http://localhost:8001",
+        model="nemotron-3.5-lightning",
+        temperature=0.6,
+        top_p=0.95,
+        extra_body=body,
+    )
+    assert isinstance(model, ChatOpenAI)
+    assert model.extra_body == body

@@ -59,8 +59,8 @@ def _make_ocr_reader() -> OcrReader:
     )
 
 
-def _make_ollama_llm(semaphore: asyncio.Semaphore) -> BaseChatModel:
-    """Build the local Ollama chat model (laptop default)."""
+def _make_ollama_llm(semaphore: asyncio.Semaphore, thinking: str) -> BaseChatModel:
+    """Build the local Ollama chat model (laptop default). ``thinking`` is ignored."""
     return create_ollama_chat_model(
         url=settings.ollama_url,
         model=settings.ollama_model,
@@ -68,27 +68,35 @@ def _make_ollama_llm(semaphore: asyncio.Semaphore) -> BaseChatModel:
     )
 
 
-def _make_vllm_llm(semaphore: asyncio.Semaphore) -> BaseChatModel:
-    """Build the on-prem vLLM chat model (DGX Spark)."""
+def _make_vllm_llm(semaphore: asyncio.Semaphore, thinking: str) -> BaseChatModel:
+    """Build the on-prem vLLM chat model (DGX Spark) at the given thinking level."""
     return create_vllm_chat_model(
         base_url=settings.vllm_base_url,
         model=settings.vllm_model,
         temperature=settings.vllm_temperature,
         top_p=settings.vllm_top_p,
         semaphore=semaphore,
+        extra_body=settings.vllm_thinking_levels[thinking],
     )
 
 
-_LLM_BUILDERS: dict[str, Callable[[asyncio.Semaphore], BaseChatModel]] = {
+_LLM_BUILDERS: dict[str, Callable[[asyncio.Semaphore, str], BaseChatModel]] = {
     "ollama": _make_ollama_llm,
     "vllm": _make_vllm_llm,
 }
 
 
-def _make_llm() -> BaseChatModel:
-    """Build the chat model for the configured backend (settings.llm_backend)."""
-    semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
-    return _LLM_BUILDERS[settings.llm_backend](semaphore)
+def _make_llm(
+    semaphore: asyncio.Semaphore | None = None, thinking: str = "high"
+) -> BaseChatModel:
+    """Build the chat model for the configured backend (settings.llm_backend).
+
+    Pass a shared ``semaphore`` so several models honour one max_concurrent_llm_calls
+    budget; ``thinking`` is a key of settings.vllm_thinking_levels.
+    """
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
+    return _LLM_BUILDERS[settings.llm_backend](semaphore, thinking)
 
 
 def _make_router() -> DefaultFileRouter:
@@ -170,18 +178,23 @@ def build_patient_age_extractor(llm: BaseChatModel | None = None) -> PatientAgeC
 def build_dr_validity_pipeline() -> DrValidityPipeline:
     """Wire up the per-patient dr-note validity pipeline (dr notes only).
 
-    Age, diagnosis, medical-necessity and main-diagnosis extractors share one chat
-    model, so the pipeline honours a single max_concurrent_llm_calls budget.
+    Age, diagnosis, medical-necessity and main-diagnosis extractors each get their own
+    chat model at the task's thinking level (settings.task_thinking), all sharing one
+    semaphore so the pipeline honours a single max_concurrent_llm_calls budget.
     """
     _make_env()
-    llm = _make_llm()
+    semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
+
+    def llm(task: str) -> BaseChatModel:
+        return _make_llm(semaphore, settings.task_thinking[task])
+
     return DrValidityPipeline(
         router=_make_router(),
         classifier=DrNoteValidityClassifier(
-            age_extractor=build_patient_age_extractor(llm),
-            diagnosis_extractor=build_diagnosis_extractor(llm),
-            care_extractor=build_treatment_request_extractor(llm),
-            main_diagnosis_extractor=build_main_diagnosis_extractor(llm),
+            age_extractor=build_patient_age_extractor(llm("age")),
+            diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
+            care_extractor=build_treatment_request_extractor(llm("care")),
+            main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
         ),
     )
 

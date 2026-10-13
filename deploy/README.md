@@ -35,5 +35,10 @@ curl -sS http://localhost:8001/v1/models | jq -r '.data[0].id'         # nemotro
   the reply `content`, which CobbleHill's classifiers parse as JSON.
 - `--gpu-memory-utilization 0.45` leaves room for other GPU users (e.g. easyocr with
   `ocr_gpu` on). Restarting `vllm` interrupts NurseBookSkill too.
+- `--max-num-seqs 16`: max requests decoded together across both apps. Decode is
+  memory-bound, so batching raises total tok/s almost for free. CobbleHill sends up to
+  `max_concurrent_llm_calls` (8) at once.
+- Thinking per task: `task_thinking` / `vllm_thinking_levels` in `config/settings.py`
+  (default `off`). Sent per request, so NurseBookSkill keeps its own thinking.
 - Full install / troubleshooting / NGC-container fallback: NurseBookSkill
   `agent/VLLM.md` and `agent/deploy/README.md`.

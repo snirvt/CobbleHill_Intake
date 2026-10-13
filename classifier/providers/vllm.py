@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import logging
+from typing import Any
 from urllib.parse import urlparse
 
 from langchain_core.language_models import BaseChatModel
@@ -38,8 +39,12 @@ def create_vllm_chat_model(
     temperature: float,
     top_p: float,
     semaphore: asyncio.Semaphore | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> BaseChatModel:
-    """Return a ChatOpenAI client for an on-prem vLLM server, optionally semaphore-wrapped."""
+    """Return a ChatOpenAI client for an on-prem vLLM server, optionally semaphore-wrapped.
+
+    ``extra_body`` is merged into every request (e.g. vLLM ``chat_template_kwargs``).
+    """
     assert_on_prem(base_url)
     inner = ChatOpenAI(
         model=model,
@@ -47,6 +52,7 @@ def create_vllm_chat_model(
         api_key=SecretStr("EMPTY"),  # vLLM ignores it; the client requires one
         temperature=temperature,
         top_p=top_p,
+        extra_body=extra_body,
     )
     if semaphore is None:
         return inner

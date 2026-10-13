@@ -107,8 +107,27 @@ class Settings(BaseSettings):
     # Sampling per the Nemotron model card.
     vllm_temperature: float = 0.6
     vllm_top_p: float = 0.95
+    # Extra request params sent to vLLM per thinking level. Levels are data: tune or add
+    # one here, no code change. "thinking_token_budget" needs vLLM support for it; an
+    # unsupported key is ignored by the server (check out_tok in the timing logs).
+    vllm_thinking_levels: dict[str, dict[str, Any]] = {
+        "off": {"chat_template_kwargs": {"enable_thinking": False}},
+        "low": {
+            "chat_template_kwargs": {"enable_thinking": True},
+            "thinking_token_budget": 1024,
+        },
+        "high": {"chat_template_kwargs": {"enable_thinking": True}},  # unlimited
+    }
+    # Thinking level per dr-validity task (keys match the timing log step names).
+    # Ollama ignores it. Override e.g. COBBLEHILL_TASK_THINKING='{"diagnosis": "low", ...}'.
+    task_thinking: dict[str, str] = {
+        "age": "off",
+        "diagnosis": "off",
+        "care": "off",
+        "main_diagnosis": "off",
+    }
     classifier_tasks: list[str] = ["doctor_visit_needed"]
-    max_concurrent_llm_calls: int = 3
+    max_concurrent_llm_calls: int = 8
     sharepoint_download_concurrency: int = 5
     # Subfolder of the SharePoint input folder that results are uploaded into.
     sharepoint_results_subfolder: str = "results"
@@ -139,6 +158,20 @@ class Settings(BaseSettings):
             data["ocr_gpu"] = data.get(source, cls.model_fields[source].default)
         logger.info("Machine profile %s: ocr_gpu=%s", profile, data["ocr_gpu"])
         return data
+
+    @model_validator(mode="after")
+    def _check_task_thinking(self) -> "Settings":
+        unknown = {
+            task: level
+            for task, level in self.task_thinking.items()
+            if level not in self.vllm_thinking_levels
+        }
+        if unknown:
+            raise ValueError(
+                f"task_thinking uses unknown levels {unknown}; "
+                f"known: {sorted(self.vllm_thinking_levels)}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> "Settings":

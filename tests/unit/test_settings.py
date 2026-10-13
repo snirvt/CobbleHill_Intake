@@ -66,3 +66,25 @@ def test_llm_backend_rejects_unknown_value(on_machine) -> None:
     on_machine("x86_64")
     with pytest.raises(ValidationError):
         Settings(_env_file=None, llm_backend="openai")
+
+
+def test_task_thinking_defaults_to_off_for_every_task(on_machine) -> None:
+    on_machine("x86_64")
+    s = Settings(_env_file=None)
+    assert s.task_thinking == {
+        "age": "off", "diagnosis": "off", "care": "off", "main_diagnosis": "off",
+    }
+    assert set(s.vllm_thinking_levels) == {"off", "low", "high"}
+
+
+def test_task_thinking_rejects_unknown_level(on_machine) -> None:
+    on_machine("x86_64")
+    with pytest.raises(ValidationError, match="unknown levels"):
+        Settings(_env_file=None, task_thinking={"age": "medium"})
+
+
+def test_task_thinking_env_override(on_machine, monkeypatch: pytest.MonkeyPatch) -> None:
+    on_machine("x86_64")
+    monkeypatch.setenv("COBBLEHILL_TASK_THINKING", '{"diagnosis": "low", "age": "high"}')
+    s = Settings(_env_file=None)
+    assert s.task_thinking == {"diagnosis": "low", "age": "high"}
