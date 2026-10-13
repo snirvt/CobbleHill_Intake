@@ -1,0 +1,52 @@
+[Unit]
+Description=vLLM Nemotron server (shared: Nursebook + CobbleHill Intake)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cobblehill
+Group=cobblehill
+WorkingDirectory=/home/cobblehill
+# Run through a LOGIN shell (-l) + venv activation so systemd gets the SAME environment
+# a manual terminal run has (HF_HOME, HF_TOKEN, CUDA / LD_LIBRARY_PATH, Triton cache, ...).
+# `exec` replaces bash with vllm so systemd tracks the real process (clean stop/restart).
+# Copied from NurseBookSkill agent/deploy/vllm.service (flags = its agent/VLLM.md §1).
+# ONE shared server for both apps — keep the two copies identical.
+ExecStart=/bin/bash -lc 'source ~/vllm-venv/bin/activate && exec vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
+  --served-model-name nemotron-3.5-lightning \
+  --trust-remote-code \
+  --max-model-len 262144 \
+  --max-num-seqs 4 \
+  --max-num-batched-tokens 8192 \
+  --long-prefill-token-threshold 4096 \
+  --reasoning-parser nemotron_v3 \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+  --gpu-memory-utilization 0.45 \
+  --host 127.0.0.1 --port 8001 --api-key EMPTY'
+Restart=always
+RestartSec=5
+# model load + JIT is slow; don't let systemd kill a slow start
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=multi-user.target
+
+# --- FALLBACK (Approach B): NGC container, only if the venv vllm lacks --moe-backend
+# or still loops the routed_experts warning. Requires Docker + nvidia-container-toolkit.
+# Swap the whole [Service] ExecStart above for this systemd-managed container:
+#
+# ExecStartPre=-/usr/bin/docker rm -f vllm
+# ExecStart=/usr/bin/docker run --rm --name vllm --ipc=host --gpus all \
+#   -p 127.0.0.1:8001:8001 \
+#   -e HF_HOME=/models -v /home/cobblehill/.cache/huggingface:/models \
+#   nvcr.io/nvidia/vllm:26.04-py3 \
+#   vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
+#     --served-model-name nemotron-3.5-lightning --trust-remote-code \
+#     --quantization modelopt --moe-backend marlin --kv-cache-dtype fp8 \
+#     --max-model-len 262144 --max-num-seqs 4 --max-num-batched-tokens 8192 \
+#     --long-prefill-token-threshold 4096 \
+#     --reasoning-parser nemotron_v3 \
+#     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+#     --gpu-memory-utilization 0.85 \
+#     --host 0.0.0.0 --port 8001 --api-key EMPTY
+# ExecStop=/usr/bin/docker stop vllm
