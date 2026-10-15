@@ -14,7 +14,7 @@ from classifier.models import (
     PatientMetadata,
     RunError,
 )
-from classifier.naming import concat_notes, parse_note
+from classifier.naming import concat_notes, in_results_folder, parse_note
 from classifier.protocols import ContentExtractor, DrValidityClassifier, FileRouter, FolderCheck
 from classifier.timing import ExtractTiming, PatientTimings, current_timings
 from config.settings import settings
@@ -26,10 +26,11 @@ def scan_patient_dr_notes(root: Path) -> list[list[Path]]:
     """Group dr notes by patient folder: one sorted list of dr files per folder.
 
     Walks root recursively. Every folder holding at least one dr note (any category
-    prefix) is one patient; nurse notes and other files are ignored.
+    prefix) is one patient; nurse notes, other files and results folders are ignored.
     """
     patients: list[list[Path]] = []
-    for folder in [root, *sorted(p for p in root.rglob("*") if p.is_dir())]:
+    subfolders = sorted(p for p in root.rglob("*") if p.is_dir() and not in_results_folder(p, root))
+    for folder in [root, *subfolders]:
         dr_files = sorted(f for f in folder.iterdir() if parse_note(f, role="dr") is not None)
         if dr_files:
             patients.append(dr_files)

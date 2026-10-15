@@ -13,6 +13,7 @@ try:
 except ImportError:
     ConfidentialClientApplication = None  # type: ignore[assignment,misc]
 
+from classifier.naming import is_results_folder
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,9 @@ async def download_folder(
         name: str = item["name"]
 
         if "folder" in item:
+            if is_results_folder(name):
+                logger.info("Skipping results folder: %s/%s", folder_path, name)
+                continue
             logger.info("Entering folder: %s/%s", folder_path, name)
             tasks.append(
                 download_folder(

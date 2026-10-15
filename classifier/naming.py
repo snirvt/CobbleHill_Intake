@@ -70,6 +70,20 @@ def parse_note(path: Path, role: NoteRole | None = None) -> NoteName | None:
     return parsed
 
 
+def is_results_folder(name: str) -> bool:
+    """True for the folder ``--upload-results`` writes reports into; never treated as input."""
+    return name.lower() == settings.sharepoint_results_subfolder.lower()
+
+
+def in_results_folder(path: Path, root: Path) -> bool:
+    """True if path (relative to root) is a results folder or lies inside one."""
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        return False
+    return any(is_results_folder(part) for part in parts)
+
+
 def label(category: str | None) -> str:
     """Human-readable category label used in log messages."""
     return category or "uncategorized"

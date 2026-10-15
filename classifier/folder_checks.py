@@ -3,13 +3,24 @@
 from pathlib import Path
 
 from classifier.models import ErrorCode, ErrorStage, RunError
-from classifier.naming import NoteRole, parse_note
+from classifier.naming import NoteRole, in_results_folder, parse_note
 
 
 def leaf_folders(root: Path) -> list[Path]:
-    """Every folder under root (root included) that has no subfolders, sorted."""
-    folders = [root, *sorted(p for p in root.rglob("*") if p.is_dir())]
-    return [f for f in folders if not any(child.is_dir() for child in f.iterdir())]
+    """Every folder under root (root included) that has no subfolders, sorted.
+
+    Results folders (where ``--upload-results`` puts reports) and their contents are
+    ignored, so a patient folder holding only a results subfolder is still a leaf.
+    """
+    folders = [
+        root,
+        *sorted(p for p in root.rglob("*") if p.is_dir() and not in_results_folder(p, root)),
+    ]
+    return [
+        f
+        for f in folders
+        if not any(c.is_dir() and not in_results_folder(c, root) for c in f.iterdir())
+    ]
 
 
 class RequiredNotesCheck:
