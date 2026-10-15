@@ -21,8 +21,9 @@ from classifier.extractors.easyocr_extractor import (
     create_easyocr_reader,
 )
 from classifier.extractors.pdf import PdfExtractor
-from classifier.ingest.sharepoint import SharePointFolderDownloader
 from classifier.extractors.plaintext import PlaintextExtractor
+from classifier.folder_checks import RequiredNotesCheck
+from classifier.ingest.sharepoint import SharePointFolderDownloader
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.models import (
@@ -190,6 +191,7 @@ def build_dr_validity_pipeline() -> DrValidityPipeline:
 
     return DrValidityPipeline(
         router=_make_router(),
+        folder_check=RequiredNotesCheck(roles=("dr",)),
         classifier=DrNoteValidityClassifier(
             age_extractor=build_patient_age_extractor(llm("age")),
             diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
