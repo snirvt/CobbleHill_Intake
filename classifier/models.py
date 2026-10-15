@@ -119,6 +119,8 @@ class DiagnosisExtractionResult(BaseModel):
 
     file_path: Path
     diagnoses: list[Diagnosis] = []
+    # Set when the LLM call or parse failed; diagnoses is then empty, not "none found".
+    error: str | None = None
 
 
 class TreatmentRequestResult(BaseModel):
@@ -127,6 +129,8 @@ class TreatmentRequestResult(BaseModel):
     file_path: Path
     treatment_requested: bool
     reasoning: str | None = None
+    # Set when the LLM call or parse failed; treatment_requested is then a placeholder.
+    error: str | None = None
 
 
 class MainDiagnosisResult(BaseModel):
@@ -135,6 +139,8 @@ class MainDiagnosisResult(BaseModel):
     file_path: Path
     main_diagnosis: str | None = None  # None = no diagnosis found, or the call failed
     reasoning: str | None = None
+    # Set when the LLM call or parse failed.
+    error: str | None = None
 
 
 class PipelineResult(BaseModel):
@@ -235,6 +241,8 @@ class PatientAgeResult(BaseModel):
     dob: str | None = None
     date_of_service: str | None = None
     reasoning: str | None = None
+    # Set when the LLM call or parse failed; age_years is then None, not "not stated".
+    error: str | None = None
 
 
 class PatientGroup(StrEnum):
@@ -270,6 +278,51 @@ class DrValidityResult(BaseModel):
     reasons: list[str] = []
 
 
+class ErrorStage(StrEnum):
+    """Where in a run an error happened: folder scan, text extraction, or an LLM step."""
+
+    FOLDER = "folder"
+    EXTRACT = "extract"
+    AGE = "age"
+    DIAGNOSIS = "diagnosis"
+    CARE = "care"
+    MAIN_DIAGNOSIS = "main_diagnosis"
+    PIPELINE = "pipeline"
+
+
+class ErrorCode(StrEnum):
+    """What went wrong."""
+
+    EMPTY_FOLDER = "empty_folder"
+    MISSING_REQUIRED_NOTES = "missing_required_notes"
+    EMPTY_TEXT = "empty_text"
+    LLM_FAILED = "llm_failed"
+    PARSE_FAILED = "parse_failed"
+    UNEXPECTED = "unexpected"
+
+
+class RunError(BaseModel):
+    """One problem found during a run, reported to the caller instead of being swallowed."""
+
+    stage: ErrorStage
+    code: ErrorCode
+    message: str
+    folder: Path | None = None  # the patient/leaf folder concerned, if any
+    file: Path | None = None  # the note concerned, if any
+
+
+class ClassificationStepError(Exception):
+    """Raised by a classifier when one or more of its steps failed after retries.
+
+    Carries every failed step so the pipeline can report them all, rather than a verdict
+    computed from fallback defaults.
+    """
+
+    def __init__(self, errors: list[RunError]) -> None:
+        super().__init__("; ".join(f"{e.stage}: {e.message}" for e in errors))
+        self.errors = errors
+
+
 class DrValidityPipelineResult(BaseModel):
     """Outcome of the dr-validity pipeline for one patient folder."""
 
@@ -278,3 +331,5 @@ class DrValidityPipelineResult(BaseModel):
     success: bool
     result: DrValidityResult | None = None
     error: str | None = None
+    # Structured errors; may be non-empty even when success is True (non-fatal issues).
+    errors: list[RunError] = []

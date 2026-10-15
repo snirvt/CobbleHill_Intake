@@ -12,6 +12,11 @@ Clients then send it on every request except GET /health::
 
     curl -H "X-API-Key: <key>" -H "Content-Type: application/json" \
          -d '{"sharepoint_folder": "..."}' http://<host>:8010/dr-validity
+
+The response lists every problem met along the way under ``errors`` (top level) and per
+patient under ``patients[].errors``: empty folders, folders without dr notes, notes with
+no extractable text, and LLM steps that failed after retries. SharePoint failures still
+return HTTP 404/502.
 """
 
 import argparse

@@ -6,6 +6,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.retry import with_llm_retry
 from classifier.models import Diagnosis, DiagnosisExtractionResult, DocumentMetadata
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class DiagnosisExtractionClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | llm | parser
+        self._chain = with_llm_retry(prompt | llm | parser)
 
     async def extract_diagnoses(
         self, metadata: DocumentMetadata
@@ -65,7 +66,11 @@ class DiagnosisExtractionClassifier:
             )
         except OutputParserException as exc:
             logger.error("Parse failed for %s: %s", metadata.file_path, exc)
-            return DiagnosisExtractionResult(file_path=metadata.file_path, diagnoses=[])
+            return DiagnosisExtractionResult(
+                file_path=metadata.file_path, diagnoses=[], error=f"Parse error: {exc}"
+            )
         except Exception as exc:
             logger.error("LLM call failed for %s: %s", metadata.file_path, exc)
-            return DiagnosisExtractionResult(file_path=metadata.file_path, diagnoses=[])
+            return DiagnosisExtractionResult(
+                file_path=metadata.file_path, diagnoses=[], error=f"LLM error: {exc}"
+            )

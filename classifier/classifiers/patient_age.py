@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DocumentMetadata, PatientAgeResult
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class PatientAgeClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | llm | parser
+        self._chain = with_llm_retry(prompt | llm | parser)
 
     @staticmethod
     def _compute_age(output: PatientAgeOutput, today: date | None = None) -> float | None:
@@ -99,7 +100,15 @@ class PatientAgeClassifier:
             )
         except OutputParserException as exc:
             logger.error("Parse failed for %s: %s", metadata.file_path, exc)
-            return PatientAgeResult(file_path=metadata.file_path, reasoning=f"Parse error: {exc}")
+            return PatientAgeResult(
+                file_path=metadata.file_path,
+                reasoning=f"Parse error: {exc}",
+                error=f"Parse error: {exc}",
+            )
         except Exception as exc:
             logger.error("LLM call failed for %s: %s", metadata.file_path, exc)
-            return PatientAgeResult(file_path=metadata.file_path, reasoning=f"LLM error: {exc}")
+            return PatientAgeResult(
+                file_path=metadata.file_path,
+                reasoning=f"LLM error: {exc}",
+                error=f"LLM error: {exc}",
+            )

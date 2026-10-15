@@ -6,8 +6,9 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from classifier.models import DrValidityPipelineResult
+from classifier.models import DrValidityPipelineResult, RunError
 from classifier.output.dr_validity_report import (
+    dr_validity_errors,
     dr_validity_groups,
     dr_validity_patient_dict,
     dr_validity_summary,
@@ -29,6 +30,8 @@ class FolderPipeline(Protocol):
 
     async def run_folder(self, root: Path) -> list[DrValidityPipelineResult]: ...
 
+    def folder_errors(self, root: Path) -> list[RunError]: ...
+
 
 class DrValidityService:
     """Downloads a SharePoint folder, runs the dr-validity check, returns a JSON-ready report.
@@ -42,7 +45,11 @@ class DrValidityService:
         self._pipeline = pipeline
 
     async def run(self, sharepoint_folder: str) -> dict[str, object]:
-        """Return {sharepoint_folder, web_url, summary, groups, patients} for the folder."""
+        """Return {sharepoint_folder, web_url, summary, groups, patients, errors} for the folder.
+
+        ``errors`` lists everything that went wrong: folders that could not be processed
+        (empty, no dr notes) and per-patient failures (blank text, failed LLM steps).
+        """
         folder = sharepoint_folder.strip("/")
         # Created here (not by the downloader) so a failed download is cleaned up too.
         local_dir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="cobblehill_api_"))
@@ -51,6 +58,7 @@ class DrValidityService:
             _, web_url = await self._downloader.download(folder, local_dir)
             downloaded = time.perf_counter()
             results = await self._pipeline.run_folder(local_dir)
+            folder_errors = await asyncio.to_thread(self._pipeline.folder_errors, local_dir)
             finished = time.perf_counter()
             logger.info(
                 "timing request folder=%s download %.2fs | pipeline %.2fs | total %.2fs "
@@ -66,9 +74,10 @@ class DrValidityService:
             return {
                 "sharepoint_folder": folder,
                 "web_url": web_url,
-                "summary": dr_validity_summary(results),
+                "summary": dr_validity_summary(results, folder_errors),
                 "groups": dr_validity_groups(results),
                 "patients": [dr_validity_patient_dict(r, local_dir, root_name) for r in results],
+                "errors": dr_validity_errors(results, folder_errors, local_dir, root_name),
             }
         finally:
             await asyncio.to_thread(shutil.rmtree, local_dir, ignore_errors=True)

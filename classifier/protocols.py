@@ -13,6 +13,7 @@ from classifier.models import (
     PairClassificationResult,
     PairDocumentMetadata,
     PatientAgeResult,
+    RunError,
     TreatmentRequestResult,
 )
 
@@ -109,3 +110,10 @@ class DrValidityClassifier(Protocol):
     async def classify(
         self, metadata: DocumentMetadata, dr_paths: list[Path]
     ) -> DrValidityResult: ...
+
+
+@runtime_checkable
+class FolderCheck(Protocol):
+    """Reports why a leaf folder cannot be processed by a pipeline (None when it can)."""
+
+    def check(self, folder: Path) -> RunError | None: ...
