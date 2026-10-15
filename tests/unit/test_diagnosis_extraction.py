@@ -81,6 +81,22 @@ async def test_malformed_response_returns_empty_list() -> None:
 
     assert result.file_path == Path("dr_note.pdf")
     assert result.diagnoses == []
+    assert result.error is not None and result.error.startswith("Parse error")
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_sets_error() -> None:
+    classifier = DiagnosisExtractionClassifier(llm=FakeListChatModel(responses=["x"]))
+
+    async def boom(_input: object) -> object:
+        raise TimeoutError("ollama timed out")
+
+    classifier._chain = type("Chain", (), {"ainvoke": staticmethod(boom)})()  # type: ignore[assignment]
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert result.diagnoses == []
+    assert result.error == "LLM error: ollama timed out"
 
 
 @pytest.mark.asyncio

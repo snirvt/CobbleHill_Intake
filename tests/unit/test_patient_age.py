@@ -86,6 +86,7 @@ async def test_extract_age_malformed_response_returns_none() -> None:
 
     assert result.age_years is None
     assert result.reasoning is not None and result.reasoning.startswith("Parse error")
+    assert result.error is not None and result.error.startswith("Parse error")
 
 
 async def test_extract_age_llm_failure_returns_none() -> None:
@@ -100,6 +101,7 @@ async def test_extract_age_llm_failure_returns_none() -> None:
 
     assert result.age_years is None
     assert result.reasoning is not None and result.reasoning.startswith("LLM error")
+    assert result.error == "LLM error: ollama timed out"
 
 
 async def test_stub_provider_returns_obviously_fake_age() -> None:
@@ -109,3 +111,18 @@ async def test_stub_provider_returns_obviously_fake_age() -> None:
 
     assert result.age_years == 99.0
     assert result.reasoning is not None and "STUB" in result.reasoning
+
+
+async def test_extract_age_retries_malformed_response_then_succeeds() -> None:
+    llm = FakeListChatModel(responses=["not json", json.dumps({"age_years": 4})])
+    classifier = PatientAgeClassifier(llm=llm)
+
+    result = await classifier.extract_age(_make_metadata())
+
+    assert result.age_years == 4
+    assert result.error is None
+
+
+async def test_extract_age_success_has_no_error() -> None:
+    classifier = PatientAgeClassifier(llm=_fake_llm(age_years=30))
+    assert (await classifier.extract_age(_make_metadata())).error is None

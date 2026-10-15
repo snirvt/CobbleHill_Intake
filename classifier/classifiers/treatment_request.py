@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DocumentMetadata, TreatmentRequestResult
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class TreatmentRequestClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | llm | parser
+        self._chain = with_llm_retry(prompt | llm | parser)
 
     async def extract_treatment_request(
         self, metadata: DocumentMetadata
@@ -83,6 +84,7 @@ class TreatmentRequestClassifier:
                 file_path=metadata.file_path,
                 treatment_requested=False,
                 reasoning=f"Parse error: {exc}",
+                error=f"Parse error: {exc}",
             )
         except Exception as exc:
             logger.error("LLM call failed for %s: %s", metadata.file_path, exc)
@@ -90,4 +92,5 @@ class TreatmentRequestClassifier:
                 file_path=metadata.file_path,
                 treatment_requested=False,
                 reasoning=f"LLM error: {exc}",
+                error=f"LLM error: {exc}",
             )

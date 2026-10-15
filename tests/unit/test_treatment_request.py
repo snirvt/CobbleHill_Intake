@@ -61,6 +61,21 @@ async def test_malformed_response_defaults_to_false() -> None:
 
     assert result.treatment_requested is False
     assert result.reasoning is not None and "error" in result.reasoning.lower()
+    assert result.error is not None and result.error.startswith("Parse error")
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_sets_error() -> None:
+    classifier = TreatmentRequestClassifier(llm=FakeListChatModel(responses=["x"]))
+
+    async def boom(_input: object) -> object:
+        raise TimeoutError("ollama timed out")
+
+    classifier._chain = type("Chain", (), {"ainvoke": staticmethod(boom)})()  # type: ignore[assignment]
+
+    result = await classifier.extract_treatment_request(_make_metadata())
+
+    assert result.error == "LLM error: ollama timed out"
 
 
 @pytest.mark.asyncio

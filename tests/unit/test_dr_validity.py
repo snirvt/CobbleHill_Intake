@@ -6,10 +6,13 @@ import pytest
 from classifier.classifiers.dr_validity import DrNoteValidityClassifier
 from classifier.models import (
     CareCheck,
+    ClassificationStepError,
     Diagnosis,
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DocumentMetadata,
+    ErrorCode,
+    ErrorStage,
     MainDiagnosisResult,
     PatientAgeResult,
     PatientGroup,
@@ -214,3 +217,34 @@ async def test_classify_attributes_llm_calls_to_named_steps() -> None:
     assert sorted(c.step for c in timings.llm_calls) == [
         "age", "care", "diagnosis", "main_diagnosis",
     ]
+
+
+async def test_classify_raises_step_error_listing_every_failed_step() -> None:
+    clf, mocks = _make_classifier(age=80)
+    mocks["care"].side_effect = lambda m: TreatmentRequestResult(
+        file_path=m.file_path, treatment_requested=False, error="LLM error: timed out"
+    )
+    mocks["main"].side_effect = lambda m: MainDiagnosisResult(
+        file_path=m.file_path, error="Parse error: bad json"
+    )
+
+    with pytest.raises(ClassificationStepError) as info:
+        await clf.classify(_metadata(), _DR_PATHS)
+
+    assert [(e.stage, e.code, e.message) for e in info.value.errors] == [
+        (ErrorStage.CARE, ErrorCode.LLM_FAILED, "LLM error: timed out"),
+        (ErrorStage.MAIN_DIAGNOSIS, ErrorCode.PARSE_FAILED, "Parse error: bad json"),
+    ]
+    assert all(e.folder == _DR_PATHS[0].parent for e in info.value.errors)
+
+
+async def test_classify_diagnosis_failure_is_error_not_invalid_verdict() -> None:
+    clf, mocks = _make_classifier(age=80)
+    mocks["diagnosis"].side_effect = lambda m: DiagnosisExtractionResult(
+        file_path=m.file_path, error="LLM error: connection refused"
+    )
+
+    with pytest.raises(ClassificationStepError) as info:
+        await clf.classify(_metadata(), _DR_PATHS)
+
+    assert [e.stage for e in info.value.errors] == [ErrorStage.DIAGNOSIS]

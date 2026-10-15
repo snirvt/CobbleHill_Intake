@@ -99,6 +99,7 @@ async def test_malformed_response_returns_none_with_parse_error() -> None:
 
     assert result.main_diagnosis is None
     assert result.reasoning is not None and result.reasoning.startswith("Parse error")
+    assert result.error is not None and result.error.startswith("Parse error")
 
 
 async def test_llm_failure_returns_none_with_llm_error() -> None:
@@ -113,6 +114,7 @@ async def test_llm_failure_returns_none_with_llm_error() -> None:
 
     assert result.main_diagnosis is None
     assert result.reasoning is not None and result.reasoning.startswith("LLM error")
+    assert result.error == "LLM error: ollama timed out"
 
 
 async def test_stub_provider_returns_obviously_fake_label() -> None:

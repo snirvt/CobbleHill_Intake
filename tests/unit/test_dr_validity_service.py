@@ -5,18 +5,24 @@ import httpx
 import pytest
 
 from classifier.dr_validity_service import DrValidityService
+from classifier.folder_checks import RequiredNotesCheck, leaf_folders
 from classifier.models import (
     DiagnosisCheck,
     DrValidityPipelineResult,
     DrValidityResult,
+    ErrorCode,
+    ErrorStage,
     PatientGroup,
+    RunError,
     ValidityVerdict,
 )
 from classifier.patient_pipeline import scan_patient_dr_notes
 
 
-def _downloader(files: list[str], web_url: str = "https://sp/folder") -> MagicMock:
-    """Fake downloader that writes the given relative files into local_dir."""
+def _downloader(
+    files: list[str], web_url: str = "https://sp/folder", dirs: list[str] | None = None
+) -> MagicMock:
+    """Fake downloader that writes the given relative files (and empty dirs) into local_dir."""
 
     async def download(folder_path: str, local_dir: Path | None = None) -> tuple[Path, str]:
         assert local_dir is not None
@@ -24,6 +30,8 @@ def _downloader(files: list[str], web_url: str = "https://sp/folder") -> MagicMo
             path = local_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("note")
+        for rel in dirs or []:
+            (local_dir / rel).mkdir(parents=True, exist_ok=True)
         return local_dir, web_url
 
     downloader = MagicMock()
@@ -31,8 +39,16 @@ def _downloader(files: list[str], web_url: str = "https://sp/folder") -> MagicMo
     return downloader
 
 
-def _pipeline() -> MagicMock:
-    """Fake pipeline: every scanned patient is VALID with main diagnosis GERD."""
+def _folder_errors(root: Path) -> list[RunError]:
+    check = RequiredNotesCheck(roles=("dr",))
+    return [e for f in leaf_folders(root) if (e := check.check(f)) is not None]
+
+
+def _pipeline(patient_errors: list[RunError] | None = None) -> MagicMock:
+    """Fake pipeline: every scanned patient is VALID with main diagnosis GERD.
+
+    patient_errors are attached (as non-fatal) to every patient.
+    """
 
     async def run_folder(root: Path) -> list[DrValidityPipelineResult]:
         out = []
@@ -43,6 +59,7 @@ def _pipeline() -> MagicMock:
                     patient_folder=folder,
                     dr_paths=paths,
                     success=True,
+                    errors=patient_errors or [],
                     result=DrValidityResult(
                         patient_folder=folder,
                         dr_paths=paths,
@@ -58,6 +75,7 @@ def _pipeline() -> MagicMock:
 
     pipeline = MagicMock()
     pipeline.run_folder = AsyncMock(side_effect=run_folder)
+    pipeline.folder_errors = MagicMock(side_effect=_folder_errors)
     return pipeline
 
 
@@ -73,7 +91,9 @@ async def test_run_returns_report_for_folder_of_patients() -> None:
     assert report["web_url"] == "https://sp/folder"
     assert report["summary"] == {
         "total": 2, "valid": 2, "invalid": 0, "unknown_age": 0, "failed": 0,
+        "skipped_folders": 0, "errors": 0,
     }
+    assert report["errors"] == []
     assert report["groups"] == [{"main_diagnosis": "GERD", "count": 2}]
     patients = report["patients"]
     assert isinstance(patients, list)
@@ -101,7 +121,17 @@ async def test_empty_folder_returns_no_patients() -> None:
     assert report["patients"] == []
     assert report["summary"] == {
         "total": 0, "valid": 0, "invalid": 0, "unknown_age": 0, "failed": 0,
+        "skipped_folders": 1, "errors": 1,
     }
+    assert report["errors"] == [
+        {
+            "patient": "Pending",
+            "file": None,
+            "stage": "folder",
+            "code": "empty_folder",
+            "message": "Folder has no files",
+        }
+    ]
 
 
 async def test_download_dir_deleted_after_success() -> None:
@@ -157,3 +187,47 @@ async def test_run_logs_request_timing(caplog: pytest.LogCaptureFixture) -> None
     [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("timing")]
     assert line.startswith("timing request folder=Pending download ")
     assert line.endswith("| patients=1")
+
+
+async def test_run_reports_folder_and_patient_errors() -> None:
+    downloader = _downloader(
+        ["A, B/dr_a.pdf", "NURSE, ONLY/nurse_x.pdf"], dirs=["EMPTY, ONE"]
+    )
+    blank = RunError(
+        stage=ErrorStage.EXTRACT,
+        code=ErrorCode.EMPTY_TEXT,
+        message="No text extracted from note",
+    )
+    service = DrValidityService(downloader=downloader, pipeline=_pipeline([blank]))
+
+    report = await service.run("Pending")
+
+    assert report["errors"] == [
+        {
+            "patient": "EMPTY, ONE",
+            "file": None,
+            "stage": "folder",
+            "code": "empty_folder",
+            "message": "Folder has no files",
+        },
+        {
+            "patient": "NURSE, ONLY",
+            "file": None,
+            "stage": "folder",
+            "code": "missing_required_notes",
+            "message": "Folder has no dr notes",
+        },
+        {
+            "patient": None,
+            "file": None,
+            "stage": "extract",
+            "code": "empty_text",
+            "message": "No text extracted from note",
+        },
+    ]
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert (summary["skipped_folders"], summary["errors"]) == (2, 3)
+    patients = report["patients"]
+    assert isinstance(patients, list)
+    assert patients[0]["errors"] == [report["errors"][2]]

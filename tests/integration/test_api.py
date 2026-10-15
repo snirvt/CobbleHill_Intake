@@ -16,9 +16,21 @@ from config.settings import settings
 _REPORT = {
     "sharepoint_folder": "Pending",
     "web_url": "https://sp/Pending",
-    "summary": {"total": 1, "valid": 1, "invalid": 0, "unknown_age": 0, "failed": 0},
+    "summary": {
+        "total": 1, "valid": 1, "invalid": 0, "unknown_age": 0, "failed": 0,
+        "skipped_folders": 1, "errors": 1,
+    },
     "groups": [{"main_diagnosis": "GERD", "count": 1}],
-    "patients": [{"patient": "DOE, JANE", "success": True, "verdict": "VALID"}],
+    "patients": [{"patient": "DOE, JANE", "success": True, "verdict": "VALID", "errors": []}],
+    "errors": [
+        {
+            "patient": "EMPTY",
+            "file": None,
+            "stage": "folder",
+            "code": "empty_folder",
+            "message": "Folder has no files",
+        }
+    ],
 }
 
 
