@@ -121,6 +121,22 @@ async def test_download_folder_recurses_into_subfolders(tmp_path: Path) -> None:
     assert (tmp_path / "sub" / "file.pdf").read_bytes() == b"bytes"
 
 
+async def test_download_folder_skips_results_folder(tmp_path: Path) -> None:
+    semaphore = asyncio.Semaphore(5)
+    # No URL registered for Root/results: requesting it would fail the test.
+    client = _make_client(
+        {
+            "root:/Root:": {"value": [_folder_item("results"), _file_item("dr_a.pdf", "fid1")]},
+            "items/fid1": b"bytes",
+        }
+    )
+
+    await download_folder(DRIVE_ID, "Root", tmp_path, client, semaphore)
+
+    assert (tmp_path / "dr_a.pdf").exists()
+    assert not (tmp_path / "results").exists()
+
+
 # ---------------------------------------------------------------------------
 # SharePointFolderDownloader
 # ---------------------------------------------------------------------------

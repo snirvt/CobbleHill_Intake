@@ -2,8 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from classifier.naming import NoteName, category_order, is_supported_file, label, parse_note, parse_note_name
-
+from classifier.naming import (
+    NoteName,
+    category_order,
+    in_results_folder,
+    is_results_folder,
+    is_supported_file,
+    label,
+    parse_note,
+    parse_note_name,
+)
 
 # ---------------------------------------------------------------------------
 # parse_note_name
@@ -87,3 +95,19 @@ def test_category_order_puts_uncategorized_first() -> None:
 def test_label_names_uncategorized() -> None:
     assert label(None) == "uncategorized"
     assert label("peds") == "peds"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("results", True), ("RESULTS", True), ("DOE, JANE", False)]
+)
+def test_is_results_folder_matches_configured_name_case_insensitively(
+    name: str, expected: bool
+) -> None:
+    assert is_results_folder(name) is expected
+
+
+def test_in_results_folder_checks_every_path_part(tmp_path: Path) -> None:
+    assert in_results_folder(tmp_path / "P" / "results", tmp_path)
+    assert in_results_folder(tmp_path / "results" / "old", tmp_path)
+    assert not in_results_folder(tmp_path / "P", tmp_path)
+    assert not in_results_folder(tmp_path, tmp_path)

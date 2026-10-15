@@ -27,6 +27,20 @@ def test_leaf_folders_returns_only_folders_without_subfolders(tmp_path: Path) ->
     ]
 
 
+def test_leaf_folders_patient_with_only_results_subfolder_is_a_leaf(tmp_path: Path) -> None:
+    _touch(tmp_path / "dr_a.txt")
+    (tmp_path / "results").mkdir()
+    assert leaf_folders(tmp_path) == [tmp_path]
+
+
+def test_leaf_folders_ignores_results_folders_at_any_depth(tmp_path: Path) -> None:
+    _touch(tmp_path / "DOE, JANE" / "dr_a.txt")
+    (tmp_path / "DOE, JANE" / "RESULTS").mkdir()
+    (tmp_path / "results" / "old").mkdir(parents=True)
+
+    assert leaf_folders(tmp_path) == [tmp_path / "DOE, JANE"]
+
+
 def test_leaf_folders_returns_root_when_it_has_no_subfolders(tmp_path: Path) -> None:
     _touch(tmp_path / "dr_a.txt")
     assert leaf_folders(tmp_path) == [tmp_path]

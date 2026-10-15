@@ -58,6 +58,12 @@ def test_scan_finds_nested_patient_folders(tmp_path: Path) -> None:
     assert scan_patient_dr_notes(tmp_path) == [[nested]]
 
 
+def test_scan_ignores_results_folders(tmp_path: Path) -> None:
+    note = _touch(tmp_path / "dr_note.pdf")
+    _touch(tmp_path / "results" / "dr_copy.pdf")
+    assert scan_patient_dr_notes(tmp_path) == [[note]]
+
+
 def test_scan_treats_root_with_dr_notes_as_a_patient(tmp_path: Path) -> None:
     note = _touch(tmp_path / "dr_note.pdf")
     assert scan_patient_dr_notes(tmp_path) == [[note]]
