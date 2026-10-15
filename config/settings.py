@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     }
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 8
+    # Attempts per LLM step (call + parse) before the step is reported as failed.
+    llm_max_attempts: int = 3
+    # Initial backoff (seconds) between LLM attempts; doubles each retry. 0 = no wait.
+    llm_retry_wait_s: float = 1.0
     sharepoint_download_concurrency: int = 5
     # Subfolder of the SharePoint input folder that results are uploaded into.
     sharepoint_results_subfolder: str = "results"
