@@ -194,6 +194,12 @@ uvicorn classifier.api:app --reload
 - Prompt templates live in their own module or as class attributes on the `Classifier` — not inline strings buried in logic.
 - Always handle LLM failures gracefully: timeouts, rate limits, malformed responses. Return a structured error, never crash.
 - Log every LLM call (prompt summary + latency) at DEBUG level.
+- Build extractor chains with `with_llm_retry(prompt | llm | parser)` (`classifiers/retry.py`;
+  attempts/backoff in settings). On final failure the step result sets `error` — never let a
+  fallback default (empty list, `False`) pass as a real answer. Classifiers turn step errors into
+  `ClassificationStepError`; pipelines report them as `RunError`s (`models.py`) in the output.
+- Folder problems (empty, missing required notes) are reported via an injected `FolderCheck`
+  (`folder_checks.RequiredNotesCheck(roles=...)`), not skipped silently. Each pipeline picks its roles.
 - **Multi-step classifiers:** A classifier may chain several LLM calls with code logic in between. Each intermediate step should be its own testable method (e.g. `_extract_features()`, `_normalize()`, `_assign_category()`, `_validate()`). This keeps each step independently mockable and testable even though the classifier orchestrates them as a pipeline. If the chain can fail at any step, return partial results or a structured error that identifies which step failed.
 
 ---
