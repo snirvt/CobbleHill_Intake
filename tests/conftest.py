@@ -12,6 +12,14 @@ from classifier.models import (
     MedicationData,
     PatientMetadata,
 )
+from config.settings import settings
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_retry_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep LLM retries instant in tests (backoff is read when a chain is built)."""
+    monkeypatch.setattr(settings, "llm_retry_wait_s", 0)
+
 
 SAMPLE_HPI = "Parental Concerns No sleep concerns. Gross/Fine Motor Development normal."
 SAMPLE_PLAN = "Follow up in 2 months. Continue current medications. Return if symptoms worsen."
