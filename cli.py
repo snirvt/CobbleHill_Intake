@@ -94,7 +94,8 @@ def _pair_result_to_dict(
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
         "diagnosis_check": res.diagnosis_check or "",
-        "diagnoses": [d.model_dump() for d in res.diagnoses],
+        "dr_diagnoses": [d.model_dump() for d in res.dr_diagnoses],
+        "nurse_diagnoses": [d.model_dump() for d in res.nurse_diagnoses],
         "care_check": res.care_check or "",
         "care_reasoning": res.care_reasoning,
     }
@@ -121,6 +122,7 @@ def _diagnosis_result_to_dict(r: DiagnosisExtractionResult) -> dict:  # type: ig
     return {
         "file": str(r.file_path),
         "diagnoses": [d.model_dump() for d in r.diagnoses],
+        "reasoning": r.reasoning,
     }
 
 

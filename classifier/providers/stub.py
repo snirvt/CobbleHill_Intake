@@ -7,9 +7,10 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 # never mistaken for real extraction results.
 _STUB_DIAGNOSIS_RESPONSE = json.dumps(
     {
+        "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
         "diagnoses": [
             {"name": "STUB_DIAGNOSIS", "icd_code": "Z00.0"},
-        ]
+        ],
     }
 )
 

@@ -79,7 +79,7 @@ class DrNurseMatchClassifier:
         identity = self._compare_identity(pair)
         (
             (clinical_verdict, clinical_reasoning),
-            (diagnosis_check, diagnoses),
+            (diagnosis_check, dr_diagnoses, nurse_diagnoses),
             (care_check, care_reasoning),
             main_diagnosis,
         ) = await asyncio.gather(
@@ -103,7 +103,8 @@ class DrNurseMatchClassifier:
             dr_metadata=pair.dr,
             nurse_fields=pair.nurse,
             diagnosis_check=diagnosis_check,
-            diagnoses=diagnoses,
+            dr_diagnoses=dr_diagnoses,
+            nurse_diagnoses=nurse_diagnoses,
             care_check=care_check,
             care_reasoning=care_reasoning,
             main_diagnosis=main_diagnosis,
@@ -159,16 +160,16 @@ class DrNurseMatchClassifier:
 
     async def _check_diagnoses(
         self, pair: PairDocumentMetadata
-    ) -> tuple[DiagnosisCheck | None, list[Diagnosis]]:
-        """Extract diagnoses from both notes; MISSING when neither note has any.
+    ) -> tuple[DiagnosisCheck | None, list[Diagnosis], list[Diagnosis]]:
+        """Extract diagnoses from both notes (dr list, nurse list); MISSING when neither has any.
 
-        Returns (None, []) when the pair's category is out of scope for the check
+        Returns (None, [], []) when the pair's category is out of scope for the check
         or no diagnosis extractor was injected — the check is then skipped entirely.
         """
         if self._diagnosis_extractor is None:
-            return None, []
+            return None, [], []
         if pair.category not in settings.diagnosis_check_categories:
-            return None, []
+            return None, [], []
 
         nurse_doc = DocumentMetadata(
             file_path=pair.nurse_file_path,
@@ -179,12 +180,8 @@ class DrNurseMatchClassifier:
             self._diagnosis_extractor.extract_diagnoses(pair.dr),
             self._diagnosis_extractor.extract_diagnoses(nurse_doc),
         )
-        diagnoses = [
-            d.model_copy(update={"source": source})
-            for source, result in (("dr", dr_result), ("nurse", nurse_result))
-            for d in result.diagnoses
-        ]
-        check = DiagnosisCheck.EXISTS if diagnoses else DiagnosisCheck.MISSING
+        has_diagnosis = bool(dr_result.diagnoses or nurse_result.diagnoses)
+        check = DiagnosisCheck.EXISTS if has_diagnosis else DiagnosisCheck.MISSING
         if check is DiagnosisCheck.MISSING:
             logger.info(
                 "No diagnosis found for %s pair %s / %s",
@@ -192,7 +189,7 @@ class DrNurseMatchClassifier:
                 pair.dr_file_path,
                 pair.nurse_file_path,
             )
-        return check, diagnoses
+        return check, dr_result.diagnoses, nurse_result.diagnoses
 
     def _compare_identity(self, pair: PairDocumentMetadata) -> IdentityMatchResult:
         dr = pair.dr.meta

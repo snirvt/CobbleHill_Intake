@@ -63,12 +63,17 @@ _PAIR_COLUMNS_VERBOSE = [
 
 
 def format_diagnoses(diagnoses: list[Diagnosis]) -> str:
-    """Render diagnoses as proof text: 'dr: name (ICD); nurse: name'."""
-    parts = []
-    for d in diagnoses:
-        name = f"{d.name} ({d.icd_code})" if d.icd_code else d.name
-        parts.append(f"{d.source}: {name}" if d.source else name)
-    return "; ".join(parts)
+    """Render diagnoses as proof text: 'name (ICD); name'."""
+    return "; ".join(f"{d.name} ({d.icd_code})" if d.icd_code else d.name for d in diagnoses)
+
+
+def format_pair_diagnoses(dr: list[Diagnosis], nurse: list[Diagnosis]) -> str:
+    """Render a pair's diagnoses labelled by note: 'dr: name (ICD); nurse: name'."""
+    return "; ".join(
+        f"{label}: {format_diagnoses([d])}"
+        for label, diagnoses in (("dr", dr), ("nurse", nurse))
+        for d in diagnoses
+    )
 
 
 def _row_has_issue(row: dict[str, object]) -> bool:
@@ -189,7 +194,7 @@ def _pair_result_to_row(
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
-        "diagnoses": format_diagnoses(r.diagnoses),
+        "diagnoses": format_pair_diagnoses(r.dr_diagnoses, r.nurse_diagnoses),
         "care_check": r.care_check or "",
         "care_reasoning": r.care_reasoning,
     })

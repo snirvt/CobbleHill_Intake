@@ -111,7 +111,6 @@ class Diagnosis(BaseModel):
 
     name: str
     icd_code: str | None = None
-    source: str | None = None  # which note it came from, e.g. "dr" / "nurse"
 
 
 class DiagnosisExtractionResult(BaseModel):
@@ -119,6 +118,7 @@ class DiagnosisExtractionResult(BaseModel):
 
     file_path: Path
     diagnoses: list[Diagnosis] = []
+    reasoning: str | None = None
     # Set when the LLM call or parse failed; diagnoses is then empty, not "none found".
     error: str | None = None
 
@@ -214,7 +214,8 @@ class PairClassificationResult(BaseModel):
     nurse_fields: NurseVisitFields
     # None when the check did not apply to this pair's category.
     diagnosis_check: DiagnosisCheck | None = None
-    diagnoses: list[Diagnosis] = []
+    dr_diagnoses: list[Diagnosis] = []
+    nurse_diagnoses: list[Diagnosis] = []
     care_check: CareCheck | None = None
     care_reasoning: str = ""
     # Short primary-diagnosis label (dr note only) for grouping; not a check.
