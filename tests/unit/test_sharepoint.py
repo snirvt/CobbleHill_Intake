@@ -263,7 +263,7 @@ def test_results_folder_does_not_double_up_trailing_slash() -> None:
     )
 
 
-def test_explicit_results_folder_wins_over_input_folder() -> None:
+def test_explicit_upload_folder_wins_over_input_folder() -> None:
     assert (
         resolve_results_folder("Some/Other/Folder", "Patient Encounters/Physician Notes")
         == "Some/Other/Folder"  # used verbatim, no results subfolder appended
