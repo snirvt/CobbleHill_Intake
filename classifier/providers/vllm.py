@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from classifier.providers.ollama import SemaphoreChatModel
+from classifier.providers.structured import vllm_schema_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -63,4 +64,4 @@ def create_vllm_chat_model(
     )
     if semaphore is None:
         return inner
-    return SemaphoreChatModel(inner=inner, semaphore=semaphore)
+    return SemaphoreChatModel(inner=inner, semaphore=semaphore, schema_kwargs=vllm_schema_kwargs)

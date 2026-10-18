@@ -198,6 +198,10 @@ uvicorn classifier.api:app --reload
   attempts/backoff in settings). On final failure the step result sets `error` — never let a
   fallback default (empty list, `False`) pass as a real answer. Classifiers turn step errors into
   `ClassificationStepError`; pipelines report them as `RunError`s (`models.py`) in the output.
+- Constrain output to the schema: build chains as
+  `prompt | bind_output_schema(llm, OutputModel) | parser` (`providers/structured.py`). Providers opt
+  in via `SemaphoreChatModel.schema_kwargs` (vLLM `response_format` json_schema, ollama `format`), so
+  the server can only emit matching JSON; models without it (test stubs) pass through unchanged.
 - Folder problems (empty, missing required notes) are reported via an injected `FolderCheck`
   (`folder_checks.RequiredNotesCheck(roles=...)`), not skipped silently. Each pipeline picks its roles.
 - **Multi-step classifiers:** A classifier may chain several LLM calls with code logic in between. Each intermediate step should be its own testable method (e.g. `_extract_features()`, `_normalize()`, `_assign_category()`, `_validate()`). This keeps each step independently mockable and testable even though the classifier orchestrates them as a pipeline. If the chain can fail at any step, return partial results or a structured error that identifies which step failed.

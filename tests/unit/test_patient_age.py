@@ -24,9 +24,33 @@ def _make_metadata() -> DocumentMetadata:
 # _compute_age
 # ---------------------------------------------------------------------------
 
-def test_compute_age_prefers_stated_age() -> None:
-    output = PatientAgeOutput(age_years=0.67, dob="01/01/2000", date_of_service="01/01/2026")
+def test_compute_age_prefers_dob_over_conflicting_stated_age() -> None:
+    output = PatientAgeOutput(age_years=76, dob="01/01/1953", date_of_service="01/01/2025")
+    assert PatientAgeClassifier._compute_age(output) == pytest.approx(72.0, abs=0.01)
+
+
+def test_compute_age_uses_stated_age_without_dob() -> None:
+    output = PatientAgeOutput(age_years=0.67, date_of_service="01/01/2026")
     assert PatientAgeClassifier._compute_age(output) == 0.67
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        PatientAgeOutput(age_years=72, dob="sometime in spring", date_of_service="01/01/2025"),
+        PatientAgeOutput(age_years=72, dob="01/01/2030", date_of_service="01/01/2025"),
+        PatientAgeOutput(age_years=72, dob="01/01/1953", date_of_service="the first visit"),
+    ],
+)
+def test_compute_age_falls_back_to_stated_age_when_dob_unusable(
+    output: PatientAgeOutput,
+) -> None:
+    assert PatientAgeClassifier._compute_age(output, today=date(2026, 1, 1)) == 72
+
+
+def test_compute_age_parses_spelled_out_dates() -> None:
+    output = PatientAgeOutput(dob="March 15, 2010", date_of_service="Mar 15, 2026")
+    assert PatientAgeClassifier._compute_age(output) == pytest.approx(16.0, abs=0.01)
 
 
 def test_compute_age_from_dob_and_date_of_service() -> None:

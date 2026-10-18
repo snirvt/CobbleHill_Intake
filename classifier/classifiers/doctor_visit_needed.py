@@ -8,6 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.models import DocumentMetadata
+from classifier.providers.structured import bind_output_schema
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class DoctorVisitNeededClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | llm | parser
+        self._chain = prompt | bind_output_schema(llm, DoctorVisitOutput) | parser
 
     def _build_prompt_input(self, metadata: DocumentMetadata) -> dict[str, str]:
         def fmt_list(items: list[str]) -> str:

@@ -25,6 +25,7 @@ from classifier.protocols import (
     MainDiagnosisExtractor,
     TreatmentRequestExtractor,
 )
+from classifier.providers.structured import bind_output_schema
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ class DrNurseMatchClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | llm | parser
+        self._chain = prompt | bind_output_schema(llm, ClinicalMatchOutput) | parser
         self._diagnosis_extractor = diagnosis_extractor
         self._care_extractor = care_extractor
         self._main_diagnosis_extractor = main_diagnosis_extractor

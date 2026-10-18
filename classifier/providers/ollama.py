@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_ollama import ChatOllama
 
+from classifier.providers.structured import SchemaKwargs, ollama_schema_kwargs
 from classifier.timing import record_llm_call
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,8 @@ class SemaphoreChatModel(BaseChatModel):
 
     inner: BaseChatModel
     semaphore: Any  # asyncio.Semaphore — not serialisable by Pydantic, typed as Any
+    # Request kwargs that constrain output to a JSON schema; read by bind_output_schema.
+    schema_kwargs: SchemaKwargs | None = None
 
     @property
     def _llm_type(self) -> str:
@@ -85,4 +88,6 @@ def create_ollama_chat_model(
     )
     if semaphore is None:
         return inner
-    return SemaphoreChatModel(inner=inner, semaphore=semaphore)
+    return SemaphoreChatModel(
+        inner=inner, semaphore=semaphore, schema_kwargs=ollama_schema_kwargs
+    )

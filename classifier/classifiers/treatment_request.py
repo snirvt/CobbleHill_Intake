@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DocumentMetadata, TreatmentRequestResult
+from classifier.providers.structured import bind_output_schema
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,9 @@ class TreatmentRequestClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = with_llm_retry(prompt | llm | parser)
+        self._chain = with_llm_retry(
+            prompt | bind_output_schema(llm, TreatmentRequestOutput) | parser
+        )
 
     async def extract_treatment_request(
         self, metadata: DocumentMetadata
