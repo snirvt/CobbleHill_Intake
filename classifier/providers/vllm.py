@@ -40,10 +40,14 @@ def create_vllm_chat_model(
     top_p: float,
     semaphore: asyncio.Semaphore | None = None,
     extra_body: dict[str, Any] | None = None,
+    max_tokens: int | None = None,
+    timeout_s: float | None = None,
 ) -> BaseChatModel:
     """Return a ChatOpenAI client for an on-prem vLLM server, optionally semaphore-wrapped.
 
     ``extra_body`` is merged into every request (e.g. vLLM ``chat_template_kwargs``).
+    ``max_tokens`` caps generation per call; ``timeout_s`` caps its wall-clock time. The
+    client's own retries are disabled: the extractors' ``with_llm_retry`` handles retrying.
     """
     assert_on_prem(base_url)
     inner = ChatOpenAI(
@@ -53,6 +57,9 @@ def create_vllm_chat_model(
         temperature=temperature,
         top_p=top_p,
         extra_body=extra_body,
+        max_completion_tokens=max_tokens,  # sent as max_completion_tokens; vLLM honours it
+        timeout=timeout_s,
+        max_retries=0,
     )
     if semaphore is None:
         return inner

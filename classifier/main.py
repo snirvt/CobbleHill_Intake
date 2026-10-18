@@ -66,6 +66,8 @@ def _make_ollama_llm(semaphore: asyncio.Semaphore, thinking: str) -> BaseChatMod
         url=settings.ollama_url,
         model=settings.ollama_model,
         semaphore=semaphore,
+        max_tokens=settings.llm_max_output_tokens,
+        timeout_s=settings.llm_request_timeout_s,
     )
 
 
@@ -78,6 +80,8 @@ def _make_vllm_llm(semaphore: asyncio.Semaphore, thinking: str) -> BaseChatModel
         top_p=settings.vllm_top_p,
         semaphore=semaphore,
         extra_body=settings.vllm_thinking_levels[thinking],
+        max_tokens=settings.llm_max_output_tokens,
+        timeout_s=settings.llm_request_timeout_s,
     )
 
 

@@ -34,8 +34,22 @@ class SemaphoreChatModel(BaseChatModel):
             result = await self.inner._agenerate(messages, **kwargs)
             finished = time.perf_counter()
             logger.debug("LLM call done in %.2fs", finished - started)
+        if _hit_token_limit(result):
+            logger.warning(
+                "LLM output hit the max-token limit after %.2fs; answer is truncated",
+                finished - started,
+            )
         _record_timing(result, wait_s=started - queued, call_s=finished - started)
         return result
+
+
+def _hit_token_limit(result: ChatResult) -> bool:
+    """True if generation stopped on the token cap (vLLM finish_reason / ollama done_reason)."""
+    for gen in result.generations:
+        info = {**(gen.generation_info or {}), **gen.message.response_metadata}
+        if "length" in (info.get("finish_reason"), info.get("done_reason")):
+            return True
+    return False
 
 
 def _record_timing(result: ChatResult, wait_s: float, call_s: float) -> None:
@@ -55,9 +69,20 @@ def create_ollama_chat_model(
     url: str,
     model: str,
     semaphore: asyncio.Semaphore | None = None,
+    max_tokens: int | None = None,
+    timeout_s: float | None = None,
 ) -> BaseChatModel:
-    """Return a ChatOllama instance, optionally wrapped in a concurrency semaphore."""
-    inner = ChatOllama(base_url=url.rstrip("/"), model=model)
+    """Return a ChatOllama instance, optionally wrapped in a concurrency semaphore.
+
+    ``max_tokens`` caps generation per call (ollama ``num_predict``); ``timeout_s`` caps
+    each request's wall-clock time.
+    """
+    inner = ChatOllama(
+        base_url=url.rstrip("/"),
+        model=model,
+        num_predict=max_tokens,
+        client_kwargs={"timeout": timeout_s} if timeout_s is not None else {},
+    )
     if semaphore is None:
         return inner
     return SemaphoreChatModel(inner=inner, semaphore=semaphore)

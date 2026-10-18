@@ -132,6 +132,11 @@ class Settings(BaseSettings):
     llm_max_attempts: int = 3
     # Initial backoff (seconds) between LLM attempts; doubles each retry. 0 = no wait.
     llm_retry_wait_s: float = 1.0
+    # Hard cap on tokens generated per LLM call (thinking + answer). Stops a model stuck in a
+    # repetition loop from generating until the context window is full (seen: 260k tokens, 80 min).
+    llm_max_output_tokens: int = 8192
+    # Wall-clock limit per LLM call; a timed-out call fails and is retried like any other error.
+    llm_request_timeout_s: float = 300
     sharepoint_download_concurrency: int = 5
     # Subfolder of the SharePoint input folder that results are uploaded into.
     sharepoint_results_subfolder: str = "results"
