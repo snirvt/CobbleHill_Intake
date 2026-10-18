@@ -252,7 +252,8 @@ async def test_diagnosis_check_exists_when_dr_note_has_diagnosis() -> None:
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
     assert result.diagnosis_check == DiagnosisCheck.EXISTS
-    assert [(d.name, d.source) for d in result.diagnoses] == [("Colic", "dr")]
+    assert [d.name for d in result.dr_diagnoses] == ["Colic"]
+    assert result.nurse_diagnoses == []
     assert result.overall == "MATCH"
 
 
@@ -261,7 +262,8 @@ async def test_diagnosis_check_exists_when_only_nurse_note_has_diagnosis() -> No
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
     assert result.diagnosis_check == DiagnosisCheck.EXISTS
-    assert [(d.name, d.source) for d in result.diagnoses] == [("Otitis media", "nurse")]
+    assert result.dr_diagnoses == []
+    assert [d.name for d in result.nurse_diagnoses] == ["Otitis media"]
 
 
 async def test_diagnosis_check_collects_proof_from_both_notes() -> None:
@@ -271,7 +273,8 @@ async def test_diagnosis_check_collects_proof_from_both_notes() -> None:
     )
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
-    assert [(d.name, d.source) for d in result.diagnoses] == [("Colic", "dr"), ("Reflux", "nurse")]
+    assert [d.name for d in result.dr_diagnoses] == ["Colic"]
+    assert [d.name for d in result.nurse_diagnoses] == ["Reflux"]
 
 
 async def test_diagnosis_missing_forces_overall_mismatch() -> None:
@@ -279,7 +282,8 @@ async def test_diagnosis_missing_forces_overall_mismatch() -> None:
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital"))
     assert result.diagnosis_check == DiagnosisCheck.MISSING
-    assert result.diagnoses == []
+    assert result.dr_diagnoses == []
+    assert result.nurse_diagnoses == []
     assert result.clinical_verdict == "MATCH"  # clinical verdict itself untouched
     assert result.overall == "MISMATCH"
 
@@ -290,7 +294,8 @@ async def test_diagnosis_check_skipped_for_other_categories(category: str | None
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields(), category=category))
     assert result.diagnosis_check is None
-    assert result.diagnoses == []
+    assert result.dr_diagnoses == []
+    assert result.nurse_diagnoses == []
     assert result.overall == "MATCH"
     extractor.extract_diagnoses.assert_not_awaited()
 

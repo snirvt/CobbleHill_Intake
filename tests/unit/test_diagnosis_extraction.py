@@ -4,7 +4,10 @@ from pathlib import Path
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
+from classifier.classifiers.diagnosis_extraction import (
+    _PROMPT_TEMPLATE,
+    DiagnosisExtractionClassifier,
+)
 from classifier.models import DocumentMetadata, PatientMetadata
 from classifier.providers.stub import create_stub_chat_model
 
@@ -70,6 +73,42 @@ async def test_empty_result_when_no_diagnoses() -> None:
     result = await classifier.extract_diagnoses(_make_metadata())
 
     assert result.diagnoses == []
+
+
+@pytest.mark.asyncio
+async def test_reasoning_is_propagated_to_result() -> None:
+    llm = FakeListChatModel(
+        responses=[
+            json.dumps(
+                {
+                    "reasoning": "Assessment lists type 2 diabetes with E11.9.",
+                    "diagnoses": [{"name": "Type 2 diabetes", "icd_code": "E11.9"}],
+                }
+            )
+        ]
+    )
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert result.reasoning == "Assessment lists type 2 diabetes with E11.9."
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_missing_diagnoses_key_sets_parse_error() -> None:
+    llm = FakeListChatModel(responses=[json.dumps({"reasoning": "No list given."})])
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert result.diagnoses == []
+    assert result.error is not None and result.error.startswith("Parse error")
+
+
+def test_prompt_prioritizes_assessment_and_falls_back_to_hpi() -> None:
+    assert "Assessment" in _PROMPT_TEMPLATE
+    assert "HPI or chief complaint" in _PROMPT_TEMPLATE
 
 
 @pytest.mark.asyncio

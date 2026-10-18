@@ -39,7 +39,7 @@ def test_cli_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     assert len(output) == 1
     assert output[0]["file"].endswith("dr_progress_note.txt")
     assert isinstance(output[0]["diagnoses"], list)
-    assert all({"name", "icd_code", "source"} <= d.keys() for d in output[0]["diagnoses"])
+    assert all(d.keys() == {"name", "icd_code"} for d in output[0]["diagnoses"])
 
     # xlsx written next to configured output path
     xlsx_path = _REPO_ROOT / "output" / "diagnosis_results.xlsx"

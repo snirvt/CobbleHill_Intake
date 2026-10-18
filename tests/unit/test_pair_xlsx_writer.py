@@ -16,6 +16,7 @@ from classifier.models import (
 )
 from classifier.output.csv_writer import (
     format_diagnoses,
+    format_pair_diagnoses,
     relative_file_names,
     resolve_folder,
     write_pair_xlsx,
@@ -29,7 +30,8 @@ def _make_pair_result(
     clinical_verdict: str = "MATCH",
     document_metadata: DocumentMetadata | None = None,
     diagnosis_check: DiagnosisCheck | None = None,
-    diagnoses: list[Diagnosis] | None = None,
+    dr_diagnoses: list[Diagnosis] | None = None,
+    nurse_diagnoses: list[Diagnosis] | None = None,
     care_check: CareCheck | None = None,
     care_reasoning: str = "",
     main_diagnosis: str | None = None,
@@ -46,7 +48,8 @@ def _make_pair_result(
         dr_metadata=document_metadata or DocumentMetadata(file_path=dr, raw_text="", meta=PatientMetadata()),
         nurse_fields=NurseVisitFields(),
         diagnosis_check=diagnosis_check,
-        diagnoses=diagnoses or [],
+        dr_diagnoses=dr_diagnoses or [],
+        nurse_diagnoses=nurse_diagnoses or [],
         care_check=care_check,
         care_reasoning=care_reasoning,
         main_diagnosis=main_diagnosis,
@@ -267,16 +270,14 @@ def test_diagnosis_columns_present_in_both_modes(tmp_path: Path) -> None:
         assert "diagnoses" in header
 
 
-def test_diagnosis_proof_lists_source_and_icd_code(tmp_path: Path) -> None:
+def test_diagnosis_proof_labels_note_and_icd_code(tmp_path: Path) -> None:
     dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
     result = _make_pair_result(
         dr,
         nurse,
         diagnosis_check=DiagnosisCheck.EXISTS,
-        diagnoses=[
-            Diagnosis(name="Colic", icd_code="R10.83", source="dr"),
-            Diagnosis(name="Reflux", source="nurse"),
-        ],
+        dr_diagnoses=[Diagnosis(name="Colic", icd_code="R10.83")],
+        nurse_diagnoses=[Diagnosis(name="Reflux")],
     )
     out = tmp_path / "results.xlsx"
     write_pair_xlsx([result], out)
@@ -316,6 +317,23 @@ def test_failed_result_leaves_diagnosis_columns_blank(tmp_path: Path) -> None:
 
 def test_format_diagnoses_empty_list_is_blank() -> None:
     assert format_diagnoses([]) == ""
+
+
+def test_format_diagnoses_has_no_note_label() -> None:
+    diagnoses = [Diagnosis(name="GERD", icd_code="K21.9"), Diagnosis(name="Colic")]
+    assert format_diagnoses(diagnoses) == "GERD (K21.9); Colic"
+
+
+def test_format_pair_diagnoses_labels_dr_then_nurse() -> None:
+    text = format_pair_diagnoses(
+        [Diagnosis(name="Colic", icd_code="R10.83")], [Diagnosis(name="Reflux")]
+    )
+    assert text == "dr: Colic (R10.83); nurse: Reflux"
+
+
+def test_format_pair_diagnoses_with_one_side_empty() -> None:
+    assert format_pair_diagnoses([], [Diagnosis(name="Reflux")]) == "nurse: Reflux"
+    assert format_pair_diagnoses([], []) == ""
 
 
 # ---------------------------------------------------------------------------

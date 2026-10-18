@@ -78,7 +78,7 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "age_years": 0.5,
         "main_diagnosis": "GERD",
         "diagnosis_check": "EXISTS",
-        "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "source": None}],
+        "diagnoses": [{"name": "GERD", "icd_code": "K21.9"}],
         "care_check": "NEEDED",
         "care_reasoning": "needs home services",
     }
