@@ -87,3 +87,22 @@ def test_dr_validity_pipeline_gives_each_task_its_level_and_one_semaphore(
         "build_main_diagnosis_extractor": "off",
     }
     assert len({id(sem) for sem, _ in built}) == 1
+
+
+@pytest.mark.parametrize("backend", ["ollama", "vllm"])
+def test_make_llm_applies_token_cap_and_timeout(
+    monkeypatch: pytest.MonkeyPatch, backend: str
+) -> None:
+    monkeypatch.setattr(main.settings, "llm_backend", backend)
+    monkeypatch.setattr(main.settings, "llm_max_output_tokens", 123)
+    monkeypatch.setattr(main.settings, "llm_request_timeout_s", 45.0)
+
+    llm = main._make_llm()
+
+    assert isinstance(llm, SemaphoreChatModel)
+    inner = llm.inner
+    if isinstance(inner, ChatOpenAI):
+        assert (inner.max_tokens, inner.request_timeout) == (123, 45.0)
+    else:
+        assert isinstance(inner, ChatOllama)
+        assert (inner.num_predict, inner.client_kwargs) == (123, {"timeout": 45.0})

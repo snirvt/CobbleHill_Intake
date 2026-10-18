@@ -82,3 +82,18 @@ def test_create_vllm_chat_model_passes_extra_body() -> None:
     )
     assert isinstance(model, ChatOpenAI)
     assert model.extra_body == body
+
+
+def test_create_vllm_chat_model_caps_tokens_and_time_without_client_retries() -> None:
+    model = create_vllm_chat_model(
+        base_url="http://localhost:8001",
+        model="nemotron-3.5-lightning",
+        temperature=0.6,
+        top_p=0.95,
+        max_tokens=8192,
+        timeout_s=300,
+    )
+    assert isinstance(model, ChatOpenAI)
+    assert model.max_tokens == 8192
+    assert model.request_timeout == 300
+    assert model.max_retries == 0
