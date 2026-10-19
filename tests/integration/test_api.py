@@ -21,6 +21,7 @@ _REPORT = {
         "skipped_folders": 1, "errors": 1,
     },
     "groups": [{"main_diagnosis": "GERD", "count": 1}],
+    "category_groups": [{"diagnosis_category": "Reflux / GERD", "count": 1}],
     "patients": [{"patient": "DOE, JANE", "success": True, "verdict": "VALID", "errors": []}],
     "errors": [
         {

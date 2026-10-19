@@ -25,6 +25,7 @@ STUB_TREATMENT_REQUEST_RESPONSE = json.dumps(
 STUB_MAIN_DIAGNOSIS_RESPONSE = json.dumps(
     {
         "main_diagnosis": "STUB DIAGNOSIS",
+        "diagnosis_category": "Other",
         "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
     }
 )

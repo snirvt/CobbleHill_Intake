@@ -3,6 +3,7 @@ from pathlib import Path
 from classifier.models import (
     CareCheck,
     Diagnosis,
+    DiagnosisCategory,
     DiagnosisCheck,
     DrValidityPipelineResult,
     DrValidityResult,
@@ -13,6 +14,7 @@ from classifier.models import (
     ValidityVerdict,
 )
 from classifier.output.dr_validity_report import (
+    dr_validity_category_groups,
     dr_validity_errors,
     dr_validity_groups,
     dr_validity_patient_dict,
@@ -22,7 +24,11 @@ from classifier.output.dr_validity_report import (
 
 
 def _ok(
-    root: Path, name: str, verdict: ValidityVerdict, main: str | None = "GERD"
+    root: Path,
+    name: str,
+    verdict: ValidityVerdict,
+    main: str | None = "GERD",
+    category: DiagnosisCategory | None = DiagnosisCategory.REFLUX,
 ) -> DrValidityPipelineResult:
     folder = root / name
     paths = [folder / "dr_a.pdf", folder / "dr_b.pdf"]
@@ -40,6 +46,7 @@ def _ok(
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
             main_diagnosis=main,
+            diagnosis_category=category,
             verdict=verdict,
             reasons=[],
         ),
@@ -77,6 +84,7 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "age": "6 months",
         "age_years": 0.5,
         "main_diagnosis": "GERD",
+        "diagnosis_category": "Reflux / GERD",
         "diagnosis_check": "EXISTS",
         "diagnoses": [{"name": "GERD", "icd_code": "K21.9"}],
         "care_check": "NEEDED",
@@ -187,4 +195,19 @@ def test_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
         {"main_diagnosis": "Dementia", "count": 2},
         {"main_diagnosis": "GERD", "count": 1},
         {"main_diagnosis": "Unknown", "count": 1},
+    ]
+
+
+def test_category_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
+    results = [
+        _ok(tmp_path, "A", ValidityVerdict.VALID, main="Hip Fracture",
+            category=DiagnosisCategory.FRACTURE),
+        _ok(tmp_path, "B", ValidityVerdict.VALID, main="GERD"),
+        _ok(tmp_path, "C", ValidityVerdict.VALID, main="Fall", category=DiagnosisCategory.FRACTURE),
+        _failed(tmp_path, "D"),
+    ]
+    assert dr_validity_category_groups(results) == [
+        {"diagnosis_category": "Fracture / Fall", "count": 2},
+        {"diagnosis_category": "Reflux / GERD", "count": 1},
+        {"diagnosis_category": "Unknown", "count": 1},
     ]

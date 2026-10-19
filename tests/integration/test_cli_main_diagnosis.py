@@ -37,13 +37,13 @@ def test_cli_main_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     output = json.loads(result.stdout)
     assert len(output) == 1
     assert output[0]["file"].endswith("dr_progress_note.txt")
-    assert output[0]["main_diagnosis"] is None or len(output[0]["main_diagnosis"].split()) <= 2
+    assert output[0]["main_diagnosis"] is None or len(output[0]["main_diagnosis"].split()) <= 4
 
     xlsx_path = _REPO_ROOT / "output" / "main_diagnosis_results.xlsx"
     assert xlsx_path.exists()
     wb = openpyxl.load_workbook(xlsx_path)
     ws = wb["MainDiagnosis"]
     rows = list(ws.iter_rows(values_only=True))  # type: ignore[union-attr]
-    assert rows[0] == ("file_path", "main_diagnosis", "reasoning")
-    assert wb.sheetnames == ["MainDiagnosis", "Groups"]
+    assert rows[0] == ("file_path", "main_diagnosis", "diagnosis_category", "reasoning")
+    assert wb.sheetnames == ["MainDiagnosis", "Groups", "Categories"]
     assert any(str(r[0]).endswith("dr_progress_note.txt") for r in rows[1:])

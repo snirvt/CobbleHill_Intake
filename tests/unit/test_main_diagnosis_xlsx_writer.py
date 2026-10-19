@@ -2,7 +2,7 @@ from pathlib import Path
 
 import openpyxl
 
-from classifier.models import MainDiagnosisResult
+from classifier.models import DiagnosisCategory, MainDiagnosisResult
 from classifier.output.csv_writer import write_main_diagnosis_xlsx
 
 
@@ -11,27 +11,38 @@ def _rows(path: Path, sheet: str) -> list[tuple]:
     return [tuple("" if v is None else v for v in row) for row in ws.iter_rows(values_only=True)]
 
 
-def _result(n: int, label: str | None, reasoning: str | None = "why") -> MainDiagnosisResult:
+def _result(
+    n: int,
+    label: str | None,
+    reasoning: str | None = "why",
+    category: DiagnosisCategory | None = None,
+) -> MainDiagnosisResult:
     return MainDiagnosisResult(
-        file_path=Path(f"data/{n}/dr_progress_note.pdf"), main_diagnosis=label, reasoning=reasoning
+        file_path=Path(f"data/{n}/dr_progress_note.pdf"),
+        main_diagnosis=label,
+        diagnosis_category=category,
+        reasoning=reasoning,
     )
 
 
 def test_writes_main_diagnosis_and_groups_sheets(tmp_path: Path) -> None:
     out = tmp_path / "main_diagnosis_results.xlsx"
     write_main_diagnosis_xlsx([], out)
-    assert openpyxl.load_workbook(out).sheetnames == ["MainDiagnosis", "Groups"]
+    assert openpyxl.load_workbook(out).sheetnames == ["MainDiagnosis", "Groups", "Categories"]
 
 
 def test_writes_one_row_per_file(tmp_path: Path) -> None:
     out = tmp_path / "main_diagnosis_results.xlsx"
-    results = [_result(1, "Pneumonia", "CAP in assessment"), _result(2, None, None)]
+    results = [
+        _result(1, "Pneumonia", "CAP in assessment", DiagnosisCategory.RESPIRATORY),
+        _result(2, None, None),
+    ]
     write_main_diagnosis_xlsx(results, out)
 
     assert _rows(out, "MainDiagnosis") == [
-        ("file_path", "main_diagnosis", "reasoning"),
-        ("data/1/dr_progress_note.pdf", "Pneumonia", "CAP in assessment"),
-        ("data/2/dr_progress_note.pdf", "", ""),
+        ("file_path", "main_diagnosis", "diagnosis_category", "reasoning"),
+        ("data/1/dr_progress_note.pdf", "Pneumonia", "Respiratory", "CAP in assessment"),
+        ("data/2/dr_progress_note.pdf", "", "", ""),
     ]
 
 
@@ -66,3 +77,21 @@ def test_creates_parent_dirs(tmp_path: Path) -> None:
     out = tmp_path / "nested" / "dir" / "main_diagnosis_results.xlsx"
     write_main_diagnosis_xlsx([_result(1, "Asthma")], out)
     assert out.exists()
+
+
+def test_categories_sheet_counts_by_category(tmp_path: Path) -> None:
+    out = tmp_path / "main_diagnosis_results.xlsx"
+    results = [
+        _result(1, "GERD", category=DiagnosisCategory.REFLUX),
+        _result(2, "Gastric Reflux", category=DiagnosisCategory.REFLUX),
+        _result(3, "Hip Fracture", category=DiagnosisCategory.FRACTURE),
+        _result(4, None),
+    ]
+    write_main_diagnosis_xlsx(results, out)
+
+    assert _rows(out, "Categories") == [
+        ("diagnosis_category", "count"),
+        ("Reflux / GERD", 2),
+        ("Fracture / Fall", 1),
+        ("Unknown", 1),
+    ]

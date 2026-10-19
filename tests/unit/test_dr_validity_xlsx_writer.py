@@ -6,6 +6,7 @@ import pytest
 from classifier.models import (
     CareCheck,
     Diagnosis,
+    DiagnosisCategory,
     DiagnosisCheck,
     DrValidityPipelineResult,
     DrValidityResult,
@@ -20,7 +21,8 @@ from classifier.output.csv_writer import (
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_check", "diagnoses", "care_check", "care_reasoning", "errors",
+    "main_diagnosis", "diagnosis_category", "diagnosis_check", "diagnoses", "care_check",
+    "care_reasoning", "errors",
 ]
 
 
@@ -29,6 +31,7 @@ def _ok(
     name: str,
     verdict: ValidityVerdict,
     main: str | None = "GERD",
+    category: DiagnosisCategory | None = DiagnosisCategory.REFLUX,
     group: PatientGroup = PatientGroup.PEDIATRIC,
 ) -> DrValidityPipelineResult:
     folder = root / name
@@ -47,6 +50,7 @@ def _ok(
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
             main_diagnosis=main,
+            diagnosis_category=category,
             verdict=verdict,
             reasons=[] if verdict is ValidityVerdict.VALID else ["no medical necessity"],
         ),
@@ -69,7 +73,7 @@ def test_sheets_and_columns(tmp_path: Path) -> None:
     out = tmp_path / "dr_validity_results.xlsx"
     write_dr_validity_xlsx([], out)
     wb = openpyxl.load_workbook(out)
-    assert wb.sheetnames == ["All", "Valid", "Needs Review", "Groups"]
+    assert wb.sheetnames == ["All", "Valid", "Needs Review", "Groups", "Categories"]
     header = next(wb["All"].iter_rows(max_row=1, values_only=True))
     assert list(header) == _COLUMNS
 
@@ -86,6 +90,7 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["patient_group"] == "PEDIATRIC"
     assert row["age"] == "6 months"
     assert row["main_diagnosis"] == "GERD"
+    assert row["diagnosis_category"] == "Reflux / GERD"
     assert row["diagnoses"] == "GERD (K21.9)"
     assert row["care_check"] == "NEEDED"
 
@@ -192,3 +197,25 @@ def test_single_patient_download_written_with_sharepoint_name(tmp_path: Path) ->
 )
 def test_format_age_is_human_readable(age_years: float | None, expected: str) -> None:
     assert format_age(age_years) == expected
+
+
+def test_categories_sheet_counts_patients_by_category(tmp_path: Path) -> None:
+    out = tmp_path / "dr_validity_results.xlsx"
+    results = [
+        _ok(tmp_path, "A", ValidityVerdict.VALID, main="GERD"),
+        _ok(tmp_path, "B", ValidityVerdict.VALID, main="Reflux"),
+        _ok(
+            tmp_path, "C", ValidityVerdict.VALID, main="Dementia",
+            category=DiagnosisCategory.DEVELOPMENTAL,
+        ),
+        _failed(tmp_path, "D"),
+    ]
+    write_dr_validity_xlsx(results, out)
+
+    rows = list(openpyxl.load_workbook(out)["Categories"].iter_rows(values_only=True))
+    assert rows == [
+        ("diagnosis_category", "count"),
+        ("Reflux / GERD", 2),
+        ("Developmental / Cognitive", 1),
+        ("Unknown", 1),
+    ]

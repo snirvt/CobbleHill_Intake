@@ -8,6 +8,7 @@ from classifier.models import (
     CareCheck,
     ClassificationStepError,
     Diagnosis,
+    DiagnosisCategory,
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DocumentMetadata,
@@ -29,6 +30,7 @@ def _make_classifier(
     has_diagnosis: bool = True,
     necessity: bool = True,
     main: str | None = "Colic",
+    category: DiagnosisCategory | None = DiagnosisCategory.FEEDING,
 ) -> tuple[DrNoteValidityClassifier, dict[str, AsyncMock]]:
     mocks = {
         "age": AsyncMock(
@@ -46,7 +48,9 @@ def _make_classifier(
             )
         ),
         "main": AsyncMock(
-            side_effect=lambda m: MainDiagnosisResult(file_path=m.file_path, main_diagnosis=main)
+            side_effect=lambda m: MainDiagnosisResult(
+                file_path=m.file_path, main_diagnosis=main, diagnosis_category=category
+            )
         ),
     }
     age_x, dx_x, care_x, main_x = MagicMock(), MagicMock(), MagicMock(), MagicMock()
@@ -150,6 +154,7 @@ async def test_classify_peds_valid_populates_all_fields() -> None:
     assert result.care_check is CareCheck.NEEDED
     assert result.care_reasoning == "needs home care"
     assert result.main_diagnosis == "Colic"
+    assert result.diagnosis_category is DiagnosisCategory.FEEDING
 
 
 async def test_classify_peds_without_necessity_is_invalid() -> None:

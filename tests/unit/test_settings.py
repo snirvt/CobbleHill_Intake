@@ -88,3 +88,8 @@ def test_task_thinking_env_override(on_machine, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("COBBLEHILL_TASK_THINKING", '{"diagnosis": "low", "age": "high"}')
     s = Settings(_env_file=None)
     assert s.task_thinking == {"diagnosis": "low", "age": "high"}
+
+
+def test_main_diagnosis_max_words_default_keeps_multi_word_labels() -> None:
+    """Default is long enough that labels like "Failure To Thrive" are not cut mid-phrase."""
+    assert Settings().main_diagnosis_max_words == 4

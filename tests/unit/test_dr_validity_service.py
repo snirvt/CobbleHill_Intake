@@ -7,6 +7,7 @@ import pytest
 from classifier.dr_validity_service import DrValidityService
 from classifier.folder_checks import RequiredNotesCheck, leaf_folders
 from classifier.models import (
+    DiagnosisCategory,
     DiagnosisCheck,
     DrValidityPipelineResult,
     DrValidityResult,
@@ -67,6 +68,7 @@ def _pipeline(patient_errors: list[RunError] | None = None) -> MagicMock:
                         patient_group=PatientGroup.ADULT,
                         diagnosis_check=DiagnosisCheck.EXISTS,
                         main_diagnosis="GERD",
+                        diagnosis_category=DiagnosisCategory.REFLUX,
                         verdict=ValidityVerdict.VALID,
                     ),
                 )
@@ -95,6 +97,7 @@ async def test_run_returns_report_for_folder_of_patients() -> None:
     }
     assert report["errors"] == []
     assert report["groups"] == [{"main_diagnosis": "GERD", "count": 2}]
+    assert report["category_groups"] == [{"diagnosis_category": "Reflux / GERD", "count": 2}]
     patients = report["patients"]
     assert isinstance(patients, list)
     assert [p["patient"] for p in patients] == ["A, B", "C, D"]

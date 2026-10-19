@@ -5,16 +5,22 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from classifier.classifiers.main_diagnosis import MainDiagnosisClassifier
-from classifier.models import DocumentMetadata, PatientMetadata
+from classifier.models import DiagnosisCategory, DocumentMetadata, PatientMetadata
 from classifier.providers.stub import (
     STUB_MAIN_DIAGNOSIS_RESPONSE,
     create_stub_chat_model,
 )
 
 
-def _fake_llm(label: str | None, reasoning: str = "ok") -> FakeListChatModel:
+def _fake_llm(
+    label: str | None, reasoning: str = "ok", category: str | None = None
+) -> FakeListChatModel:
     return FakeListChatModel(
-        responses=[json.dumps({"main_diagnosis": label, "reasoning": reasoning})]
+        responses=[
+            json.dumps(
+                {"main_diagnosis": label, "diagnosis_category": category, "reasoning": reasoning}
+            )
+        ]
     )
 
 
@@ -43,8 +49,10 @@ def _make_metadata(raw_text: str = "Assessment: community-acquired pneumonia.") 
         ("Pneumonia (J18.9)", "Pneumonia"),
         ("Pneumonia J18.9", "Pneumonia"),
         ("Pneumonia (J18)", "Pneumonia"),
-        ("Vitamin B12 deficiency", "Vitamin B12"),
-        ("Acute otitis media", "Acute Otitis"),
+        ("Vitamin B12 deficiency", "Vitamin B12 Deficiency"),
+        ("Acute otitis media", "Acute Otitis Media"),
+        ("Failure to thrive", "Failure To Thrive"),
+        ("Acute on chronic systolic heart failure", "Acute On Chronic Systolic"),
         ("Crohn's disease", "Crohn's Disease"),
         ("COVID-19", "Covid-19"),
     ],
@@ -134,3 +142,82 @@ def test_prompt_prefers_clinician_diagnosis_over_complaint() -> None:
     assert "clinician's diagnosis always wins over the patient's or family's complaint" in prompt
     # Fallback to the complaint only exists when there is no clinician diagnosis.
     assert prompt.index("assessment") < prompt.index("chief complaint")
+
+
+# ---------------------------------------------------------------------------
+# diagnosis_category
+# ---------------------------------------------------------------------------
+
+async def test_returns_category_alongside_label() -> None:
+    classifier = MainDiagnosisClassifier(llm=_fake_llm("GERD", category="Reflux / GERD"))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.main_diagnosis == "GERD"
+    assert result.diagnosis_category is DiagnosisCategory.REFLUX
+
+
+async def test_null_category_stays_none() -> None:
+    classifier = MainDiagnosisClassifier(llm=_fake_llm(None, category=None))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata("Routine visit."))
+
+    assert result.diagnosis_category is None
+    assert result.error is None
+
+
+async def test_category_dropped_when_label_means_no_diagnosis() -> None:
+    classifier = MainDiagnosisClassifier(llm=_fake_llm("Unknown", category="Other"))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.main_diagnosis is None
+    assert result.diagnosis_category is None
+
+
+async def test_category_outside_enum_is_parse_error() -> None:
+    classifier = MainDiagnosisClassifier(llm=_fake_llm("GERD", category="Digestive Stuff"))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.diagnosis_category is None
+    assert result.error is not None and result.error.startswith("Parse error")
+
+
+async def test_stub_provider_returns_valid_category() -> None:
+    classifier = MainDiagnosisClassifier(llm=create_stub_chat_model(STUB_MAIN_DIAGNOSIS_RESPONSE))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.diagnosis_category is DiagnosisCategory.OTHER
+
+
+def test_prompt_lists_every_category() -> None:
+    from classifier.classifiers.main_diagnosis import _CATEGORY_LIST
+
+    for category in DiagnosisCategory:
+        assert f"- {category.value}" in _CATEGORY_LIST
+
+
+async def test_rendered_prompt_contains_categories() -> None:
+    llm = _fake_llm("GERD", category="Reflux / GERD")
+    classifier = MainDiagnosisClassifier(llm=llm)
+    seen: list[str] = []
+    original = llm._call
+
+    def spy(messages, *args, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(str(messages[0].content))
+        return original(messages, *args, **kwargs)
+
+    object.__setattr__(llm, "_call", spy)
+    await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert seen and all(c.value in seen[0] for c in DiagnosisCategory)
+
+
+def test_output_schema_constrains_category_to_enum() -> None:
+    from classifier.classifiers.main_diagnosis import MainDiagnosisOutput
+
+    schema = MainDiagnosisOutput.model_json_schema()
+    enum = schema["$defs"]["DiagnosisCategory"]["enum"]
+    assert enum == [c.value for c in DiagnosisCategory]

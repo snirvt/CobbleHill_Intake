@@ -91,6 +91,7 @@ def _pair_result_to_dict(
         "success": True,
         "overall": res.overall,
         "main_diagnosis": res.main_diagnosis,
+        "diagnosis_category": res.diagnosis_category,
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
         "diagnosis_check": res.diagnosis_check or "",
@@ -172,6 +173,7 @@ def _main_diagnosis_result_to_dict(r: MainDiagnosisResult) -> dict:  # type: ign
     return {
         "file": str(r.file_path),
         "main_diagnosis": r.main_diagnosis,
+        "diagnosis_category": r.diagnosis_category,
         "reasoning": r.reasoning,
     }
 
