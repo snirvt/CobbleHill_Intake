@@ -164,7 +164,7 @@ class TreatmentRequestResult(BaseModel):
 
 
 class MainDiagnosisResult(BaseModel):
-    """Short (1-2 word) primary-diagnosis label for one dr note, used to group cases."""
+    """Short (1-4 word) primary-diagnosis label for one dr note, used to group cases."""
 
     file_path: Path
     main_diagnosis: str | None = None  # None = no diagnosis found, or the call failed

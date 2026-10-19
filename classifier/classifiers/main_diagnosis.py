@@ -44,8 +44,17 @@ fever" with assessment "community-acquired pneumonia" → "Pneumonia".
 Rules:
 - Pick exactly one diagnosis: the doctor's primary diagnosis for this encounter (if \
 several are listed, the first/primary one).
-- Answer in 1-3 words, using the general condition name (e.g. "Pneumonia", \
-"Otitis Media", "Asthma", "UTI", "Fracture").
+- Answer with a short (usually 1-4 words) but complete condition name, using the \
+general condition name (e.g. "Pneumonia", "Otitis Media", "Asthma", "UTI", "Fracture").
+- Shorten by picking the core condition, never by cutting a phrase off after its first \
+words. The label must make sense on its own and must never end on a connector word \
+such as "for", "to", "of", "with", "due", "and" or "s/p".
+- For administrative or encounter wording ("Encounter for ...", "Admission for ...", \
+"Follow-up of ...", "Supervision of ...", "History of ..."), name the condition being \
+cared for, not the encounter phrase — e.g. "Encounter for routine follow-up of \
+hypertension" → "Hypertension".
+- For "X due to / secondary to / s/p Y", name the main condition X, not the cause \
+chain — e.g. "Acute kidney injury due to dehydration" → "AKI".
 - Prefer the shortest common name or a standard abbreviation over a long name.
 - Do not include ICD codes, laterality, severity, stage, or other qualifiers.
 - If the note contains no diagnosis, return null for main_diagnosis.

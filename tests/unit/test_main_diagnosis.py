@@ -152,6 +152,19 @@ def test_prompt_prefers_clinician_diagnosis_over_complaint() -> None:
     assert prompt.index("assessment") < prompt.index("chief complaint")
 
 
+def test_prompt_asks_for_complete_label_not_cut_off_phrase() -> None:
+    from classifier.classifiers.main_diagnosis import _PROMPT_TEMPLATE
+
+    prompt = _PROMPT_TEMPLATE.lower()
+    # A hard "1-3 words" cap made the model chop phrases ("Encounter for ..." → "Encounter for").
+    assert "1-3 words" not in prompt
+    assert "never by cutting a phrase off" in prompt
+    assert "never end on a connector word" in prompt
+    # Encounter wording maps to the underlying condition.
+    assert '"encounter for ..."' in prompt
+    assert "not the encounter phrase" in prompt
+
+
 # ---------------------------------------------------------------------------
 # diagnosis_category
 # ---------------------------------------------------------------------------
