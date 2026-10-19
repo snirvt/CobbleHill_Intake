@@ -13,12 +13,20 @@ from classifier.providers.stub import (
 
 
 def _fake_llm(
-    label: str | None, reasoning: str = "ok", category: str | None = None
+    label: str | None,
+    reasoning: str = "ok",
+    category: str | None = None,
+    icd_code: str | None = None,
 ) -> FakeListChatModel:
     return FakeListChatModel(
         responses=[
             json.dumps(
-                {"main_diagnosis": label, "diagnosis_category": category, "reasoning": reasoning}
+                {
+                    "main_diagnosis": label,
+                    "diagnosis_category": category,
+                    "icd_code": icd_code,
+                    "reasoning": reasoning,
+                }
             )
         ]
     )
@@ -221,3 +229,72 @@ def test_output_schema_constrains_category_to_enum() -> None:
     schema = MainDiagnosisOutput.model_json_schema()
     enum = schema["$defs"]["DiagnosisCategory"]["enum"]
     assert enum == [c.value for c in DiagnosisCategory]
+
+
+# ---------------------------------------------------------------------------
+# icd_code
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("K21.9", "K21.9"),
+        ("r10.83", "R10.83"),
+        ("J18", "J18"),
+        (" K21.9 ", "K21.9"),
+        ("K21. 9", "K21.9"),
+        ("S72.001A", "S72.001A"),
+    ],
+)
+def test_normalize_icd_keeps_valid_codes(raw: str, expected: str) -> None:
+    assert MainDiagnosisClassifier._normalize_icd(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", "K21-9", "abc", "21.9", "U07.1", "K21.99999"])
+def test_normalize_icd_drops_invalid_codes(raw: str | None) -> None:
+    assert MainDiagnosisClassifier._normalize_icd(raw) is None
+
+
+async def test_icd_code_passed_through() -> None:
+    classifier = MainDiagnosisClassifier(
+        llm=_fake_llm("GERD", category="Reflux / GERD", icd_code="k21.9")
+    )
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.icd_code == "K21.9"
+
+
+async def test_malformed_icd_code_dropped_label_kept() -> None:
+    classifier = MainDiagnosisClassifier(
+        llm=_fake_llm("GERD", category="Reflux / GERD", icd_code="see chart")
+    )
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.icd_code is None
+    assert result.main_diagnosis == "GERD"
+    assert result.diagnosis_category is DiagnosisCategory.REFLUX
+    assert result.error is None
+
+
+async def test_icd_code_dropped_when_label_means_no_diagnosis() -> None:
+    classifier = MainDiagnosisClassifier(llm=_fake_llm("Unknown", icd_code="Z00.0"))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.icd_code is None
+
+
+async def test_stub_provider_returns_icd_code() -> None:
+    classifier = MainDiagnosisClassifier(llm=create_stub_chat_model(STUB_MAIN_DIAGNOSIS_RESPONSE))
+
+    result = await classifier.extract_main_diagnosis(_make_metadata())
+
+    assert result.icd_code == "Z00.0"
+
+
+def test_prompt_forbids_guessing_icd_code() -> None:
+    from classifier.classifiers.main_diagnosis import _PROMPT_TEMPLATE
+
+    assert "Never guess or look up a code yourself" in _PROMPT_TEMPLATE

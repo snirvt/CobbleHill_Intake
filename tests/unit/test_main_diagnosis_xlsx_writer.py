@@ -16,11 +16,13 @@ def _result(
     label: str | None,
     reasoning: str | None = "why",
     category: DiagnosisCategory | None = None,
+    icd_code: str | None = None,
 ) -> MainDiagnosisResult:
     return MainDiagnosisResult(
         file_path=Path(f"data/{n}/dr_progress_note.pdf"),
         main_diagnosis=label,
         diagnosis_category=category,
+        icd_code=icd_code,
         reasoning=reasoning,
     )
 
@@ -34,15 +36,15 @@ def test_writes_main_diagnosis_and_groups_sheets(tmp_path: Path) -> None:
 def test_writes_one_row_per_file(tmp_path: Path) -> None:
     out = tmp_path / "main_diagnosis_results.xlsx"
     results = [
-        _result(1, "Pneumonia", "CAP in assessment", DiagnosisCategory.RESPIRATORY),
+        _result(1, "Pneumonia", "CAP in assessment", DiagnosisCategory.RESPIRATORY, "J18.9"),
         _result(2, None, None),
     ]
     write_main_diagnosis_xlsx(results, out)
 
     assert _rows(out, "MainDiagnosis") == [
-        ("file_path", "main_diagnosis", "diagnosis_category", "reasoning"),
-        ("data/1/dr_progress_note.pdf", "Pneumonia", "Respiratory", "CAP in assessment"),
-        ("data/2/dr_progress_note.pdf", "", "", ""),
+        ("file_path", "main_diagnosis", "diagnosis_category", "icd_code", "reasoning"),
+        ("data/1/dr_progress_note.pdf", "Pneumonia", "Respiratory", "J18.9", "CAP in assessment"),
+        ("data/2/dr_progress_note.pdf", "", "", "", ""),
     ]
 
 

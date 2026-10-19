@@ -401,12 +401,17 @@ async def test_diagnosis_and_care_checks_do_not_interfere() -> None:
 # ---------------------------------------------------------------------------
 
 def _fake_main_diagnosis_extractor(
-    label: str | None, category: DiagnosisCategory | None = None
+    label: str | None,
+    category: DiagnosisCategory | None = None,
+    icd_code: str | None = None,
 ) -> MagicMock:
     extractor = MagicMock()
     extractor.extract_main_diagnosis = AsyncMock(
         side_effect=lambda meta: MainDiagnosisResult(
-            file_path=meta.file_path, main_diagnosis=label, diagnosis_category=category
+            file_path=meta.file_path,
+            main_diagnosis=label,
+            diagnosis_category=category,
+            icd_code=icd_code,
         )
     )
     return extractor
@@ -426,13 +431,17 @@ async def test_main_diagnosis_none_when_no_extractor_injected() -> None:
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
     assert result.main_diagnosis is None
     assert result.diagnosis_category is None
+    assert result.main_diagnosis_icd is None
 
 
 async def test_diagnosis_category_copied_from_extractor() -> None:
-    extractor = _fake_main_diagnosis_extractor("Pneumonia", DiagnosisCategory.RESPIRATORY)
+    extractor = _fake_main_diagnosis_extractor(
+        "Pneumonia", DiagnosisCategory.RESPIRATORY, "J18.9"
+    )
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), main_diagnosis_extractor=extractor)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
     assert result.diagnosis_category is DiagnosisCategory.RESPIRATORY
+    assert result.main_diagnosis_icd == "J18.9"
 
 
 async def test_missing_main_diagnosis_does_not_change_overall() -> None:

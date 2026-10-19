@@ -21,8 +21,8 @@ from classifier.output.csv_writer import (
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_category", "diagnosis_check", "diagnoses", "care_check",
-    "care_reasoning", "errors",
+    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
+    "care_check", "care_reasoning", "errors",
 ]
 
 
@@ -51,6 +51,7 @@ def _ok(
             care_reasoning="needs home services",
             main_diagnosis=main,
             diagnosis_category=category,
+            main_diagnosis_icd="K21.9",
             verdict=verdict,
             reasons=[] if verdict is ValidityVerdict.VALID else ["no medical necessity"],
         ),
@@ -91,6 +92,7 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["age"] == "6 months"
     assert row["main_diagnosis"] == "GERD"
     assert row["diagnosis_category"] == "Reflux / GERD"
+    assert row["main_diagnosis_icd"] == "K21.9"
     assert row["diagnoses"] == "GERD (K21.9)"
     assert row["care_check"] == "NEEDED"
 

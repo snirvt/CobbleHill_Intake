@@ -49,7 +49,10 @@ def _make_classifier(
         ),
         "main": AsyncMock(
             side_effect=lambda m: MainDiagnosisResult(
-                file_path=m.file_path, main_diagnosis=main, diagnosis_category=category
+                file_path=m.file_path,
+                main_diagnosis=main,
+                diagnosis_category=category,
+                icd_code="R10.83",
             )
         ),
     }
@@ -155,6 +158,7 @@ async def test_classify_peds_valid_populates_all_fields() -> None:
     assert result.care_reasoning == "needs home care"
     assert result.main_diagnosis == "Colic"
     assert result.diagnosis_category is DiagnosisCategory.FEEDING
+    assert result.main_diagnosis_icd == "R10.83"
 
 
 async def test_classify_peds_without_necessity_is_invalid() -> None:
