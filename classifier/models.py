@@ -10,6 +10,36 @@ class ClinicalVerdict(StrEnum):
     UNDECIDED = "UNDECIDED"
 
 
+class DiagnosisCategory(StrEnum):
+    """Fixed main-diagnosis buckets for grouping cases.
+
+    Edit this enum to add, rename or drop a bucket: the LLM output schema, the prompt's
+    bucket list and validation all derive from it.
+    """
+
+    REFLUX = "Reflux / GERD"
+    FEEDING = "Feeding / Growth"
+    GASTROINTESTINAL = "Gastrointestinal"
+    NEWBORN = "Newborn / Well Child"
+    PREGNANCY = "Pregnancy / Postpartum"
+    MENTAL_HEALTH = "Mental Health"
+    DEVELOPMENTAL = "Developmental / Cognitive"
+    FRACTURE = "Fracture / Fall"
+    MUSCULOSKELETAL = "Musculoskeletal / Spine"
+    WEAKNESS = "Weakness / Functional Decline"
+    NEUROLOGICAL = "Neurological"
+    BRAIN_BLEED = "Brain Bleed / Stroke"
+    CARDIOVASCULAR = "Cardiovascular"
+    RESPIRATORY = "Respiratory"
+    INFECTION = "Infection / Sepsis"
+    KIDNEY = "Kidney / Urinary"
+    BLOOD = "Blood / Anemia"
+    SKIN = "Skin / Wound"
+    POST_SURGICAL = "Post-Surgical Care"
+    METABOLIC = "Obesity / Metabolic"
+    OTHER = "Other"
+
+
 class ExtractedText(BaseModel):
     """Raw text extracted from a document file."""
 
@@ -138,6 +168,8 @@ class MainDiagnosisResult(BaseModel):
 
     file_path: Path
     main_diagnosis: str | None = None  # None = no diagnosis found, or the call failed
+    # Fixed bucket for grouping; None = no diagnosis found, or the call failed.
+    diagnosis_category: DiagnosisCategory | None = None
     reasoning: str | None = None
     # Set when the LLM call or parse failed.
     error: str | None = None
@@ -220,6 +252,7 @@ class PairClassificationResult(BaseModel):
     care_reasoning: str = ""
     # Short primary-diagnosis label (dr note only) for grouping; not a check.
     main_diagnosis: str | None = None
+    diagnosis_category: DiagnosisCategory | None = None
 
 
 class PairPipelineResult(BaseModel):
@@ -275,6 +308,7 @@ class DrValidityResult(BaseModel):
     care_check: CareCheck | None = None
     care_reasoning: str = ""
     main_diagnosis: str | None = None
+    diagnosis_category: DiagnosisCategory | None = None
     verdict: ValidityVerdict
     reasons: list[str] = []
 

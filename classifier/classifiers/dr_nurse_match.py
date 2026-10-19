@@ -16,6 +16,7 @@ from classifier.models import (
     DiagnosisCheck,
     DocumentMetadata,
     IdentityMatchResult,
+    MainDiagnosisResult,
     PairClassificationResult,
     PairDocumentMetadata,
     PatientMetadata,
@@ -82,7 +83,7 @@ class DrNurseMatchClassifier:
             (clinical_verdict, clinical_reasoning),
             (diagnosis_check, dr_diagnoses, nurse_diagnoses),
             (care_check, care_reasoning),
-            main_diagnosis,
+            main,
         ) = await asyncio.gather(
             self._compare_clinical(pair),
             self._check_diagnoses(pair),
@@ -108,7 +109,8 @@ class DrNurseMatchClassifier:
             nurse_diagnoses=nurse_diagnoses,
             care_check=care_check,
             care_reasoning=care_reasoning,
-            main_diagnosis=main_diagnosis,
+            main_diagnosis=main.main_diagnosis if main else None,
+            diagnosis_category=main.diagnosis_category if main else None,
         )
 
     async def _check_care_needed(
@@ -141,15 +143,16 @@ class DrNurseMatchClassifier:
             )
         return check, result.reasoning or ""
 
-    async def _extract_main_diagnosis(self, pair: PairDocumentMetadata) -> str | None:
-        """Short main-diagnosis label from the dr note, for grouping; never affects overall.
+    async def _extract_main_diagnosis(
+        self, pair: PairDocumentMetadata
+    ) -> MainDiagnosisResult | None:
+        """Main-diagnosis label + category from the dr note, for grouping; never affects overall.
 
         Runs on every category. Returns None when no extractor was injected.
         """
         if self._main_diagnosis_extractor is None:
             return None
-        result = await self._main_diagnosis_extractor.extract_main_diagnosis(pair.dr)
-        return result.main_diagnosis
+        return await self._main_diagnosis_extractor.extract_main_diagnosis(pair.dr)
 
     @staticmethod
     def _combined_note_text(pair: PairDocumentMetadata) -> str:

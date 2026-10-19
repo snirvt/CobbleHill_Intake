@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.classifiers.retry import with_llm_retry
-from classifier.models import DocumentMetadata, MainDiagnosisResult
+from classifier.models import DiagnosisCategory, DocumentMetadata, MainDiagnosisResult
 from classifier.providers.structured import bind_output_schema
 from config.settings import settings
 
@@ -19,6 +19,7 @@ class MainDiagnosisOutput(BaseModel):
     """Structured LLM output for the main-diagnosis task."""
 
     main_diagnosis: str | None = None
+    diagnosis_category: DiagnosisCategory | None = None
     reasoning: str | None = None
 
 
@@ -42,11 +43,27 @@ fever" with assessment "community-acquired pneumonia" → "Pneumonia".
 Rules:
 - Pick exactly one diagnosis: the doctor's primary diagnosis for this encounter (if \
 several are listed, the first/primary one).
-- Answer in 1-2 words, using the general condition name (e.g. "Pneumonia", \
+- Answer in 1-3 words, using the general condition name (e.g. "Pneumonia", \
 "Otitis Media", "Asthma", "UTI", "Fracture").
 - Prefer the shortest common name or a standard abbreviation over a long name.
 - Do not include ICD codes, laterality, severity, stage, or other qualifiers.
 - If the note contains no diagnosis, return null for main_diagnosis.
+
+Also put the main diagnosis into exactly one diagnosis_category from this list \
+(copy the text exactly):
+{categories}
+
+Category rules:
+- Pick the most specific category: a hip fracture or fall is "Fracture / Fall", not \
+"Musculoskeletal / Spine"; a subdural or subarachnoid bleed is "Brain Bleed / Stroke", \
+not "Neurological".
+- Reflux/GERD (including in infants) is "Reflux / GERD", not "Feeding / Growth".
+- "Infection / Sepsis" only when a systemic infection is the main problem; an infection \
+of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / Urinary").
+- Postpartum depression is "Mental Health"; other postpartum or pregnancy conditions are \
+"Pregnancy / Postpartum".
+- Use "Other" only when a diagnosis exists but fits no category.
+- If main_diagnosis is null, diagnosis_category is null too.
 - Give a brief reasoning citing the relevant wording and which section it came from.
 
 {format_instructions}
@@ -61,19 +78,22 @@ _ICD_PATTERN = re.compile(r"\(?\b[A-TV-Z]\d{2}\.[0-9A-Z]{1,4}\b\)?|\([A-TV-Z]\d{
 _PUNCT_PATTERN = re.compile(r"[^\w\s'-]|_")
 # LLM answers that mean "no diagnosis".
 _EMPTY_LABELS = {"none", "n/a", "na", "null", "unknown", "no diagnosis"}
+# Bucket list shown in the prompt, one per line, derived from the enum.
+_CATEGORY_LIST = "\n".join(f"- {c.value}" for c in DiagnosisCategory)
 # All-caps words up to this length are kept as acronyms (UTI, COPD); longer ones are title-cased.
 _ACRONYM_MAX_LEN = 4
 
 
 class MainDiagnosisClassifier:
-    """Extracts a short (1-2 word) main-diagnosis label from a dr note, for grouping cases."""
+    """Extracts a short main-diagnosis label and its fixed category from a dr note."""
 
     def __init__(self, llm: BaseChatModel) -> None:
         parser: PydanticOutputParser[MainDiagnosisOutput] = PydanticOutputParser(
             pydantic_object=MainDiagnosisOutput
         )
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
-            format_instructions=parser.get_format_instructions()
+            format_instructions=parser.get_format_instructions(),
+            categories=_CATEGORY_LIST,
         )
         self._chain = with_llm_retry(prompt | bind_output_schema(llm, MainDiagnosisOutput) | parser)
 
@@ -98,21 +118,24 @@ class MainDiagnosisClassifier:
         return " ".join(words)
 
     async def extract_main_diagnosis(self, metadata: DocumentMetadata) -> MainDiagnosisResult:
-        """Return the normalized main-diagnosis label; None on failure or no diagnosis."""
+        """Return the normalized label and category; both None on failure or no diagnosis."""
         try:
             output: MainDiagnosisOutput = await self._chain.ainvoke(
                 {"dr_full_text": metadata.raw_text or "None"}
             )
             label = self._normalize(output.main_diagnosis)
             logger.debug(
-                "Main diagnosis raw=%r normalized=%r for %s",
+                "Main diagnosis raw=%r normalized=%r category=%r for %s",
                 output.main_diagnosis,
                 label,
+                output.diagnosis_category,
                 metadata.file_path,
             )
             return MainDiagnosisResult(
                 file_path=metadata.file_path,
                 main_diagnosis=label,
+                # A label that means "no diagnosis" carries no category either.
+                diagnosis_category=output.diagnosis_category if label else None,
                 reasoning=output.reasoning,
             )
         except OutputParserException as exc:

@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Categories the pair care-needed check runs on (request or medical necessity).
     care_check_categories: list[str] = ["peds"]
     # Max words in a main-diagnosis grouping label; longer LLM labels are truncated.
-    main_diagnosis_max_words: int = 2
+    main_diagnosis_max_words: int = 4
     # Dr-validity check: patients younger than this (years) need a diagnosis AND medical
     # necessity; older patients need only a diagnosis.
     pediatric_age_threshold: float = 18

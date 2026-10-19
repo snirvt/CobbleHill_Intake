@@ -204,6 +204,8 @@ uvicorn classifier.api:app --reload
   the server can only emit matching JSON; models without it (test stubs) pass through unchanged.
 - Folder problems (empty, missing required notes) are reported via an injected `FolderCheck`
   (`folder_checks.RequiredNotesCheck(roles=...)`), not skipped silently. Each pipeline picks its roles.
+- Main-diagnosis buckets live in `DiagnosisCategory` (`models.py`). Edit that enum to add or
+  rename a bucket — the output schema, prompt bucket list and validation all derive from it.
 - **Multi-step classifiers:** A classifier may chain several LLM calls with code logic in between. Each intermediate step should be its own testable method (e.g. `_extract_features()`, `_normalize()`, `_assign_category()`, `_validate()`). This keeps each step independently mockable and testable even though the classifier orchestrates them as a pipeline. If the chain can fail at any step, return partial results or a structured error that identifies which step failed.
 
 ---

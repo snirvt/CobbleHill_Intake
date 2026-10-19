@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import quote
 
@@ -48,13 +49,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis",
+    "main_diagnosis", "diagnosis_category",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis",
+    "main_diagnosis", "diagnosis_category",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
@@ -179,7 +180,8 @@ def _pair_result_to_row(
     }
     if not result.success or result.result is None:
         base.update({
-            "overall": "", "main_diagnosis": "", "clinical_verdict": "", "clinical_reasoning": "",
+            "overall": "", "main_diagnosis": "", "diagnosis_category": "",
+            "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "",
             "care_check": "", "care_reasoning": "",
         })
@@ -191,6 +193,7 @@ def _pair_result_to_row(
     base.update({
         "overall": r.overall,
         "main_diagnosis": r.main_diagnosis or "",
+        "diagnosis_category": r.diagnosis_category or "",
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
@@ -296,8 +299,7 @@ def write_treatment_request_xlsx(
     )
 
 
-_MAIN_DIAGNOSIS_COLUMNS = ["file_path", "main_diagnosis", "reasoning"]
-_MAIN_DIAGNOSIS_GROUP_COLUMNS = ["main_diagnosis", "count"]
+_MAIN_DIAGNOSIS_COLUMNS = ["file_path", "main_diagnosis", "diagnosis_category", "reasoning"]
 # Group label for notes with no main diagnosis (none found, or the call failed).
 _UNKNOWN_DIAGNOSIS = "Unknown"
 
@@ -305,10 +307,11 @@ _UNKNOWN_DIAGNOSIS = "Unknown"
 def write_main_diagnosis_xlsx(
     results: list[MainDiagnosisResult], output_path: Path
 ) -> None:
-    """Write main-diagnosis results to a two-sheet Excel workbook.
+    """Write main-diagnosis results to a three-sheet Excel workbook.
 
-    Sheets: MainDiagnosis (one row per file: file_path, main_diagnosis, reasoning) and
-    Groups (main_diagnosis, count — most common first; no diagnosis counts as "Unknown").
+    Sheets: MainDiagnosis (one row per file: file_path, main_diagnosis, diagnosis_category,
+    reasoning), Groups (main_diagnosis, count) and Categories (diagnosis_category, count) —
+    counts most common first; no diagnosis counts as "Unknown".
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -318,10 +321,22 @@ def write_main_diagnosis_xlsx(
     ws.append(_MAIN_DIAGNOSIS_COLUMNS)
     for result in results:
         ws.append(
-            [str(result.file_path), result.main_diagnosis or "", result.reasoning or ""]
+            [
+                str(result.file_path),
+                result.main_diagnosis or "",
+                result.diagnosis_category or "",
+                result.reasoning or "",
+            ]
         )
 
-    group_count = _write_groups_sheet(wb.create_sheet("Groups"), [r.main_diagnosis for r in results])
+    group_count = _write_groups_sheet(
+        wb.create_sheet("Groups"), "main_diagnosis", [r.main_diagnosis for r in results]
+    )
+    _write_groups_sheet(
+        wb.create_sheet("Categories"),
+        "diagnosis_category",
+        [r.diagnosis_category for r in results],
+    )
 
     wb.save(output_path)
     logger.info(
@@ -332,19 +347,19 @@ def write_main_diagnosis_xlsx(
     )
 
 
-def count_main_diagnoses(labels: list[str | None]) -> list[tuple[str, int]]:
-    """Count patients per main diagnosis, most common first.
+def count_main_diagnoses(labels: Sequence[str | None]) -> list[tuple[str, int]]:
+    """Count patients per main diagnosis (label or category), most common first.
 
     A missing label counts as "Unknown"; ties are ordered by label for stable output.
     """
-    counts = Counter(label or _UNKNOWN_DIAGNOSIS for label in labels)
+    counts = Counter(str(label) if label else _UNKNOWN_DIAGNOSIS for label in labels)
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
-def _write_groups_sheet(ws: Worksheet, labels: list[str | None]) -> int:
-    """Write main_diagnosis/count rows, most common first; return the number of groups."""
+def _write_groups_sheet(ws: Worksheet, header: str, labels: Sequence[str | None]) -> int:
+    """Write <header>/count rows, most common first; return the number of groups."""
     groups = count_main_diagnoses(labels)
-    ws.append(_MAIN_DIAGNOSIS_GROUP_COLUMNS)
+    ws.append([header, "count"])
     for label, count in groups:
         ws.append([label, count])
     return len(groups)
@@ -352,7 +367,8 @@ def _write_groups_sheet(ws: Worksheet, labels: list[str | None]) -> int:
 
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_check", "diagnoses", "care_check", "care_reasoning", "errors",
+    "main_diagnosis", "diagnosis_category", "diagnosis_check", "diagnoses", "care_check",
+    "care_reasoning", "errors",
 ]
 
 
@@ -364,10 +380,11 @@ def write_dr_validity_xlsx(
     sp_web_url: str | None = None,
     root_name: str | None = None,
 ) -> None:
-    """Write per-patient dr-validity results to a four-sheet Excel workbook.
+    """Write per-patient dr-validity results to a five-sheet Excel workbook.
 
-    Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), and Groups
-    (main diagnosis -> patient count). Pass local_root / sp_web_url as for write_pair_xlsx.
+    Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), Groups
+    (main diagnosis -> patient count) and Categories (diagnosis category -> patient count).
+    Pass local_root / sp_web_url as for write_pair_xlsx.
     Pass root_name to name a patient whose notes sit directly in local_root (see
     ``patient_display_name``).
     """
@@ -383,7 +400,13 @@ def write_dr_validity_xlsx(
     _write_pair_sheet(wb.create_sheet("Needs Review"), review_rows, _DR_VALIDITY_COLUMNS)
     _write_groups_sheet(
         wb.create_sheet("Groups"),
+        "main_diagnosis",
         [r.result.main_diagnosis if r.result else None for r in results],
+    )
+    _write_groups_sheet(
+        wb.create_sheet("Categories"),
+        "diagnosis_category",
+        [r.result.diagnosis_category if r.result else None for r in results],
     )
 
     wb.save(output_path)
@@ -460,6 +483,7 @@ def _dr_validity_row(
         "patient_group": r.patient_group,
         "age": format_age(r.age_years),
         "main_diagnosis": r.main_diagnosis or "",
+        "diagnosis_category": r.diagnosis_category or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
         "care_check": r.care_check or "",

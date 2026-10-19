@@ -36,6 +36,7 @@ def dr_validity_patient_dict(
         "age": format_age(res.age_years),
         "age_years": res.age_years,
         "main_diagnosis": res.main_diagnosis,
+        "diagnosis_category": res.diagnosis_category,
         "diagnosis_check": res.diagnosis_check,
         "diagnoses": [d.model_dump() for d in res.diagnoses],
         "care_check": res.care_check,
@@ -95,4 +96,15 @@ def dr_validity_groups(results: list[DrValidityPipelineResult]) -> list[dict[str
     return [
         {"main_diagnosis": label, "count": count}
         for label, count in count_main_diagnoses(labels)
+    ]
+
+
+def dr_validity_category_groups(
+    results: list[DrValidityPipelineResult],
+) -> list[dict[str, object]]:
+    """Patients per diagnosis category, most common first ("Unknown" when none/failed)."""
+    categories = [r.result.diagnosis_category if r.result else None for r in results]
+    return [
+        {"diagnosis_category": category, "count": count}
+        for category, count in count_main_diagnoses(categories)
     ]

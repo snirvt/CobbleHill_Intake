@@ -8,6 +8,7 @@ from typing import Protocol
 
 from classifier.models import DrValidityPipelineResult, RunError
 from classifier.output.dr_validity_report import (
+    dr_validity_category_groups,
     dr_validity_errors,
     dr_validity_groups,
     dr_validity_patient_dict,
@@ -76,6 +77,7 @@ class DrValidityService:
                 "web_url": web_url,
                 "summary": dr_validity_summary(results, folder_errors),
                 "groups": dr_validity_groups(results),
+                "category_groups": dr_validity_category_groups(results),
                 "patients": [dr_validity_patient_dict(r, local_dir, root_name) for r in results],
                 "errors": dr_validity_errors(results, folder_errors, local_dir, root_name),
             }
