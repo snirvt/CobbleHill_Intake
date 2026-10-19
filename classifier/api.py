@@ -19,6 +19,8 @@ Clients then send it on every request except GET /health::
     curl -H "X-API-Key: <key>" -H "Content-Type: application/json" \
          -d '{"sharepoint_folder": "..."}' http://<host>:8010/dr-validity
 
+``source scripts/api_env.sh`` sets ``$KEY`` and ``$HOST`` for these curl calls.
+
 The response lists every problem met along the way under ``errors`` (top level) and per
 patient/pair under ``patients[].errors`` / ``pairs[].errors``: empty folders, folders
 without the required notes, notes with no extractable text, and LLM steps that failed
