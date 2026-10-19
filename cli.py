@@ -469,4 +469,34 @@ uv run python -m cli --sharepoint-folder "Patient Encounters/Medical Notes/Non-A
 # Every LLM call goes to the configured ollama model, so ollama must be running.
 # Point it elsewhere with COBBLEHILL_OLLAMA_URL / COBBLEHILL_OLLAMA_MODEL.
 
+
+
+
+
+
+
+
+
+uv run cobblehill-api --host 0.0.0.0        # network; port 8010 default
+uv run cobblehill-api                        # localhost only
+uv run cobblehill-api --host 0.0.0.0 --port 9000
+
+Call endpoints. Every route except /health needs the key: by default that's API_TOKEN in _SECRETS/_secrets.py, or set it with the COBBLEHILL_API_KEY env var.
+
+KEY=<API_TOKEN value>
+HOST=localhost:8010   # or <spark-ip>:8010 from another machine
+
+# liveness
+curl http://$HOST/health
+
+# dr-validity (existing)
+curl -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+     -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}' \
+     http://$HOST/dr-validity
+
+# dr-nurse match (new)
+curl -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+     -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}' \
+     http://$HOST/dr-nurse-match
+
 """
