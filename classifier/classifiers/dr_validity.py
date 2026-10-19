@@ -101,6 +101,7 @@ class DrNoteValidityClassifier:
             care_reasoning="" if is_adult else care.reasoning or "",
             main_diagnosis=main.main_diagnosis,
             diagnosis_category=main.diagnosis_category,
+            main_diagnosis_icd=main.icd_code,
             verdict=verdict,
             reasons=reasons,
         )

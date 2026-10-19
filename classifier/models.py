@@ -170,6 +170,8 @@ class MainDiagnosisResult(BaseModel):
     main_diagnosis: str | None = None  # None = no diagnosis found, or the call failed
     # Fixed bucket for grouping; None = no diagnosis found, or the call failed.
     diagnosis_category: DiagnosisCategory | None = None
+    # ICD-10 code as written in the note for the main diagnosis; None when absent.
+    icd_code: str | None = None
     reasoning: str | None = None
     # Set when the LLM call or parse failed.
     error: str | None = None
@@ -253,6 +255,7 @@ class PairClassificationResult(BaseModel):
     # Short primary-diagnosis label (dr note only) for grouping; not a check.
     main_diagnosis: str | None = None
     diagnosis_category: DiagnosisCategory | None = None
+    main_diagnosis_icd: str | None = None
 
 
 class PairPipelineResult(BaseModel):
@@ -309,6 +312,7 @@ class DrValidityResult(BaseModel):
     care_reasoning: str = ""
     main_diagnosis: str | None = None
     diagnosis_category: DiagnosisCategory | None = None
+    main_diagnosis_icd: str | None = None
     verdict: ValidityVerdict
     reasons: list[str] = []
 

@@ -20,6 +20,7 @@ class MainDiagnosisOutput(BaseModel):
 
     main_diagnosis: str | None = None
     diagnosis_category: DiagnosisCategory | None = None
+    icd_code: str | None = None
     reasoning: str | None = None
 
 
@@ -64,6 +65,11 @@ of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / 
 "Pregnancy / Postpartum".
 - Use "Other" only when a diagnosis exists but fits no category.
 - If main_diagnosis is null, diagnosis_category is null too.
+
+ICD code:
+- icd_code: copy the ICD-10 code the note writes for this main diagnosis, exactly as \
+written (e.g. "K21.9"). If the note gives no code for it, return null. Never guess or \
+look up a code yourself.
 - Give a brief reasoning citing the relevant wording and which section it came from.
 
 {format_instructions}
@@ -74,6 +80,8 @@ of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / 
 
 # ICD-10 codes with a decimal part (e.g. J18.9), or a bare code in parentheses (e.g. "(J18)").
 _ICD_PATTERN = re.compile(r"\(?\b[A-TV-Z]\d{2}\.[0-9A-Z]{1,4}\b\)?|\([A-TV-Z]\d{2}\)")
+# A whole valid ICD-10 code, e.g. K21.9, R10.83, J18. Anything else is dropped.
+_ICD_CODE_PATTERN = re.compile(r"[A-TV-Z]\d[0-9A-Z](\.[0-9A-Z]{1,4})?")
 # Anything other than letters, digits, whitespace, hyphens and apostrophes.
 _PUNCT_PATTERN = re.compile(r"[^\w\s'-]|_")
 # LLM answers that mean "no diagnosis".
@@ -117,18 +125,32 @@ class MainDiagnosisClassifier:
         ]
         return " ".join(words)
 
+    @staticmethod
+    def _normalize_icd(code: str | None) -> str | None:
+        """Uppercase and de-space an ICD-10 code; None when it is not a valid ICD-10 code."""
+        if code is None:
+            return None
+        cleaned = "".join(code.split()).upper()
+        if not _ICD_CODE_PATTERN.fullmatch(cleaned):
+            if cleaned:
+                logger.debug("Dropping malformed ICD code %r", code)
+            return None
+        return cleaned
+
     async def extract_main_diagnosis(self, metadata: DocumentMetadata) -> MainDiagnosisResult:
-        """Return the normalized label and category; both None on failure or no diagnosis."""
+        """Return the normalized label, category and ICD code; None on failure or no diagnosis."""
         try:
             output: MainDiagnosisOutput = await self._chain.ainvoke(
                 {"dr_full_text": metadata.raw_text or "None"}
             )
             label = self._normalize(output.main_diagnosis)
+            icd_code = self._normalize_icd(output.icd_code) if label else None
             logger.debug(
-                "Main diagnosis raw=%r normalized=%r category=%r for %s",
+                "Main diagnosis raw=%r normalized=%r category=%r icd=%r for %s",
                 output.main_diagnosis,
                 label,
                 output.diagnosis_category,
+                icd_code,
                 metadata.file_path,
             )
             return MainDiagnosisResult(
@@ -136,6 +158,7 @@ class MainDiagnosisClassifier:
                 main_diagnosis=label,
                 # A label that means "no diagnosis" carries no category either.
                 diagnosis_category=output.diagnosis_category if label else None,
+                icd_code=icd_code,
                 reasoning=output.reasoning,
             )
         except OutputParserException as exc:

@@ -26,6 +26,7 @@ STUB_MAIN_DIAGNOSIS_RESPONSE = json.dumps(
     {
         "main_diagnosis": "STUB DIAGNOSIS",
         "diagnosis_category": "Other",
+        "icd_code": "Z00.0",
         "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
     }
 )

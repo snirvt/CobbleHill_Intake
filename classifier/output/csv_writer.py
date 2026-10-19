@@ -49,13 +49,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "diagnosis_category",
+    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "diagnosis_category",
+    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
@@ -180,7 +180,7 @@ def _pair_result_to_row(
     }
     if not result.success or result.result is None:
         base.update({
-            "overall": "", "main_diagnosis": "", "diagnosis_category": "",
+            "overall": "", "main_diagnosis": "", "diagnosis_category": "", "main_diagnosis_icd": "",
             "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "",
             "care_check": "", "care_reasoning": "",
@@ -194,6 +194,7 @@ def _pair_result_to_row(
         "overall": r.overall,
         "main_diagnosis": r.main_diagnosis or "",
         "diagnosis_category": r.diagnosis_category or "",
+        "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
@@ -299,7 +300,9 @@ def write_treatment_request_xlsx(
     )
 
 
-_MAIN_DIAGNOSIS_COLUMNS = ["file_path", "main_diagnosis", "diagnosis_category", "reasoning"]
+_MAIN_DIAGNOSIS_COLUMNS = [
+    "file_path", "main_diagnosis", "diagnosis_category", "icd_code", "reasoning",
+]
 # Group label for notes with no main diagnosis (none found, or the call failed).
 _UNKNOWN_DIAGNOSIS = "Unknown"
 
@@ -310,8 +313,8 @@ def write_main_diagnosis_xlsx(
     """Write main-diagnosis results to a three-sheet Excel workbook.
 
     Sheets: MainDiagnosis (one row per file: file_path, main_diagnosis, diagnosis_category,
-    reasoning), Groups (main_diagnosis, count) and Categories (diagnosis_category, count) —
-    counts most common first; no diagnosis counts as "Unknown".
+    icd_code, reasoning), Groups (main_diagnosis, count) and Categories
+    (diagnosis_category, count) — counts most common first; no diagnosis counts as "Unknown".
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -325,6 +328,7 @@ def write_main_diagnosis_xlsx(
                 str(result.file_path),
                 result.main_diagnosis or "",
                 result.diagnosis_category or "",
+                result.icd_code or "",
                 result.reasoning or "",
             ]
         )
@@ -367,8 +371,8 @@ def _write_groups_sheet(ws: Worksheet, header: str, labels: Sequence[str | None]
 
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_category", "diagnosis_check", "diagnoses", "care_check",
-    "care_reasoning", "errors",
+    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
+    "care_check", "care_reasoning", "errors",
 ]
 
 
@@ -484,6 +488,7 @@ def _dr_validity_row(
         "age": format_age(r.age_years),
         "main_diagnosis": r.main_diagnosis or "",
         "diagnosis_category": r.diagnosis_category or "",
+        "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
         "care_check": r.care_check or "",

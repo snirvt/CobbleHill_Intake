@@ -111,6 +111,7 @@ class DrNurseMatchClassifier:
             care_reasoning=care_reasoning,
             main_diagnosis=main.main_diagnosis if main else None,
             diagnosis_category=main.diagnosis_category if main else None,
+            main_diagnosis_icd=main.icd_code if main else None,
         )
 
     async def _check_care_needed(

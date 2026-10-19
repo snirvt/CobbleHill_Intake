@@ -37,6 +37,7 @@ def dr_validity_patient_dict(
         "age_years": res.age_years,
         "main_diagnosis": res.main_diagnosis,
         "diagnosis_category": res.diagnosis_category,
+        "main_diagnosis_icd": res.main_diagnosis_icd,
         "diagnosis_check": res.diagnosis_check,
         "diagnoses": [d.model_dump() for d in res.diagnoses],
         "care_check": res.care_check,
