@@ -7,6 +7,7 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
 from classifier import main
+from classifier.folder_checks import RequiredNotesCheck
 from classifier.providers.ollama import SemaphoreChatModel
 
 
@@ -106,3 +107,63 @@ def test_make_llm_applies_token_cap_and_timeout(
     else:
         assert isinstance(inner, ChatOllama)
         assert (inner.num_predict, inner.client_kwargs) == (123, {"timeout": 45.0})
+
+
+def test_pair_pipeline_gives_each_task_its_level_and_given_semaphore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(main.settings, "llm_backend", "vllm")
+    monkeypatch.setattr(
+        main.settings,
+        "task_thinking",
+        {"clinical_match": "high", "diagnosis": "low", "care": "off", "main_diagnosis": "low"},
+    )
+    monkeypatch.setattr(main, "_make_env", lambda: None)
+    monkeypatch.setattr(main, "_make_router", lambda: None)
+    built: list[tuple[asyncio.Semaphore, str]] = []
+
+    def fake_builder(semaphore: asyncio.Semaphore, thinking: str) -> str:
+        built.append((semaphore, thinking))
+        return thinking
+
+    monkeypatch.setitem(main._LLM_BUILDERS, "vllm", fake_builder)
+    captured: dict[str, object] = {}
+    for name in (
+        "build_diagnosis_extractor",
+        "build_treatment_request_extractor",
+        "build_main_diagnosis_extractor",
+    ):
+        monkeypatch.setattr(main, name, lambda llm, _n=name: captured.setdefault(_n, llm))
+    monkeypatch.setattr(
+        main,
+        "DrNurseMatchClassifier",
+        lambda llm, **_kw: captured.setdefault("clinical_match", llm),
+    )
+    sem = asyncio.Semaphore(3)
+
+    pipeline = main.build_pair_pipeline(sem)
+
+    assert captured == {
+        "clinical_match": "high",
+        "build_diagnosis_extractor": "low",
+        "build_treatment_request_extractor": "off",
+        "build_main_diagnosis_extractor": "low",
+    }
+    assert {id(s) for s, _ in built} == {id(sem)}
+    check = pipeline._folder_check
+    assert isinstance(check, RequiredNotesCheck)
+    assert (check._roles, check._same_category) == (("dr", "nurse"), True)
+
+
+def test_services_use_their_report_builders(monkeypatch: pytest.MonkeyPatch) -> None:
+    from classifier.output.dr_validity_report import dr_validity_report
+    from classifier.output.pair_report import pair_report
+
+    monkeypatch.setattr(main, "build_dr_validity_pipeline", lambda sem: "validity-pipeline")
+    monkeypatch.setattr(main, "build_pair_pipeline", lambda sem: "pair-pipeline")
+
+    validity = main.build_dr_validity_service()
+    match = main.build_dr_nurse_match_service()
+
+    assert (validity._pipeline, validity._report_fn) == ("validity-pipeline", dr_validity_report)
+    assert (match._pipeline, match._report_fn) == ("pair-pipeline", pair_report)

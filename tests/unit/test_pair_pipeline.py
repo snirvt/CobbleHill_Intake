@@ -1,22 +1,22 @@
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
+from classifier.folder_checks import RequiredNotesCheck
 from classifier.models import (
+    ClassificationStepError,
     DocumentMetadata,
+    ErrorCode,
+    ErrorStage,
     ExtractedFields,
     ExtractedText,
     IdentityMatchResult,
     NursePatientMeta,
     NurseVisitFields,
     PairClassificationResult,
-    PairDocumentMetadata,
-    PairPipelineResult,
     PatientMetadata,
+    RunError,
 )
 from classifier.pair_pipeline import PairPipeline, scan_pairs
-
 
 # ---------------------------------------------------------------------------
 # scan_pairs
@@ -126,6 +126,9 @@ def test_scan_pairs_ignores_unsupported_extensions(tmp_path: Path) -> None:
 # PairPipeline.run_pairs
 # ---------------------------------------------------------------------------
 
+_FOLDER_CHECK = RequiredNotesCheck(roles=("dr", "nurse"), same_category=True)
+
+
 def _make_pair_pipeline(
     pair_result: PairClassificationResult,
     dr_text: str = "dr note text",
@@ -157,6 +160,7 @@ def _make_pair_pipeline(
         dr_meta_extractor=dr_meta_extractor,
         nurse_meta_extractor=nurse_meta_extractor,
         pair_classifier=pair_clf,
+        folder_check=_FOLDER_CHECK,
     )
 
 
@@ -227,6 +231,7 @@ async def test_pair_pipeline_appends_multiple_notes_with_headers(tmp_path: Path)
         dr_meta_extractor=dr_meta_extractor,
         nurse_meta_extractor=nurse_meta_extractor,
         pair_classifier=pair_clf,
+        folder_check=_FOLDER_CHECK,
     )
     results = await pipeline.run_pairs([([dr_a, dr_b], [nurse])])
 
@@ -255,6 +260,7 @@ async def test_pair_pipeline_returns_failure_on_extractor_error(tmp_path: Path) 
         dr_meta_extractor=MagicMock(),
         nurse_meta_extractor=MagicMock(),
         pair_classifier=MagicMock(),
+        folder_check=_FOLDER_CHECK,
     )
     results = await pipeline.run_pairs([([dr], [nurse])])
     assert results[0].success is False
@@ -302,3 +308,110 @@ async def test_pair_pipeline_passes_category_to_classifier(tmp_path: Path) -> No
 async def test_pair_pipeline_passes_none_category_for_uncategorized_notes(tmp_path: Path) -> None:
     pair = await _classified_pair_metadata(tmp_path, "dr_note.pdf", "nurse_visit.pdf")
     assert pair.category is None
+
+
+# ---------------------------------------------------------------------------
+# Structured errors
+# ---------------------------------------------------------------------------
+
+def _write_pair(
+    folder: Path, dr: str = "dr_note.pdf", nurse: str = "nurse_visit.pdf"
+) -> tuple[Path, Path]:
+    folder.mkdir(parents=True, exist_ok=True)
+    dr_path, nurse_path = folder / dr, folder / nurse
+    dr_path.write_bytes(b"%PDF")
+    nurse_path.write_bytes(b"%PDF")
+    return dr_path, nurse_path
+
+
+async def test_pair_pipeline_fails_without_llm_when_one_side_blank(tmp_path: Path) -> None:
+    dr, nurse = _write_pair(tmp_path)
+    pipeline = _make_pair_pipeline(_sample_pair_result(dr, nurse), nurse_text="   ")
+
+    [result] = await pipeline.run_pairs([([dr], [nurse])])
+
+    assert result.success is False
+    assert [(e.stage, e.code, e.file) for e in result.errors] == [
+        (ErrorStage.EXTRACT, ErrorCode.EMPTY_TEXT, nurse)
+    ]
+    pipeline._pair_clf.classify_pair.assert_not_awaited()
+
+
+async def test_pair_pipeline_keeps_blank_note_as_non_fatal_error(tmp_path: Path) -> None:
+    dr_a, nurse = _write_pair(tmp_path, dr="dr_a.pdf")
+    dr_b = tmp_path / "dr_b.pdf"
+    dr_b.write_bytes(b"%PDF")
+    pipeline = _make_pair_pipeline(_sample_pair_result(dr_a, nurse))
+    extractor = pipeline._router.route.return_value
+    extractor.extract.side_effect = lambda p: ExtractedText(
+        file_path=p, text="" if p == dr_b else "text", num_pages=1
+    )
+
+    [result] = await pipeline.run_pairs([([dr_a, dr_b], [nurse])])
+
+    assert result.success is True
+    assert [e.file for e in result.errors] == [dr_b]
+
+
+async def test_pair_pipeline_reports_classifier_step_errors(tmp_path: Path) -> None:
+    dr, nurse = _write_pair(tmp_path)
+    pipeline = _make_pair_pipeline(_sample_pair_result(dr, nurse))
+    step_error = RunError(
+        stage=ErrorStage.CLINICAL_MATCH, code=ErrorCode.LLM_FAILED, message="LLM error: down"
+    )
+    pipeline._pair_clf.classify_pair.side_effect = ClassificationStepError([step_error])
+
+    [result] = await pipeline.run_pairs([([dr], [nurse])])
+
+    assert result.success is False
+    assert result.errors == [step_error]
+    assert result.error == "clinical_match: LLM error: down"
+
+
+async def test_pair_pipeline_reports_unexpected_error(tmp_path: Path) -> None:
+    dr, nurse = _write_pair(tmp_path)
+    pipeline = _make_pair_pipeline(_sample_pair_result(dr, nurse))
+    pipeline._pair_clf.classify_pair.side_effect = RuntimeError("boom")
+
+    [result] = await pipeline.run_pairs([([dr], [nurse])])
+
+    assert result.success is False
+    [error] = result.errors
+    assert (error.stage, error.code, error.message, error.folder) == (
+        ErrorStage.PIPELINE, ErrorCode.UNEXPECTED, "boom", tmp_path
+    )
+
+
+def test_scan_pairs_ignores_results_folders(tmp_path: Path) -> None:
+    from config.settings import settings
+
+    _write_pair(tmp_path / "patient")
+    _write_pair(tmp_path / "patient" / settings.sharepoint_results_subfolder)
+
+    pairs = scan_pairs(tmp_path)
+
+    assert [p[0][0].parent.name for p in pairs] == ["patient"]
+
+
+def test_folder_errors_reports_folders_without_a_pair(tmp_path: Path) -> None:
+    _write_pair(tmp_path / "ok")
+    (tmp_path / "dr_only").mkdir()
+    (tmp_path / "dr_only" / "dr_note.pdf").write_bytes(b"%PDF")
+    (tmp_path / "nurse_only").mkdir()
+    (tmp_path / "nurse_only" / "nurse_note.pdf").write_bytes(b"%PDF")
+    _write_pair(tmp_path / "mixed", dr="hospital_dr_note.pdf", nurse="peds_nurse_visit.pdf")
+    (tmp_path / "empty").mkdir()
+    pipeline = _make_pair_pipeline(_sample_pair_result(tmp_path / "a.pdf", tmp_path / "b.pdf"))
+
+    errors = pipeline.folder_errors(tmp_path)
+
+    assert [(e.folder.name if e.folder else None, e.code, e.message) for e in errors] == [
+        ("dr_only", ErrorCode.MISSING_REQUIRED_NOTES, "Folder has no nurse notes"),
+        ("empty", ErrorCode.EMPTY_FOLDER, "Folder has no files"),
+        (
+            "mixed",
+            ErrorCode.MISSING_REQUIRED_NOTES,
+            "Folder has no dr and nurse notes of the same category",
+        ),
+        ("nurse_only", ErrorCode.MISSING_REQUIRED_NOTES, "Folder has no dr notes"),
+    ]

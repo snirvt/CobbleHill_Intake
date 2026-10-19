@@ -73,6 +73,7 @@ def test_task_thinking_defaults_to_off_for_every_task(on_machine) -> None:
     s = Settings(_env_file=None)
     assert s.task_thinking == {
         "age": "off", "diagnosis": "off", "care": "off", "main_diagnosis": "off",
+        "clinical_match": "off",
     }
     assert set(s.vllm_thinking_levels) == {"off", "low", "high"}
 

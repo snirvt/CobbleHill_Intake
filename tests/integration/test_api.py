@@ -50,7 +50,7 @@ def service() -> MagicMock:
 @pytest.fixture
 def client(service: MagicMock) -> Iterator[TestClient]:
     # Explicitly open (no key), regardless of any COBBLEHILL_API_KEY in the environment.
-    with TestClient(create_app(service=service, api_key=None)) as c:
+    with TestClient(create_app(service=service, match_service=service, api_key=None)) as c:
         yield c
 
 
@@ -94,6 +94,109 @@ def test_sharepoint_auth_failure_is_502(client: TestClient, service: MagicMock) 
     assert resp.status_code == 502
     assert "bad secret" not in resp.json()["detail"]
 
+
+# ---------------------------------------------------------------------------
+# POST /dr-nurse-match
+# ---------------------------------------------------------------------------
+
+_MATCH_REPORT = {
+    "sharepoint_folder": "Pending",
+    "web_url": "https://sp/Pending",
+    "summary": {
+        "total": 1, "match": 1, "mismatch": 0, "undecided": 0, "failed": 0,
+        "skipped_folders": 1, "errors": 1,
+    },
+    "groups": [{"main_diagnosis": "GERD", "count": 1}],
+    "category_groups": [{"diagnosis_category": "Reflux / GERD", "count": 1}],
+    "pairs": [{"patient": "DOE, JANE", "success": True, "overall": "MATCH", "errors": []}],
+    "errors": [
+        {
+            "patient": "DR, ONLY",
+            "file": None,
+            "stage": "folder",
+            "code": "missing_required_notes",
+            "message": "Folder has no nurse notes",
+        }
+    ],
+}
+
+
+@pytest.fixture
+def match_service() -> MagicMock:
+    svc = MagicMock()
+    svc.run = AsyncMock(return_value=_MATCH_REPORT)
+    return svc
+
+
+@pytest.fixture
+def match_client(service: MagicMock, match_service: MagicMock) -> Iterator[TestClient]:
+    with TestClient(
+        create_app(service=service, match_service=match_service, api_key=None)
+    ) as c:
+        yield c
+
+
+def test_dr_nurse_match_returns_report(
+    match_client: TestClient, service: MagicMock, match_service: MagicMock
+) -> None:
+    resp = match_client.post("/dr-nurse-match", json={"sharepoint_folder": "/Pending/"})
+
+    assert resp.status_code == 200
+    assert resp.json() == _MATCH_REPORT
+    match_service.run.assert_awaited_once_with("Pending")
+    service.run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("body", [{"sharepoint_folder": "  "}, {}])
+def test_dr_nurse_match_rejects_blank_folder(
+    match_client: TestClient, body: dict[str, str]
+) -> None:
+    assert match_client.post("/dr-nurse-match", json=body).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (_http_error(404), 404),
+        (_http_error(500), 502),
+        (httpx.ConnectError("no route"), 502),
+        (SharePointAuthError("bad secret"), 502),
+    ],
+)
+def test_dr_nurse_match_maps_sharepoint_errors(
+    match_client: TestClient, match_service: MagicMock, error: Exception, status: int
+) -> None:
+    match_service.run.side_effect = error
+    resp = match_client.post("/dr-nurse-match", json={"sharepoint_folder": "Nope"})
+    assert resp.status_code == status
+
+
+def test_dr_nurse_match_requires_api_key(
+    service: MagicMock, match_service: MagicMock
+) -> None:
+    app = create_app(service=service, match_service=match_service, api_key="s3cret")
+    with TestClient(app) as c:
+        assert c.post("/dr-nurse-match", json={"sharepoint_folder": "P"}).status_code == 401
+        ok = c.post(
+            "/dr-nurse-match", json={"sharepoint_folder": "P"}, headers={"X-API-Key": "s3cret"}
+        )
+        assert ok.status_code == 200
+    match_service.run.assert_awaited_once()
+
+
+def test_real_services_share_one_llm_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
+    from classifier import main as wiring
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        wiring, "build_dr_validity_service", lambda sem: seen.setdefault("validity", sem)
+    )
+    monkeypatch.setattr(
+        wiring, "build_dr_nurse_match_service", lambda sem: seen.setdefault("match", sem)
+    )
+    with TestClient(create_app(api_key=None)):
+        pass
+    assert seen["validity"] is seen["match"]
 
 # ---------------------------------------------------------------------------
 # main(): --host / --port
@@ -146,7 +249,7 @@ def test_main_network_host_with_key_starts(caplog: pytest.LogCaptureFixture) -> 
 
 @pytest.fixture
 def keyed_client(service: MagicMock) -> Iterator[TestClient]:
-    with TestClient(create_app(service=service, api_key="s3cret")) as c:
+    with TestClient(create_app(service=service, match_service=service, api_key="s3cret")) as c:
         yield c
 
 
@@ -178,7 +281,7 @@ def test_app_uses_settings_key_by_default(
     service: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "api_key", SecretStr("from-settings"))
-    with TestClient(create_app(service=service)) as c:
+    with TestClient(create_app(service=service, match_service=service)) as c:
         assert c.post("/dr-validity", json=_BODY).status_code == 401
         ok = c.post("/dr-validity", json=_BODY, headers={"X-API-Key": "from-settings"})
         assert ok.status_code == 200
@@ -190,7 +293,7 @@ def test_blank_settings_key_means_open_only_on_localhost(
 ) -> None:
     """A blank key is treated as unset (and main() refuses to expose it, tested above)."""
     monkeypatch.setattr(settings, "api_key", key)
-    with TestClient(create_app(service=service)) as c:
+    with TestClient(create_app(service=service, match_service=service)) as c:
         assert c.post("/dr-validity", json=_BODY).status_code == 200
 
 

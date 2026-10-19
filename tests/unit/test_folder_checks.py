@@ -87,3 +87,47 @@ def test_required_notes_check_roles_are_configurable(tmp_path: Path) -> None:
 
     _touch(tmp_path / "nurse_visit.txt")
     assert both.check(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# RequiredNotesCheck(same_category=True)
+# ---------------------------------------------------------------------------
+
+_PAIR_CHECK = RequiredNotesCheck(roles=("dr", "nurse"), same_category=True)
+
+
+def test_same_category_check_passes_for_matching_categories(tmp_path: Path) -> None:
+    _touch(tmp_path / "hospital_dr_a.pdf")
+    _touch(tmp_path / "hospital_nurse_b.pdf")
+    assert _PAIR_CHECK.check(tmp_path) is None
+
+
+def test_same_category_check_passes_for_uncategorized_pair(tmp_path: Path) -> None:
+    _touch(tmp_path / "dr_a.pdf")
+    _touch(tmp_path / "nurse_b.pdf")
+    assert _PAIR_CHECK.check(tmp_path) is None
+
+
+def test_same_category_check_flags_cross_category_notes(tmp_path: Path) -> None:
+    _touch(tmp_path / "hospital_dr_a.pdf")
+    _touch(tmp_path / "peds_nurse_b.pdf")
+
+    error = _PAIR_CHECK.check(tmp_path)
+
+    assert error is not None
+    assert (error.stage, error.code, error.folder) == (
+        ErrorStage.FOLDER, ErrorCode.MISSING_REQUIRED_NOTES, tmp_path
+    )
+    assert error.message == "Folder has no dr and nurse notes of the same category"
+
+
+def test_same_category_check_still_reports_missing_role_first(tmp_path: Path) -> None:
+    _touch(tmp_path / "dr_a.pdf")
+    error = _PAIR_CHECK.check(tmp_path)
+    assert error is not None and error.message == "Folder has no nurse notes"
+
+
+def test_role_check_ignores_category_by_default(tmp_path: Path) -> None:
+    _touch(tmp_path / "hospital_dr_a.pdf")
+    _touch(tmp_path / "peds_nurse_b.pdf")
+    assert RequiredNotesCheck(roles=("dr", "nurse")).check(tmp_path) is None

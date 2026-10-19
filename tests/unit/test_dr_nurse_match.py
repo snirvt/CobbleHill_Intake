@@ -8,11 +8,14 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
 from classifier.models import (
     CareCheck,
+    ClassificationStepError,
     Diagnosis,
     DiagnosisCategory,
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DocumentMetadata,
+    ErrorCode,
+    ErrorStage,
     MainDiagnosisResult,
     NursePatientMeta,
     NurseVisitFields,
@@ -196,11 +199,81 @@ async def test_overall_unaffected_by_identity_mismatch() -> None:
 # LLM error handling
 # ---------------------------------------------------------------------------
 
-async def test_llm_parse_error_returns_mismatch() -> None:
+async def test_llm_parse_error_raises_step_error_not_mismatch() -> None:
     clf = DrNurseMatchClassifier(llm=_invalid_llm())
+    with pytest.raises(ClassificationStepError) as exc_info:
+        await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    [error] = exc_info.value.errors
+    assert (error.stage, error.code) == (ErrorStage.CLINICAL_MATCH, ErrorCode.PARSE_FAILED)
+    assert error.folder == Path("dr_note.pdf").parent
+
+
+async def test_clinical_match_retries_before_failing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "llm_max_attempts", 2)
+    llm = FakeListChatModel(
+        responses=["not valid json", json.dumps({"verdict": "MATCH", "reasoning": "Ok."})]
+    )
+    clf = DrNurseMatchClassifier(llm=llm)
     result = await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
-    assert result.clinical_verdict == "MISMATCH"
-    assert result.clinical_reasoning  # some error message present
+    assert result.clinical_verdict == "MATCH"
+
+
+async def test_failed_diagnosis_extraction_raises_step_error() -> None:
+    extractor = MagicMock()
+    extractor.extract_diagnoses = AsyncMock(
+        side_effect=lambda meta: DiagnosisExtractionResult(
+            file_path=meta.file_path, error="LLM error: timeout"
+        )
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
+    with pytest.raises(ClassificationStepError) as exc_info:
+        await clf.classify_pair(pair)
+    [error] = exc_info.value.errors
+    assert (error.stage, error.code) == (ErrorStage.DIAGNOSIS, ErrorCode.LLM_FAILED)
+    assert error.message == "LLM error: timeout; LLM error: timeout"
+
+
+async def test_failed_care_extraction_raises_step_error() -> None:
+    extractor = MagicMock()
+    extractor.extract_treatment_request = AsyncMock(
+        return_value=TreatmentRequestResult(
+            file_path=Path("dr_note.pdf"), treatment_requested=False, error="Parse error: bad"
+        )
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), care_extractor=extractor)
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category="peds")
+    with pytest.raises(ClassificationStepError) as exc_info:
+        await clf.classify_pair(pair)
+    [error] = exc_info.value.errors
+    assert (error.stage, error.code) == (ErrorStage.CARE, ErrorCode.PARSE_FAILED)
+
+
+async def test_failed_main_diagnosis_raises_step_error() -> None:
+    extractor = MagicMock()
+    extractor.extract_main_diagnosis = AsyncMock(
+        return_value=MainDiagnosisResult(file_path=Path("dr_note.pdf"), error="LLM error: down")
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), main_diagnosis_extractor=extractor)
+    with pytest.raises(ClassificationStepError) as exc_info:
+        await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert [e.stage for e in exc_info.value.errors] == [ErrorStage.MAIN_DIAGNOSIS]
+
+
+async def test_all_failed_steps_reported_together() -> None:
+    main = MagicMock()
+    main.extract_main_diagnosis = AsyncMock(
+        return_value=MainDiagnosisResult(file_path=Path("dr_note.pdf"), error="LLM error: down")
+    )
+    clf = DrNurseMatchClassifier(llm=_invalid_llm(), main_diagnosis_extractor=main)
+    with pytest.raises(ClassificationStepError) as exc_info:
+        await clf.classify_pair(_make_pair(_make_dr_meta(), _make_nurse_fields()))
+    assert [e.stage for e in exc_info.value.errors] == [
+        ErrorStage.CLINICAL_MATCH,
+        ErrorStage.MAIN_DIAGNOSIS,
+    ]
 
 
 # ---------------------------------------------------------------------------

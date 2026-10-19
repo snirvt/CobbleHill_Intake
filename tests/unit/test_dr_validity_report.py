@@ -213,3 +213,15 @@ def test_category_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
         {"diagnosis_category": "Reflux / GERD", "count": 1},
         {"diagnosis_category": "Unknown", "count": 1},
     ]
+
+
+def test_dr_validity_report_combines_all_sections(tmp_path: Path) -> None:
+    from classifier.output.dr_validity_report import dr_validity_report
+
+    results = [_ok(tmp_path, "A", ValidityVerdict.VALID)]
+
+    report = dr_validity_report(results, [], tmp_path, "root", "https://sp/x")
+
+    assert list(report) == ["summary", "groups", "category_groups", "patients", "errors"]
+    assert report["summary"] == dr_validity_summary(results, [])
+    assert report["patients"] == [dr_validity_patient_dict(results[0], tmp_path, "root")]
