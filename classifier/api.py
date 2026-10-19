@@ -6,6 +6,9 @@ Routes (both take ``{"sharepoint_folder": "..."}`` and block until done):
 - ``POST /dr-nurse-match``: every same-category dr + nurse note pair compared. Folders
   without such a pair are reported under ``errors``, not processed.
 
+``GET /dr-validity/example`` and ``GET /dr-nurse-match/example`` return a sample response in
+exactly the same format, built from fake data (no SharePoint, no LLM, no patient data).
+
 Run: ``uv run cobblehill-api`` (binds settings.api_host:api_port, localhost by default).
 
 Exposing it on the local network requires an API key (the server refuses to start
@@ -44,6 +47,7 @@ from pydantic import BaseModel, field_validator
 from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointAuthError
 from classifier.models import DrValidityPipelineResult, PairPipelineResult
+from classifier.output.examples import dr_nurse_match_example, dr_validity_example
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -154,6 +158,16 @@ def create_app(
         svc: FolderReportService[PairPipelineResult] = request.app.state.match_service
         logger.info("dr-nurse-match request for %r", body.sharepoint_folder)
         return await _run_report(svc.run(body.sharepoint_folder), body.sharepoint_folder)
+
+    @app.get("/dr-validity/example", dependencies=[Depends(require_api_key)])
+    async def dr_validity_example_route() -> dict[str, Any]:
+        """Sample /dr-validity response built from fake data, to show the output format."""
+        return dr_validity_example()
+
+    @app.get("/dr-nurse-match/example", dependencies=[Depends(require_api_key)])
+    async def dr_nurse_match_example_route() -> dict[str, Any]:
+        """Sample /dr-nurse-match response built from fake data, to show the output format."""
+        return dr_nurse_match_example()
 
     return app
 

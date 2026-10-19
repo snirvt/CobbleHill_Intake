@@ -201,6 +201,39 @@ def test_real_services_share_one_set_of_limits(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ---------------------------------------------------------------------------
+# GET .../example
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("route", "items_key"),
+    [("/dr-validity/example", "patients"), ("/dr-nurse-match/example", "pairs")],
+)
+def test_example_routes_return_sample_without_running(
+    match_client: TestClient,
+    service: MagicMock,
+    match_service: MagicMock,
+    route: str,
+    items_key: str,
+) -> None:
+    resp = match_client.get(route)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert list(body) == [
+        "sharepoint_folder", "web_url", "summary", "groups", "category_groups", items_key,
+        "errors",
+    ]
+    assert "EXAMPLE" in body["sharepoint_folder"]
+    service.run.assert_not_awaited()
+    match_service.run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("route", ["/dr-validity/example", "/dr-nurse-match/example"])
+def test_example_routes_require_api_key(keyed_client: TestClient, route: str) -> None:
+    assert keyed_client.get(route).status_code == 401
+    assert keyed_client.get(route, headers={"X-API-Key": "s3cret"}).status_code == 200
+
+# ---------------------------------------------------------------------------
 # main(): --host / --port
 # ---------------------------------------------------------------------------
 
