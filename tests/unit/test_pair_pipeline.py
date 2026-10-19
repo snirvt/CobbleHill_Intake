@@ -415,3 +415,29 @@ def test_folder_errors_reports_folders_without_a_pair(tmp_path: Path) -> None:
         ),
         ("nurse_only", ErrorCode.MISSING_REQUIRED_NOTES, "Folder has no dr notes"),
     ]
+
+
+async def test_injected_semaphore_caps_pairs_across_concurrent_runs(tmp_path: Path) -> None:
+    import asyncio
+
+    pairs = [_write_pair(tmp_path / f"p{i}") for i in range(4)]
+    pipeline = _make_pair_pipeline(_sample_pair_result(*pairs[0]))
+    pipeline._semaphore = asyncio.Semaphore(1)
+    active = peak = 0
+
+    async def classify(pair: object) -> PairClassificationResult:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return _sample_pair_result(*pairs[0])
+
+    pipeline._pair_clf.classify_pair.side_effect = classify
+
+    await asyncio.gather(
+        pipeline.run_pairs([([d], [n]) for d, n in pairs[:2]]),
+        pipeline.run_pairs([([d], [n]) for d, n in pairs[2:]]),
+    )
+
+    assert peak == 1

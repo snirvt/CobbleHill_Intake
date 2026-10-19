@@ -272,3 +272,35 @@ def test_explicit_upload_folder_wins_over_input_folder() -> None:
 
 def test_local_run_falls_back_to_configured_results_folder() -> None:
     assert resolve_results_folder(None, None) == settings.sharepoint_results_folder
+
+
+@patch("classifier.ingest.sharepoint.authenticate_to_graph", return_value="tok")
+@patch("classifier.ingest.sharepoint.get_folder_web_url", new_callable=AsyncMock)
+@patch("classifier.ingest.sharepoint.download_folder", new_callable=AsyncMock)
+async def test_downloader_uses_injected_semaphore_for_every_download(
+    mock_dl: AsyncMock, _mock_url: AsyncMock, _mock_auth: MagicMock, tmp_path: Path
+) -> None:
+    import asyncio
+
+    shared = asyncio.Semaphore(2)
+    downloader = SharePointFolderDownloader(**_KWARGS, semaphore=shared)
+
+    await downloader.download("A", local_dir=tmp_path)
+    await downloader.download("B", local_dir=tmp_path)
+
+    assert [c.args[4] for c in mock_dl.call_args_list] == [shared, shared]
+
+
+@patch("classifier.ingest.sharepoint.authenticate_to_graph", return_value="tok")
+@patch("classifier.ingest.sharepoint.get_folder_web_url", new_callable=AsyncMock)
+@patch("classifier.ingest.sharepoint.download_folder", new_callable=AsyncMock)
+async def test_downloader_without_semaphore_makes_one_per_download(
+    mock_dl: AsyncMock, _mock_url: AsyncMock, _mock_auth: MagicMock, tmp_path: Path
+) -> None:
+    downloader = SharePointFolderDownloader(**_KWARGS)
+
+    await downloader.download("A", local_dir=tmp_path)
+    await downloader.download("B", local_dir=tmp_path)
+
+    first, second = (c.args[4] for c in mock_dl.call_args_list)
+    assert first is not second

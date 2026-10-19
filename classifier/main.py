@@ -1,6 +1,7 @@
 import asyncio
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import cache
 
 from langchain_core.language_models import BaseChatModel
@@ -199,21 +200,46 @@ def _task_llm_factory(
     return llm
 
 
+@dataclass(frozen=True)
+class ConcurrencyLimits:
+    """Semaphores shared by every API service, so concurrent requests stay within one budget.
+
+    llm: max_concurrent_llm_calls; files: max_concurrent_files (patients / note pairs being
+    processed); downloads: sharepoint_download_concurrency.
+    """
+
+    llm: asyncio.Semaphore
+    files: asyncio.Semaphore
+    downloads: asyncio.Semaphore
+
+
+def make_concurrency_limits() -> ConcurrencyLimits:
+    """Build the shared limits from settings; call once per server (inside its event loop)."""
+    return ConcurrencyLimits(
+        llm=asyncio.Semaphore(settings.max_concurrent_llm_calls),
+        files=asyncio.Semaphore(settings.max_concurrent_files),
+        downloads=asyncio.Semaphore(settings.sharepoint_download_concurrency),
+    )
+
+
 def build_dr_validity_pipeline(
     semaphore: asyncio.Semaphore | None = None,
+    file_semaphore: asyncio.Semaphore | None = None,
 ) -> DrValidityPipeline:
     """Wire up the per-patient dr-note validity pipeline (dr notes only).
 
     Age, diagnosis, medical-necessity and main-diagnosis extractors each get their own
     chat model at the task's thinking level (settings.task_thinking), all sharing one
     semaphore so the pipeline honours a single max_concurrent_llm_calls budget. Pass
-    ``semaphore`` to share that budget with other pipelines.
+    ``semaphore`` to share that budget with other pipelines, and ``file_semaphore`` to
+    share the max_concurrent_files patient limit.
     """
     _make_env()
     llm = _task_llm_factory(semaphore)
 
     return DrValidityPipeline(
         router=_make_router(),
+        semaphore=file_semaphore,
         folder_check=RequiredNotesCheck(roles=("dr",)),
         classifier=DrNoteValidityClassifier(
             age_extractor=build_patient_age_extractor(llm("age")),
@@ -224,34 +250,45 @@ def build_dr_validity_pipeline(
     )
 
 
-def _make_downloader() -> SharePointFolderDownloader:
-    """Build the SharePoint folder downloader from settings."""
+def _make_downloader(semaphore: asyncio.Semaphore | None = None) -> SharePointFolderDownloader:
+    """Build the SharePoint folder downloader from settings; ``semaphore`` shares its limit."""
     return SharePointFolderDownloader(
         client_id=settings.sharepoint_client_id,
         client_secret=settings.sharepoint_client_secret,
         tenant_id=settings.sharepoint_tenant_id,
         drive_id=settings.sharepoint_drive_id,
+        semaphore=semaphore,
     )
 
 
 def build_dr_validity_service(
-    semaphore: asyncio.Semaphore | None = None,
+    limits: ConcurrencyLimits | None = None,
 ) -> FolderReportService[DrValidityPipelineResult]:
-    """Wire the SharePoint downloader and dr-validity pipeline for the API server."""
+    """Wire the SharePoint downloader and dr-validity pipeline for the API server.
+
+    ``limits`` caps LLM calls, patients in progress and downloads across every service
+    built with the same limits; a new set is made when none is given.
+    """
+    limits = limits or make_concurrency_limits()
     return FolderReportService(
-        downloader=_make_downloader(),
-        pipeline=build_dr_validity_pipeline(semaphore),
+        downloader=_make_downloader(limits.downloads),
+        pipeline=build_dr_validity_pipeline(limits.llm, limits.files),
         report_fn=dr_validity_report,
     )
 
 
 def build_dr_nurse_match_service(
-    semaphore: asyncio.Semaphore | None = None,
+    limits: ConcurrencyLimits | None = None,
 ) -> FolderReportService[PairPipelineResult]:
-    """Wire the SharePoint downloader and dr-nurse match pipeline for the API server."""
+    """Wire the SharePoint downloader and dr-nurse match pipeline for the API server.
+
+    ``limits`` caps LLM calls, pairs in progress and downloads across every service built
+    with the same limits; a new set is made when none is given.
+    """
+    limits = limits or make_concurrency_limits()
     return FolderReportService(
-        downloader=_make_downloader(),
-        pipeline=build_pair_pipeline(semaphore),
+        downloader=_make_downloader(limits.downloads),
+        pipeline=build_pair_pipeline(limits.llm, limits.files),
         report_fn=pair_report,
     )
 
@@ -272,7 +309,10 @@ def build_pipeline() -> Pipeline:
     )
 
 
-def build_pair_pipeline(semaphore: asyncio.Semaphore | None = None) -> PairPipeline:
+def build_pair_pipeline(
+    semaphore: asyncio.Semaphore | None = None,
+    file_semaphore: asyncio.Semaphore | None = None,
+) -> PairPipeline:
     """Wire up all components and return a ready-to-use PairPipeline.
 
     The pair classifier gets a diagnosis extractor (pairs in
@@ -281,8 +321,9 @@ def build_pair_pipeline(semaphore: asyncio.Semaphore | None = None) -> PairPipel
     treatment request or medical necessity), plus a main-diagnosis extractor that labels
     every pair for grouping. Each task gets its own chat model at its thinking level
     (settings.task_thinking), all sharing one semaphore so the pipeline honours a single
-    max_concurrent_llm_calls budget. Leaf folders without a same-category dr + nurse pair
-    are reported as folder errors.
+    max_concurrent_llm_calls budget (pass ``semaphore`` to share it); ``file_semaphore``
+    shares the max_concurrent_files pair limit. Leaf folders without a same-category
+    dr + nurse pair are reported as folder errors.
     """
     _make_env()
     llm = _task_llm_factory(semaphore)
@@ -297,4 +338,5 @@ def build_pair_pipeline(semaphore: asyncio.Semaphore | None = None) -> PairPipel
             main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
         ),
         folder_check=RequiredNotesCheck(roles=("dr", "nurse"), same_category=True),
+        semaphore=file_semaphore,
     )

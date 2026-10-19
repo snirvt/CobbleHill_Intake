@@ -157,13 +157,26 @@ class SharePointFileUploader:
 
 
 class SharePointFolderDownloader:
-    """Downloads files from a SharePoint Online drive folder."""
+    """Downloads files from a SharePoint Online drive folder.
 
-    def __init__(self, client_id: str, client_secret: str, tenant_id: str, drive_id: str) -> None:
+    Pass ``semaphore`` to share one download limit across calls (the API does, so concurrent
+    requests together stay within it); otherwise each download gets its own
+    ``settings.sharepoint_download_concurrency`` limit.
+    """
+
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        tenant_id: str,
+        drive_id: str,
+        semaphore: asyncio.Semaphore | None = None,
+    ) -> None:
         self._client_id = client_id
         self._client_secret = client_secret
         self._tenant_id = tenant_id
         self._drive_id = drive_id
+        self._semaphore = semaphore
 
     async def download(self, folder_path: str, local_dir: Path | None = None) -> tuple[Path, str]:
         """Download all supported files from *folder_path* into *local_dir*.
@@ -184,7 +197,7 @@ class SharePointFolderDownloader:
             authenticate_to_graph, self._client_id, self._client_secret, self._tenant_id
         )
         headers = {"Authorization": f"Bearer {access_token}"}
-        semaphore = asyncio.Semaphore(settings.sharepoint_download_concurrency)
+        semaphore = self._semaphore or asyncio.Semaphore(settings.sharepoint_download_concurrency)
 
         logger.info("Downloading SharePoint folder '%s' → %s", folder_path, local_dir)
         async with httpx.AsyncClient(headers=headers) as client:

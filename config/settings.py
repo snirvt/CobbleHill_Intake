@@ -56,7 +56,9 @@ class Settings(BaseSettings):
         ".jpeg": "image",
         ".png": "image",
     }
-    max_concurrent_files: int = 10
+    # Patients (dr-validity) / note pairs (dr-nurse match) processed at once. The API shares
+    # one limit across all concurrent requests; each CLI run has its own.
+    max_concurrent_files: int = 5
     # Role prefix a note filename must start with (after an optional category prefix).
     note_role_prefixes: dict[str, str] = {"dr": "dr_", "nurse": "nurse_"}
     # Optional category prefixes that may precede the role prefix, e.g. hospital_nurse_x.pdf.
@@ -139,7 +141,9 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 8192
     # Wall-clock limit per LLM call; a timed-out call fails and is retried like any other error.
     llm_request_timeout_s: float = 300
-    sharepoint_download_concurrency: int = 5
+    # SharePoint files downloaded at once. The API shares one limit across all concurrent
+    # requests; each CLI run has its own.
+    sharepoint_download_concurrency: int = 8
     # Subfolder of the SharePoint input folder that results are uploaded into.
     sharepoint_results_subfolder: str = "results"
     # Upload target for local runs, which have no SharePoint input folder to inherit.

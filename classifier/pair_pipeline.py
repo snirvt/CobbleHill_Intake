@@ -85,17 +85,21 @@ class PairPipeline:
         nurse_meta_extractor: NurseNoteExtractor,
         pair_classifier: PairClassifier,
         folder_check: FolderCheck,
+        semaphore: asyncio.Semaphore | None = None,
     ) -> None:
+        """``semaphore`` shares one pair limit across runs; else each run gets its own."""
         self._router = router
         self._dr_meta = dr_meta_extractor
         self._nurse_meta = nurse_meta_extractor
         self._pair_clf = pair_classifier
         self._folder_check = folder_check
+        self._semaphore = semaphore
 
     async def run_pairs(
         self, pairs: list[tuple[list[Path], list[Path]]]
     ) -> list[PairPipelineResult]:
-        """Process all pairs concurrently up to max_concurrent_files at a time.
+        """Process all pairs concurrently up to max_concurrent_files at a time (shared when
+        a semaphore was injected).
 
         Each pair is (dr_paths, nurse_paths); multiple files per side are extracted
         and their text appended before classification. The first file of each side is
@@ -103,7 +107,7 @@ class PairPipeline:
         text are reported; if every note of one side is blank the pair fails without
         calling the LLM.
         """
-        sem = asyncio.Semaphore(settings.max_concurrent_files)
+        sem = self._semaphore or asyncio.Semaphore(settings.max_concurrent_files)
 
         async def process(dr_paths: list[Path], nurse_paths: list[Path]) -> PairPipelineResult:
             dr_path, nurse_path = dr_paths[0], nurse_paths[0]

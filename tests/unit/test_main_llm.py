@@ -1,6 +1,7 @@
 """Tests for LLM backend wiring in classifier.main."""
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_ollama import ChatOllama
@@ -155,15 +156,59 @@ def test_pair_pipeline_gives_each_task_its_level_and_given_semaphore(
     assert (check._roles, check._same_category) == (("dr", "nurse"), True)
 
 
-def test_services_use_their_report_builders(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_services_use_their_report_builders_and_share_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from classifier.output.dr_validity_report import dr_validity_report
     from classifier.output.pair_report import pair_report
 
-    monkeypatch.setattr(main, "build_dr_validity_pipeline", lambda sem: "validity-pipeline")
-    monkeypatch.setattr(main, "build_pair_pipeline", lambda sem: "pair-pipeline")
+    calls: dict[str, tuple[object, object]] = {}
+    monkeypatch.setattr(
+        main,
+        "build_dr_validity_pipeline",
+        lambda llm_sem, file_sem: calls.setdefault("validity", (llm_sem, file_sem)),
+    )
+    monkeypatch.setattr(
+        main,
+        "build_pair_pipeline",
+        lambda llm_sem, file_sem: calls.setdefault("pair", (llm_sem, file_sem)),
+    )
+    limits = main.ConcurrencyLimits(
+        llm=asyncio.Semaphore(1), files=asyncio.Semaphore(2), downloads=asyncio.Semaphore(3)
+    )
 
-    validity = main.build_dr_validity_service()
-    match = main.build_dr_nurse_match_service()
+    validity = main.build_dr_validity_service(limits)
+    match = main.build_dr_nurse_match_service(limits)
 
-    assert (validity._pipeline, validity._report_fn) == ("validity-pipeline", dr_validity_report)
-    assert (match._pipeline, match._report_fn) == ("pair-pipeline", pair_report)
+    assert validity._report_fn is dr_validity_report
+    assert match._report_fn is pair_report
+    assert calls["validity"] == calls["pair"] == (limits.llm, limits.files)
+    assert validity._downloader._semaphore is match._downloader._semaphore is limits.downloads
+
+
+def test_make_concurrency_limits_reads_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main.settings, "max_concurrent_llm_calls", 4)
+    monkeypatch.setattr(main.settings, "max_concurrent_files", 6)
+    monkeypatch.setattr(main.settings, "sharepoint_download_concurrency", 2)
+
+    limits = main.make_concurrency_limits()
+
+    assert (limits.llm._value, limits.files._value, limits.downloads._value) == (4, 6, 2)
+
+
+def test_pipelines_receive_file_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main, "_make_env", lambda: None)
+    monkeypatch.setattr(main, "_make_router", lambda: None)
+    monkeypatch.setattr(main, "_make_llm", lambda sem, thinking: None)
+    for name in (
+        "build_patient_age_extractor",
+        "build_diagnosis_extractor",
+        "build_treatment_request_extractor",
+        "build_main_diagnosis_extractor",
+    ):
+        monkeypatch.setattr(main, name, lambda llm: MagicMock())
+    monkeypatch.setattr(main, "DrNurseMatchClassifier", lambda llm, **_kw: MagicMock())
+    files = asyncio.Semaphore(5)
+
+    assert main.build_dr_validity_pipeline(None, files)._semaphore is files
+    assert main.build_pair_pipeline(None, files)._semaphore is files

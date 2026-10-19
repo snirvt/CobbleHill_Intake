@@ -184,19 +184,21 @@ def test_dr_nurse_match_requires_api_key(
     match_service.run.assert_awaited_once()
 
 
-def test_real_services_share_one_llm_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_real_services_share_one_set_of_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     from classifier import main as wiring
 
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        wiring, "build_dr_validity_service", lambda sem: seen.setdefault("validity", sem)
+        wiring, "build_dr_validity_service", lambda limits: seen.setdefault("validity", limits)
     )
     monkeypatch.setattr(
-        wiring, "build_dr_nurse_match_service", lambda sem: seen.setdefault("match", sem)
+        wiring, "build_dr_nurse_match_service", lambda limits: seen.setdefault("match", limits)
     )
     with TestClient(create_app(api_key=None)):
         pass
+    assert isinstance(seen["validity"], wiring.ConcurrencyLimits)
     assert seen["validity"] is seen["match"]
+
 
 # ---------------------------------------------------------------------------
 # main(): --host / --port

@@ -48,21 +48,28 @@ class DrValidityPipeline:
     """Orchestrates per patient: route → extract every dr note → combine → classify."""
 
     def __init__(
-        self, router: FileRouter, classifier: DrValidityClassifier, folder_check: FolderCheck
+        self,
+        router: FileRouter,
+        classifier: DrValidityClassifier,
+        folder_check: FolderCheck,
+        semaphore: asyncio.Semaphore | None = None,
     ) -> None:
+        """``semaphore`` shares one patient limit across runs; else each run gets its own."""
         self._router = router
         self._classifier = classifier
         self._folder_check = folder_check
+        self._semaphore = semaphore
 
     async def run(self, patients: list[list[Path]]) -> list[DrValidityPipelineResult]:
-        """Process patients concurrently, up to max_concurrent_files at a time.
+        """Process patients concurrently, up to max_concurrent_files at a time (shared when
+        a semaphore was injected).
 
         Each entry is one patient's dr notes; their text is combined under per-file
         headers. A failure yields success=False with structured ``errors`` instead of
         aborting the batch. Notes with blank text are reported; if every note is blank the
         patient fails without calling the LLM.
         """
-        sem = asyncio.Semaphore(settings.max_concurrent_files)
+        sem = self._semaphore or asyncio.Semaphore(settings.max_concurrent_files)
 
         async def process(dr_paths: list[Path]) -> DrValidityPipelineResult:
             folder = dr_paths[0].parent

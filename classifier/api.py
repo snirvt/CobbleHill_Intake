@@ -26,7 +26,6 @@ after retries. SharePoint failures still return HTTP 404/502.
 """
 
 import argparse
-import asyncio
 import logging
 import secrets
 import sys
@@ -100,8 +99,11 @@ def create_app(
     """Build the app; the real services are created once at startup unless injected.
 
     ``service`` backs /dr-validity, ``match_service`` backs /dr-nurse-match. Real services
-    share one LLM semaphore, so concurrent requests to both routes honour a single
-    max_concurrent_llm_calls budget. api_key defaults to settings.api_key. When set, every route except /health requires a
+    share one set of limits (classifier.main.ConcurrencyLimits), so all concurrent requests
+    to both routes together stay within max_concurrent_llm_calls, max_concurrent_files and
+    sharepoint_download_concurrency.
+
+    api_key defaults to settings.api_key. When set, every route except /health requires a
     matching X-API-Key header; when None, the API is open (localhost-only use).
     """
     expected_key = (
@@ -119,19 +121,15 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
-        if service is not None:
-            app.state.service = service
-        else:
-            from classifier.main import build_dr_validity_service
+        from classifier.main import (
+            build_dr_nurse_match_service,
+            build_dr_validity_service,
+            make_concurrency_limits,
+        )
 
-            app.state.service = build_dr_validity_service(semaphore)
-        if match_service is not None:
-            app.state.match_service = match_service
-        else:
-            from classifier.main import build_dr_nurse_match_service
-
-            app.state.match_service = build_dr_nurse_match_service(semaphore)
+        limits = make_concurrency_limits()
+        app.state.service = service or build_dr_validity_service(limits)
+        app.state.match_service = match_service or build_dr_nurse_match_service(limits)
         yield
 
     app = FastAPI(title="CobbleHill intake checks", lifespan=lifespan)

@@ -280,3 +280,40 @@ def test_folder_errors_uses_injected_check(tmp_path: Path) -> None:
 
     assert pipeline.folder_errors(tmp_path) == []
     check.check.assert_called_once_with(tmp_path / "A")
+
+
+async def test_injected_semaphore_caps_patients_across_concurrent_runs(tmp_path: Path) -> None:
+    import asyncio
+
+    names = [f"dr_{i}.pdf" for i in range(4)]
+    paths = [tmp_path / f"P{i}" / name for i, name in enumerate(names)]
+    active = peak = 0
+
+    async def classify(metadata: DocumentMetadata, dr_paths: list[Path]) -> DrValidityResult:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return DrValidityResult(
+            patient_folder=metadata.file_path.parent,
+            dr_paths=dr_paths,
+            patient_group=PatientGroup.ADULT,
+            diagnosis_check=DiagnosisCheck.EXISTS,
+            verdict=ValidityVerdict.VALID,
+        )
+
+    clf = MagicMock()
+    clf.classify = AsyncMock(side_effect=classify)
+    pipeline = DrValidityPipeline(
+        router=_router({n: "text" for n in names}),
+        classifier=clf,
+        folder_check=RequiredNotesCheck(roles=("dr",)),
+        semaphore=asyncio.Semaphore(1),
+    )
+
+    await asyncio.gather(
+        pipeline.run([[p] for p in paths[:2]]), pipeline.run([[p] for p in paths[2:]])
+    )
+
+    assert peak == 1
