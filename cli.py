@@ -18,14 +18,11 @@ from classifier.main import (
 from classifier.models import (
     DiagnosisExtractionResult,
     MainDiagnosisResult,
-    PairPipelineResult,
     PipelineResult,
     TreatmentRequestResult,
 )
 from classifier.naming import parse_note
 from classifier.output.csv_writer import (
-    relative_file_names,
-    resolve_folder,
     write_diagnosis_xlsx,
     write_dr_validity_xlsx,
     write_main_diagnosis_xlsx,
@@ -34,6 +31,7 @@ from classifier.output.csv_writer import (
     write_xlsx,
 )
 from classifier.output.dr_validity_report import dr_validity_patient_dict
+from classifier.output.pair_report import pair_dict
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
 
@@ -63,61 +61,6 @@ def _result_to_dict(r: PipelineResult) -> dict:  # type: ignore[type-arg]
         "preventive_medicine": r.result.metadata.preventive_medicine,
         "task_results": r.result.task_results,
     }
-
-
-def _pair_result_to_dict(
-    r: PairPipelineResult,
-    *,
-    verbose: bool = False,
-    local_root: Path | None = None,
-    sp_web_url: str | None = None,
-) -> dict:  # type: ignore[type-arg]
-    dr_names = relative_file_names(r.dr_paths, r.dr_file_path, local_root)
-    nurse_names = relative_file_names(r.nurse_paths, r.nurse_file_path, local_root)
-    if not r.success or r.result is None:
-        return {
-            "dr_file": dr_names,
-            "nurse_file": nurse_names,
-            "success": False,
-            "error": r.error,
-        }
-    res = r.result
-    dr = res.dr_metadata
-    nurse = res.nurse_fields
-    out: dict = {  # type: ignore[type-arg]
-        "folder": resolve_folder(r.dr_file_path, local_root, sp_web_url),
-        "dr_file": dr_names,
-        "nurse_file": nurse_names,
-        "success": True,
-        "overall": res.overall,
-        "main_diagnosis": res.main_diagnosis,
-        "diagnosis_category": res.diagnosis_category,
-        "main_diagnosis_icd": res.main_diagnosis_icd,
-        "clinical_verdict": res.clinical_verdict,
-        "clinical_reasoning": res.clinical_reasoning,
-        "diagnosis_check": res.diagnosis_check or "",
-        "dr_diagnoses": [d.model_dump() for d in res.dr_diagnoses],
-        "nurse_diagnoses": [d.model_dump() for d in res.nurse_diagnoses],
-        "care_check": res.care_check or "",
-        "care_reasoning": res.care_reasoning,
-    }
-    if verbose:
-        out["identity_match"] = res.identity_match.model_dump()
-        out["dr_extracted"] = {
-            "meta": dr.meta.model_dump(),
-            "complaints": dr.complaints,
-            "assessment": dr.assessment,
-            "hpi": dr.hpi,
-            "ros": dr.ros,
-            "plan": dr.plan,
-            "medications": dr.medications.model_dump() if dr.medications else None,
-            "examination": dr.examination.model_dump() if dr.examination else None,
-            "medical_history": dr.medical_history,
-            "surgical_history": dr.surgical_history,
-            "procedure_codes": dr.procedure_codes,
-        }
-        out["nurse_extracted"] = nurse.model_dump()
-    return out
 
 
 def _diagnosis_result_to_dict(r: DiagnosisExtractionResult) -> dict:  # type: ignore[type-arg]
@@ -262,10 +205,12 @@ async def _run(
             logger.error("No dr/nurse note pairs found in %s", input_path)
             return 1, None
         results = await pipeline.run_pairs(pairs)
+        for error in pipeline.folder_errors(input_path):
+            logger.warning("Skipped folder %s: %s", error.folder, error.message)
         # Without SharePoint, the scanned folder is the root file paths are shown relative to.
         path_root = local_root or input_path
         output = [
-            _pair_result_to_dict(r, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url)
+            pair_dict(r, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url)
             for r in results
         ]
         print(json.dumps(output, indent=2, default=str))

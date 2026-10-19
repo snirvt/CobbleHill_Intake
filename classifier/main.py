@@ -14,7 +14,6 @@ from classifier.classifiers.main_diagnosis import MainDiagnosisClassifier
 from classifier.classifiers.patient_age import PatientAgeClassifier
 from classifier.classifiers.treatment_request import TreatmentRequestClassifier
 from classifier.dr_note_pipeline import DrNotePipeline
-from classifier.dr_validity_service import DrValidityService
 from classifier.extractors.easyocr_extractor import (
     EasyOcrExtractor,
     OcrReader,
@@ -23,14 +22,19 @@ from classifier.extractors.easyocr_extractor import (
 from classifier.extractors.pdf import PdfExtractor
 from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.folder_checks import RequiredNotesCheck
+from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointFolderDownloader
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.models import (
     DiagnosisExtractionResult,
+    DrValidityPipelineResult,
     MainDiagnosisResult,
+    PairPipelineResult,
     TreatmentRequestResult,
 )
+from classifier.output.dr_validity_report import dr_validity_report
+from classifier.output.pair_report import pair_report
 from classifier.pair_pipeline import PairPipeline
 from classifier.patient_pipeline import DrValidityPipeline
 from classifier.pipeline import Pipeline
@@ -180,18 +184,33 @@ def build_patient_age_extractor(llm: BaseChatModel | None = None) -> PatientAgeC
     return PatientAgeClassifier(llm=llm or _make_llm())
 
 
-def build_dr_validity_pipeline() -> DrValidityPipeline:
+def _task_llm_factory(
+    semaphore: asyncio.Semaphore | None,
+) -> Callable[[str], BaseChatModel]:
+    """Return task -> chat model at settings.task_thinking[task], all sharing one semaphore.
+
+    A new semaphore of settings.max_concurrent_llm_calls is created when none is given.
+    """
+    shared = semaphore or asyncio.Semaphore(settings.max_concurrent_llm_calls)
+
+    def llm(task: str) -> BaseChatModel:
+        return _make_llm(shared, settings.task_thinking[task])
+
+    return llm
+
+
+def build_dr_validity_pipeline(
+    semaphore: asyncio.Semaphore | None = None,
+) -> DrValidityPipeline:
     """Wire up the per-patient dr-note validity pipeline (dr notes only).
 
     Age, diagnosis, medical-necessity and main-diagnosis extractors each get their own
     chat model at the task's thinking level (settings.task_thinking), all sharing one
-    semaphore so the pipeline honours a single max_concurrent_llm_calls budget.
+    semaphore so the pipeline honours a single max_concurrent_llm_calls budget. Pass
+    ``semaphore`` to share that budget with other pipelines.
     """
     _make_env()
-    semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
-
-    def llm(task: str) -> BaseChatModel:
-        return _make_llm(semaphore, settings.task_thinking[task])
+    llm = _task_llm_factory(semaphore)
 
     return DrValidityPipeline(
         router=_make_router(),
@@ -205,15 +224,36 @@ def build_dr_validity_pipeline() -> DrValidityPipeline:
     )
 
 
-def build_dr_validity_service() -> DrValidityService:
-    """Wire the SharePoint downloader and dr-validity pipeline for the API server."""
-    downloader = SharePointFolderDownloader(
+def _make_downloader() -> SharePointFolderDownloader:
+    """Build the SharePoint folder downloader from settings."""
+    return SharePointFolderDownloader(
         client_id=settings.sharepoint_client_id,
         client_secret=settings.sharepoint_client_secret,
         tenant_id=settings.sharepoint_tenant_id,
         drive_id=settings.sharepoint_drive_id,
     )
-    return DrValidityService(downloader=downloader, pipeline=build_dr_validity_pipeline())
+
+
+def build_dr_validity_service(
+    semaphore: asyncio.Semaphore | None = None,
+) -> FolderReportService[DrValidityPipelineResult]:
+    """Wire the SharePoint downloader and dr-validity pipeline for the API server."""
+    return FolderReportService(
+        downloader=_make_downloader(),
+        pipeline=build_dr_validity_pipeline(semaphore),
+        report_fn=dr_validity_report,
+    )
+
+
+def build_dr_nurse_match_service(
+    semaphore: asyncio.Semaphore | None = None,
+) -> FolderReportService[PairPipelineResult]:
+    """Wire the SharePoint downloader and dr-nurse match pipeline for the API server."""
+    return FolderReportService(
+        downloader=_make_downloader(),
+        pipeline=build_pair_pipeline(semaphore),
+        report_fn=pair_report,
+    )
 
 
 def build_pipeline() -> Pipeline:
@@ -232,26 +272,29 @@ def build_pipeline() -> Pipeline:
     )
 
 
-def build_pair_pipeline() -> PairPipeline:
+def build_pair_pipeline(semaphore: asyncio.Semaphore | None = None) -> PairPipeline:
     """Wire up all components and return a ready-to-use PairPipeline.
 
     The pair classifier gets a diagnosis extractor (pairs in
     ``settings.diagnosis_check_categories`` are checked for missing diagnoses) and a
     care extractor (pairs in ``settings.care_check_categories`` are checked for a
     treatment request or medical necessity), plus a main-diagnosis extractor that labels
-    every pair for grouping. All share one chat model, so the
-    whole pipeline honours a single max_concurrent_llm_calls budget.
+    every pair for grouping. Each task gets its own chat model at its thinking level
+    (settings.task_thinking), all sharing one semaphore so the pipeline honours a single
+    max_concurrent_llm_calls budget. Leaf folders without a same-category dr + nurse pair
+    are reported as folder errors.
     """
     _make_env()
-    llm = _make_llm()
+    llm = _task_llm_factory(semaphore)
     return PairPipeline(
         router=_make_router(),
         dr_meta_extractor=ProgressNoteExtractor(),
         nurse_meta_extractor=NurseVisitExtractor(),
         pair_classifier=DrNurseMatchClassifier(
-            llm=llm,
-            diagnosis_extractor=build_diagnosis_extractor(llm),
-            care_extractor=build_treatment_request_extractor(llm),
-            main_diagnosis_extractor=build_main_diagnosis_extractor(llm),
+            llm=llm("clinical_match"),
+            diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
+            care_extractor=build_treatment_request_extractor(llm("care")),
+            main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
         ),
+        folder_check=RequiredNotesCheck(roles=("dr", "nurse"), same_category=True),
     )

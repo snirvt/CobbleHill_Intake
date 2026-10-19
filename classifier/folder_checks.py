@@ -26,12 +26,14 @@ def leaf_folders(root: Path) -> list[Path]:
 class RequiredNotesCheck:
     """A leaf folder must hold at least one note of every required role.
 
-    Each classification sets its own roles: dr-validity needs ``("dr",)``; a pipeline
-    pairing dr and nurse notes would use ``("dr", "nurse")``.
+    Each classification sets its own roles: dr-validity needs ``("dr",)``; the dr-nurse
+    match uses ``("dr", "nurse")`` with ``same_category=True``, since notes only pair
+    within one category (hospital_dr_* with hospital_nurse_*).
     """
 
-    def __init__(self, roles: tuple[NoteRole, ...]) -> None:
+    def __init__(self, roles: tuple[NoteRole, ...], same_category: bool = False) -> None:
         self._roles = roles
+        self._same_category = same_category
 
     def check(self, folder: Path) -> RunError | None:
         """Return an error when folder is empty or lacks a required note role, else None."""
@@ -51,4 +53,20 @@ class RequiredNotesCheck:
                 message=f"Folder has no {' or '.join(missing)} notes",
                 folder=folder,
             )
+        if self._same_category and not self._has_same_category_set(files):
+            return RunError(
+                stage=ErrorStage.FOLDER,
+                code=ErrorCode.MISSING_REQUIRED_NOTES,
+                message=f"Folder has no {' and '.join(self._roles)} notes of the same category",
+                folder=folder,
+            )
         return None
+
+    def _has_same_category_set(self, files: list[Path]) -> bool:
+        """True if one category holds a note of every required role."""
+        roles_by_category: dict[str | None, set[str]] = {}
+        for f in files:
+            parsed = parse_note(f)
+            if parsed is not None:
+                roles_by_category.setdefault(parsed.category, set()).add(parsed.role)
+        return any(set(self._roles) <= roles for roles in roles_by_category.values())

@@ -1,4 +1,10 @@
-"""FastAPI server: run the dr-validity check on a SharePoint folder, return JSON.
+"""FastAPI server: run a check on a SharePoint folder, return JSON.
+
+Routes (both take ``{"sharepoint_folder": "..."}`` and block until done):
+
+- ``POST /dr-validity``: every patient's dr notes against the intake rules.
+- ``POST /dr-nurse-match``: every same-category dr + nurse note pair compared. Folders
+  without such a pair are reported under ``errors``, not processed.
 
 Run: ``uv run cobblehill-api`` (binds settings.api_host:api_port, localhost by default).
 
@@ -14,16 +20,17 @@ Clients then send it on every request except GET /health::
          -d '{"sharepoint_folder": "..."}' http://<host>:8010/dr-validity
 
 The response lists every problem met along the way under ``errors`` (top level) and per
-patient under ``patients[].errors``: empty folders, folders without dr notes, notes with
-no extractable text, and LLM steps that failed after retries. SharePoint failures still
-return HTTP 404/502.
+patient/pair under ``patients[].errors`` / ``pairs[].errors``: empty folders, folders
+without the required notes, notes with no extractable text, and LLM steps that failed
+after retries. SharePoint failures still return HTTP 404/502.
 """
 
 import argparse
+import asyncio
 import logging
 import secrets
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
@@ -33,15 +40,16 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, field_validator
 
-from classifier.dr_validity_service import DrValidityService
+from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointAuthError
+from classifier.models import DrValidityPipelineResult, PairPipelineResult
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-class DrValidityRequest(BaseModel):
-    """Body of POST /dr-validity."""
+class FolderRequest(BaseModel):
+    """Body of POST /dr-validity and POST /dr-nurse-match."""
 
     sharepoint_folder: str
 
@@ -66,12 +74,34 @@ def _settings_api_key() -> str | None:
     return settings.api_key.get_secret_value().strip() or None
 
 
-def create_app(
-    service: DrValidityService | None = None, api_key: str | None | object = _FROM_SETTINGS
-) -> FastAPI:
-    """Build the app; the real service is created once at startup unless one is injected.
+async def _run_report(report: Awaitable[dict[str, Any]], folder: str) -> dict[str, Any]:
+    """Await a service run, mapping SharePoint failures to HTTP 404/502."""
+    try:
+        return await report
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        logger.error("SharePoint error %s for %r: %s", status, folder, exc)
+        if status == 404:
+            raise HTTPException(404, f"SharePoint folder not found: {folder}") from exc
+        raise HTTPException(502, f"SharePoint request failed ({status})") from exc
+    except SharePointAuthError as exc:
+        logger.error("SharePoint auth failed: %s", exc)
+        raise HTTPException(502, "SharePoint authentication failed") from exc
+    except httpx.HTTPError as exc:
+        logger.error("SharePoint unreachable for %r: %s", folder, exc)
+        raise HTTPException(502, f"SharePoint request failed: {exc}") from exc
 
-    api_key defaults to settings.api_key. When set, every route except /health requires a
+
+def create_app(
+    service: FolderReportService[DrValidityPipelineResult] | None = None,
+    api_key: str | None | object = _FROM_SETTINGS,
+    match_service: FolderReportService[PairPipelineResult] | None = None,
+) -> FastAPI:
+    """Build the app; the real services are created once at startup unless injected.
+
+    ``service`` backs /dr-validity, ``match_service`` backs /dr-nurse-match. Real services
+    share one LLM semaphore, so concurrent requests to both routes honour a single
+    max_concurrent_llm_calls budget. api_key defaults to settings.api_key. When set, every route except /health requires a
     matching X-API-Key header; when None, the API is open (localhost-only use).
     """
     expected_key = (
@@ -89,15 +119,22 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
         if service is not None:
             app.state.service = service
         else:
             from classifier.main import build_dr_validity_service
 
-            app.state.service = build_dr_validity_service()
+            app.state.service = build_dr_validity_service(semaphore)
+        if match_service is not None:
+            app.state.match_service = match_service
+        else:
+            from classifier.main import build_dr_nurse_match_service
+
+            app.state.match_service = build_dr_nurse_match_service(semaphore)
         yield
 
-    app = FastAPI(title="CobbleHill dr-validity", lifespan=lifespan)
+    app = FastAPI(title="CobbleHill intake checks", lifespan=lifespan)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -105,26 +142,18 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/dr-validity", dependencies=[Depends(require_api_key)])
-    async def dr_validity(body: DrValidityRequest, request: Request) -> dict[str, Any]:
+    async def dr_validity(body: FolderRequest, request: Request) -> dict[str, Any]:
         """Check every patient's dr notes in the SharePoint folder; blocks until done."""
-        svc: DrValidityService = request.app.state.service
+        svc: FolderReportService[DrValidityPipelineResult] = request.app.state.service
         logger.info("dr-validity request for %r", body.sharepoint_folder)
-        try:
-            return await svc.run(body.sharepoint_folder)
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            logger.error("SharePoint error %s for %r: %s", status, body.sharepoint_folder, exc)
-            if status == 404:
-                raise HTTPException(
-                    404, f"SharePoint folder not found: {body.sharepoint_folder}"
-                ) from exc
-            raise HTTPException(502, f"SharePoint request failed ({status})") from exc
-        except SharePointAuthError as exc:
-            logger.error("SharePoint auth failed: %s", exc)
-            raise HTTPException(502, "SharePoint authentication failed") from exc
-        except httpx.HTTPError as exc:
-            logger.error("SharePoint unreachable for %r: %s", body.sharepoint_folder, exc)
-            raise HTTPException(502, f"SharePoint request failed: {exc}") from exc
+        return await _run_report(svc.run(body.sharepoint_folder), body.sharepoint_folder)
+
+    @app.post("/dr-nurse-match", dependencies=[Depends(require_api_key)])
+    async def dr_nurse_match(body: FolderRequest, request: Request) -> dict[str, Any]:
+        """Compare every dr + nurse note pair in the SharePoint folder; blocks until done."""
+        svc: FolderReportService[PairPipelineResult] = request.app.state.match_service
+        logger.info("dr-nurse-match request for %r", body.sharepoint_folder)
+        return await _run_report(svc.run(body.sharepoint_folder), body.sharepoint_folder)
 
     return app
 
@@ -137,7 +166,7 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point for ``uv run cobblehill-api [--host HOST] [--port PORT]``."""
-    parser = argparse.ArgumentParser(description="CobbleHill dr-validity API server")
+    parser = argparse.ArgumentParser(description="CobbleHill intake-checks API server")
     parser.add_argument(
         "--host",
         default=settings.api_host,

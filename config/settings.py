@@ -118,13 +118,15 @@ class Settings(BaseSettings):
         },
         "high": {"chat_template_kwargs": {"enable_thinking": True}},  # unlimited
     }
-    # Thinking level per dr-validity task (keys match the timing log step names).
-    # Ollama ignores it. Override e.g. COBBLEHILL_TASK_THINKING='{"diagnosis": "low", ...}'.
+    # Thinking level per LLM task (keys match the timing log step names), used by the
+    # dr-validity and dr-nurse-match pipelines. Ollama ignores it.
+    # Override e.g. COBBLEHILL_TASK_THINKING='{"diagnosis": "low", ...}'.
     task_thinking: dict[str, str] = {
         "age": "off",
         "diagnosis": "off",
         "care": "off",
         "main_diagnosis": "off",
+        "clinical_match": "off",
     }
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 8

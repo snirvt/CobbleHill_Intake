@@ -2,16 +2,14 @@ import asyncio
 import logging
 from pathlib import Path
 
+from classifier.classifiers.step_errors import raise_on_step_errors
 from classifier.models import (
     CareCheck,
-    ClassificationStepError,
     DiagnosisCheck,
     DocumentMetadata,
     DrValidityResult,
-    ErrorCode,
     ErrorStage,
     PatientGroup,
-    RunError,
     ValidityVerdict,
 )
 from classifier.protocols import (
@@ -29,8 +27,6 @@ _REASON_NO_DIAGNOSIS = "no diagnosis"
 _REASON_NO_NECESSITY = "no medical necessity"
 _REASON_NO_NECESSITY_IF_PEDS = "no medical necessity (required if under 18)"
 _REASON_UNKNOWN_AGE = "age not found"
-# Extractors prefix their error messages with this on output-parse failures.
-_PARSE_ERROR_PREFIX = "Parse error"
 
 
 class DrNoteValidityClassifier:
@@ -69,8 +65,8 @@ class DrNoteValidityClassifier:
                 self._main_diagnosis_extractor.extract_main_diagnosis(metadata),
             ),
         )
-        self._raise_on_step_errors(
-            metadata,
+        raise_on_step_errors(
+            metadata.file_path.parent,
             {
                 ErrorStage.AGE: age.error,
                 ErrorStage.DIAGNOSIS: diagnoses.error,
@@ -105,26 +101,6 @@ class DrNoteValidityClassifier:
             verdict=verdict,
             reasons=reasons,
         )
-
-    @staticmethod
-    def _raise_on_step_errors(
-        metadata: DocumentMetadata, step_errors: dict[ErrorStage, str | None]
-    ) -> None:
-        """Raise ClassificationStepError if any step reported an error."""
-        errors = [
-            RunError(
-                stage=stage,
-                code=ErrorCode.PARSE_FAILED
-                if message.startswith(_PARSE_ERROR_PREFIX)
-                else ErrorCode.LLM_FAILED,
-                message=message,
-                folder=metadata.file_path.parent,
-            )
-            for stage, message in step_errors.items()
-            if message
-        ]
-        if errors:
-            raise ClassificationStepError(errors)
 
     @staticmethod
     def _patient_group(age_years: float | None) -> PatientGroup:

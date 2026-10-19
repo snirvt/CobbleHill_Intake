@@ -268,6 +268,8 @@ class PairPipelineResult(BaseModel):
     success: bool
     result: PairClassificationResult | None = None
     error: str | None = None
+    # Structured errors; may be non-empty even when success is True (non-fatal issues).
+    errors: list["RunError"] = []
 
 
 class PatientAgeResult(BaseModel):
@@ -326,6 +328,7 @@ class ErrorStage(StrEnum):
     DIAGNOSIS = "diagnosis"
     CARE = "care"
     MAIN_DIAGNOSIS = "main_diagnosis"
+    CLINICAL_MATCH = "clinical_match"
     PIPELINE = "pipeline"
 
 

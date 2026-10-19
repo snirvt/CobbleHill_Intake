@@ -3,17 +3,11 @@ import logging
 import shutil
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from classifier.models import DrValidityPipelineResult, RunError
-from classifier.output.dr_validity_report import (
-    dr_validity_category_groups,
-    dr_validity_errors,
-    dr_validity_groups,
-    dr_validity_patient_dict,
-    dr_validity_summary,
-)
+from classifier.models import RunError
 
 logger = logging.getLogger(__name__)
 
@@ -26,30 +20,41 @@ class FolderDownloader(Protocol):
     ) -> tuple[Path, str]: ...
 
 
-class FolderPipeline(Protocol):
-    """Runs the per-patient dr-validity check over a local folder."""
+class FolderPipeline[R](Protocol):
+    """Runs a check over a local folder and reports folders it cannot process."""
 
-    async def run_folder(self, root: Path) -> list[DrValidityPipelineResult]: ...
+    async def run_folder(self, root: Path) -> list[R]: ...
 
     def folder_errors(self, root: Path) -> list[RunError]: ...
 
 
-class DrValidityService:
-    """Downloads a SharePoint folder, runs the dr-validity check, returns a JSON-ready report.
+# (results, folder_errors, local_root, root_name, web_url) -> JSON-ready report body.
+type ReportBuilder[R] = Callable[[list[R], list[RunError], Path, str, str], dict[str, object]]
 
-    The folder may hold many patient folders or be a single patient folder. Downloaded
-    files are always deleted afterwards, even when the run fails.
+
+class FolderReportService[R]:
+    """Downloads a SharePoint folder, runs a pipeline on it, returns a JSON-ready report.
+
+    The folder may hold many patient folders or be a single patient folder. The pipeline
+    decides what is checked; ``report_fn`` shapes its results. Downloaded files are always
+    deleted afterwards, even when the run fails.
     """
 
-    def __init__(self, downloader: FolderDownloader, pipeline: FolderPipeline) -> None:
+    def __init__(
+        self,
+        downloader: FolderDownloader,
+        pipeline: FolderPipeline[R],
+        report_fn: ReportBuilder[R],
+    ) -> None:
         self._downloader = downloader
         self._pipeline = pipeline
+        self._report_fn = report_fn
 
     async def run(self, sharepoint_folder: str) -> dict[str, object]:
-        """Return {sharepoint_folder, web_url, summary, groups, patients, errors} for the folder.
+        """Return {sharepoint_folder, web_url, **report} for the folder.
 
-        ``errors`` lists everything that went wrong: folders that could not be processed
-        (empty, no dr notes) and per-patient failures (blank text, failed LLM steps).
+        The report's ``errors`` lists everything that went wrong: folders that could not
+        be processed and per-result failures.
         """
         folder = sharepoint_folder.strip("/")
         # Created here (not by the downloader) so a failed download is cleaned up too.
@@ -63,7 +68,7 @@ class DrValidityService:
             finished = time.perf_counter()
             logger.info(
                 "timing request folder=%s download %.2fs | pipeline %.2fs | total %.2fs "
-                "| patients=%d",
+                "| results=%d",
                 folder,
                 downloaded - started,
                 finished - downloaded,
@@ -75,11 +80,7 @@ class DrValidityService:
             return {
                 "sharepoint_folder": folder,
                 "web_url": web_url,
-                "summary": dr_validity_summary(results, folder_errors),
-                "groups": dr_validity_groups(results),
-                "category_groups": dr_validity_category_groups(results),
-                "patients": [dr_validity_patient_dict(r, local_dir, root_name) for r in results],
-                "errors": dr_validity_errors(results, folder_errors, local_dir, root_name),
+                **self._report_fn(results, folder_errors, local_dir, root_name, web_url),
             }
         finally:
             await asyncio.to_thread(shutil.rmtree, local_dir, ignore_errors=True)

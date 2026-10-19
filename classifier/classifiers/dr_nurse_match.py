@@ -9,12 +9,15 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.retry import with_llm_retry
+from classifier.classifiers.step_errors import raise_on_step_errors
 from classifier.models import (
     CareCheck,
     ClinicalVerdict,
     Diagnosis,
     DiagnosisCheck,
     DocumentMetadata,
+    ErrorStage,
     IdentityMatchResult,
     MainDiagnosisResult,
     PairClassificationResult,
@@ -27,6 +30,7 @@ from classifier.protocols import (
     TreatmentRequestExtractor,
 )
 from classifier.providers.structured import bind_output_schema
+from classifier.timing import step
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -57,7 +61,12 @@ Output instructions:
 
 
 class DrNurseMatchClassifier:
-    """Compares a dr progress note with a nurse visit note for patient and clinical consistency."""
+    """Compares a dr progress note with a nurse visit note for patient and clinical consistency.
+
+    Runs the clinical match plus the optional diagnosis, care and main-diagnosis steps
+    concurrently. A step that still fails after retries raises ClassificationStepError
+    instead of feeding a fallback default into the verdict.
+    """
 
     def __init__(
         self,
@@ -72,24 +81,35 @@ class DrNurseMatchClassifier:
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions()
         )
-        self._chain = prompt | bind_output_schema(llm, ClinicalMatchOutput) | parser
+        self._chain = with_llm_retry(prompt | bind_output_schema(llm, ClinicalMatchOutput) | parser)
         self._diagnosis_extractor = diagnosis_extractor
         self._care_extractor = care_extractor
         self._main_diagnosis_extractor = main_diagnosis_extractor
 
     async def classify_pair(self, pair: PairDocumentMetadata) -> PairClassificationResult:
+        """Compare the pair and return its verdict; raises ClassificationStepError on step failure."""
         identity = self._compare_identity(pair)
         (
-            (clinical_verdict, clinical_reasoning),
-            (diagnosis_check, dr_diagnoses, nurse_diagnoses),
-            (care_check, care_reasoning),
+            (clinical_verdict, clinical_reasoning, clinical_error),
+            (diagnosis_check, dr_diagnoses, nurse_diagnoses, diagnosis_error),
+            (care_check, care_reasoning, care_error),
             main,
         ) = await asyncio.gather(
-            self._compare_clinical(pair),
-            self._check_diagnoses(pair),
-            self._check_care_needed(pair),
-            self._extract_main_diagnosis(pair),
+            step("clinical_match", self._compare_clinical(pair)),
+            step("diagnosis", self._check_diagnoses(pair)),
+            step("care", self._check_care_needed(pair)),
+            step("main_diagnosis", self._extract_main_diagnosis(pair)),
         )
+        raise_on_step_errors(
+            pair.dr_file_path.parent,
+            {
+                ErrorStage.CLINICAL_MATCH: clinical_error,
+                ErrorStage.DIAGNOSIS: diagnosis_error,
+                ErrorStage.CARE: care_error,
+                ErrorStage.MAIN_DIAGNOSIS: main.error if main else None,
+            },
+        )
+        assert clinical_verdict is not None  # set whenever clinical_error is None
 
         overall = clinical_verdict
         if diagnosis_check is DiagnosisCheck.MISSING or care_check is CareCheck.NOT_NEEDED:
@@ -116,17 +136,18 @@ class DrNurseMatchClassifier:
 
     async def _check_care_needed(
         self, pair: PairDocumentMetadata
-    ) -> tuple[CareCheck | None, str]:
+    ) -> tuple[CareCheck | None, str, str | None]:
         """Decide whether the pair shows the patient needs care, from both notes.
 
         Care counts as needed on either ground: someone requested/recommended it, or
-        the clinical situation itself requires it. Returns (None, "") when the pair's
-        category is out of scope or no care extractor was injected.
+        the clinical situation itself requires it. Returns (check, reasoning, error);
+        (None, "", None) when the pair's category is out of scope or no care extractor
+        was injected.
         """
         if self._care_extractor is None:
-            return None, ""
+            return None, "", None
         if pair.category not in settings.care_check_categories:
-            return None, ""
+            return None, "", None
 
         combined = DocumentMetadata(
             file_path=pair.dr_file_path,
@@ -134,6 +155,8 @@ class DrNurseMatchClassifier:
             meta=pair.dr.meta,
         )
         result = await self._care_extractor.extract_treatment_request(combined)
+        if result.error:
+            return None, "", result.error
         check = CareCheck.NEEDED if result.treatment_requested else CareCheck.NOT_NEEDED
         if check is CareCheck.NOT_NEEDED:
             logger.info(
@@ -142,7 +165,7 @@ class DrNurseMatchClassifier:
                 pair.dr_file_path,
                 pair.nurse_file_path,
             )
-        return check, result.reasoning or ""
+        return check, result.reasoning or "", None
 
     async def _extract_main_diagnosis(
         self, pair: PairDocumentMetadata
@@ -165,16 +188,17 @@ class DrNurseMatchClassifier:
 
     async def _check_diagnoses(
         self, pair: PairDocumentMetadata
-    ) -> tuple[DiagnosisCheck | None, list[Diagnosis], list[Diagnosis]]:
-        """Extract diagnoses from both notes (dr list, nurse list); MISSING when neither has any.
+    ) -> tuple[DiagnosisCheck | None, list[Diagnosis], list[Diagnosis], str | None]:
+        """Extract diagnoses from both notes; MISSING when neither has any.
 
-        Returns (None, [], []) when the pair's category is out of scope for the check
-        or no diagnosis extractor was injected — the check is then skipped entirely.
+        Returns (check, dr list, nurse list, error). (None, [], [], None) when the pair's
+        category is out of scope for the check or no diagnosis extractor was injected —
+        the check is then skipped entirely. A failed extraction on either note sets error.
         """
         if self._diagnosis_extractor is None:
-            return None, [], []
+            return None, [], [], None
         if pair.category not in settings.diagnosis_check_categories:
-            return None, [], []
+            return None, [], [], None
 
         nurse_doc = DocumentMetadata(
             file_path=pair.nurse_file_path,
@@ -185,6 +209,9 @@ class DrNurseMatchClassifier:
             self._diagnosis_extractor.extract_diagnoses(pair.dr),
             self._diagnosis_extractor.extract_diagnoses(nurse_doc),
         )
+        failed = [r.error for r in (dr_result, nurse_result) if r.error]
+        if failed:
+            return None, [], [], "; ".join(failed)
         has_diagnosis = bool(dr_result.diagnoses or nurse_result.diagnoses)
         check = DiagnosisCheck.EXISTS if has_diagnosis else DiagnosisCheck.MISSING
         if check is DiagnosisCheck.MISSING:
@@ -194,7 +221,7 @@ class DrNurseMatchClassifier:
                 pair.dr_file_path,
                 pair.nurse_file_path,
             )
-        return check, dr_result.diagnoses, nurse_result.diagnoses
+        return check, dr_result.diagnoses, nurse_result.diagnoses, None
 
     def _compare_identity(self, pair: PairDocumentMetadata) -> IdentityMatchResult:
         dr = pair.dr.meta
@@ -213,19 +240,22 @@ class DrNurseMatchClassifier:
             "nurse_full_text": pair.nurse_raw_text or "None",
         }
 
-    async def _compare_clinical(self, pair: PairDocumentMetadata) -> tuple[ClinicalVerdict, str]:
+    async def _compare_clinical(
+        self, pair: PairDocumentMetadata
+    ) -> tuple[ClinicalVerdict | None, str, str | None]:
+        """LLM clinical comparison: (verdict, reasoning, error); verdict None on failure."""
         try:
             output: ClinicalMatchOutput = await self._chain.ainvoke(
                 self._build_prompt_input(pair)
             )
             logger.debug("Pair clinical verdict=%s", output.verdict)
-            return output.verdict, output.reasoning or ""
+            return output.verdict, output.reasoning or "", None
         except OutputParserException as exc:
             logger.error("Parse failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
-            return ClinicalVerdict.MISMATCH, f"Parse error: {exc}"
+            return None, "", f"Parse error: {exc}"
         except Exception as exc:
             logger.error("LLM call failed for pair %s/%s: %s", pair.dr_file_path, pair.nurse_file_path, exc)
-            return ClinicalVerdict.MISMATCH, f"LLM error: {exc}"
+            return None, "", f"LLM error: {exc}"
 
     @staticmethod
     def _normalize(s: str | None) -> str:

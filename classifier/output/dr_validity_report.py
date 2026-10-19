@@ -109,3 +109,23 @@ def dr_validity_category_groups(
         {"diagnosis_category": category, "count": count}
         for category, count in count_main_diagnoses(categories)
     ]
+
+
+def dr_validity_report(
+    results: list[DrValidityPipelineResult],
+    folder_errors: list[RunError],
+    local_root: Path | None = None,
+    root_name: str | None = None,
+    web_url: str | None = None,
+) -> dict[str, object]:
+    """Full report body: {summary, groups, category_groups, patients, errors}.
+
+    ``web_url`` is accepted for the shared report-builder signature and not used.
+    """
+    return {
+        "summary": dr_validity_summary(results, folder_errors),
+        "groups": dr_validity_groups(results),
+        "category_groups": dr_validity_category_groups(results),
+        "patients": [dr_validity_patient_dict(r, local_root, root_name) for r in results],
+        "errors": dr_validity_errors(results, folder_errors, local_root, root_name),
+    }
