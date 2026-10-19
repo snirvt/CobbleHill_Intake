@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import cli
-from classifier.models import MainDiagnosisResult
+from classifier.models import (
+    ErrorCode,
+    ErrorStage,
+    MainDiagnosisResult,
+    PairPipelineResult,
+    RunError,
+)
 
 
 def test_upload_results_absent_means_no_upload() -> None:
@@ -61,3 +67,69 @@ async def test_run_main_diagnosis_writes_xlsx_into_out_dir(
     assert exit_code == 0
     assert written == out_dir / "main_diagnosis_results.xlsx"
     assert written.exists()
+
+
+def test_dr_nurse_match_flag_parses() -> None:
+    assert cli.build_parser().parse_args(["--dr-nurse-match"]).dr_nurse_match is True
+    assert cli.build_parser().parse_args([]).dr_nurse_match is False
+
+
+def _fake_pair_pipeline(
+    results: list[PairPipelineResult], folder_errors: list[RunError]
+) -> MagicMock:
+    pipeline = MagicMock()
+    pipeline.run_folder = AsyncMock(return_value=results)
+    pipeline.folder_errors = MagicMock(return_value=folder_errors)
+    return pipeline
+
+
+@pytest.mark.asyncio
+async def test_run_dr_nurse_match_writes_xlsx_and_counts_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    src = tmp_path / "in"
+    src.mkdir()
+    failed = PairPipelineResult(
+        dr_file_path=src / "dr_a.pdf",
+        nurse_file_path=src / "nurse_a.pdf",
+        success=False,
+        error="clinical_match: LLM error: down",
+    )
+    skipped = RunError(
+        stage=ErrorStage.FOLDER,
+        code=ErrorCode.MISSING_REQUIRED_NOTES,
+        message="Folder has no nurse notes",
+        folder=src / "X",
+    )
+    pipeline = _fake_pair_pipeline([failed], [skipped])
+    monkeypatch.setattr(cli, "build_pair_pipeline", lambda: pipeline)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    exit_code, written = await cli._run_dr_nurse_match(src, out_dir=out_dir)
+
+    assert exit_code == 1
+    assert written == out_dir / "pair_results.xlsx"
+    assert written.exists()
+    pipeline.run_folder.assert_awaited_once_with(src)
+    assert "Folder has no nurse notes" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_run_dr_nurse_match_with_no_pairs_still_writes_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "build_pair_pipeline", lambda: _fake_pair_pipeline([], []))
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    exit_code, written = await cli._run_dr_nurse_match(tmp_path, out_dir=out_dir)
+
+    assert (exit_code, written) == (0, out_dir / "pair_results.xlsx")
+
+
+@pytest.mark.asyncio
+async def test_run_dr_nurse_match_rejects_non_folder(tmp_path: Path) -> None:
+    note = tmp_path / "dr_a.txt"
+    note.write_text("x")
+    assert await cli._run_dr_nurse_match(note, out_dir=tmp_path) == (1, None)

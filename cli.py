@@ -190,6 +190,40 @@ def _is_pair_folder(path: Path) -> bool:
     return any(parse_note(f) is not None for f in path.rglob("*"))
 
 
+async def _run_dr_nurse_match(
+    input_path: Path,
+    *,
+    out_dir: Path,
+    verbose: bool = False,
+    local_root: Path | None = None,
+    sp_web_url: str | None = None,
+) -> tuple[int, Path | None]:
+    """Compare every same-category dr + nurse pair in a folder; print JSON, write xlsx.
+
+    Folders without a pair are logged as warnings, not processed. Returns (number of
+    failed pairs, xlsx path); (1, None) when input_path is not a folder.
+    """
+    if not input_path.is_dir():
+        logger.error("Not a folder: %s", input_path)
+        return 1, None
+    pipeline = build_pair_pipeline()
+    results = await pipeline.run_folder(input_path)
+    for error in pipeline.folder_errors(input_path):
+        logger.warning("Skipped folder %s: %s", error.folder, error.message)
+    # Without SharePoint, the scanned folder is the root file paths are shown relative to.
+    path_root = local_root or input_path
+    output = [
+        pair_dict(r, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url)
+        for r in results
+    ]
+    print(json.dumps(output, indent=2, default=str))
+    pair_path = out_dir / "pair_results.xlsx"
+    write_pair_xlsx(
+        results, pair_path, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url
+    )
+    return sum(1 for r in results if not r.success), pair_path
+
+
 async def _run(
     input_path: Path,
     *,
@@ -199,26 +233,16 @@ async def _run(
     sp_web_url: str | None = None,
 ) -> tuple[int, Path | None]:
     if input_path.is_dir() and _is_pair_folder(input_path):
-        pipeline = build_pair_pipeline()
-        pairs = scan_pairs(input_path)
-        if not pairs:
+        if not scan_pairs(input_path):
             logger.error("No dr/nurse note pairs found in %s", input_path)
             return 1, None
-        results = await pipeline.run_pairs(pairs)
-        for error in pipeline.folder_errors(input_path):
-            logger.warning("Skipped folder %s: %s", error.folder, error.message)
-        # Without SharePoint, the scanned folder is the root file paths are shown relative to.
-        path_root = local_root or input_path
-        output = [
-            pair_dict(r, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url)
-            for r in results
-        ]
-        print(json.dumps(output, indent=2, default=str))
-        pair_path = out_dir / "pair_results.xlsx"
-        write_pair_xlsx(
-            results, pair_path, verbose=verbose, local_root=path_root, sp_web_url=sp_web_url
+        return await _run_dr_nurse_match(
+            input_path,
+            out_dir=out_dir,
+            verbose=verbose,
+            local_root=local_root,
+            sp_web_url=sp_web_url,
         )
-        return sum(1 for r in results if not r.success), pair_path
 
     pipeline = build_pipeline()
     if input_path.is_dir():
@@ -305,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--main-diagnosis",
         action="store_true",
         default=False,
-        help="Extract a short (1-2 word) main diagnosis per dr note, to group cases; prints JSON",
+        help="Extract a short (1-4 word) main diagnosis per dr note, to group cases; prints JSON",
     )
     parser.add_argument(
         "--dr-validity",
@@ -314,6 +338,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Check each patient folder's dr notes: under 18 needs diagnosis + medical "
             "necessity, adults need a diagnosis; also labels the main diagnosis"
+        ),
+    )
+    parser.add_argument(
+        "--dr-nurse-match",
+        action="store_true",
+        default=False,
+        help=(
+            "Compare each same-category dr + nurse note pair (clinical match, diagnosis/care "
+            "checks, main diagnosis); folders without a pair are reported"
         ),
     )
     return parser
@@ -354,6 +387,16 @@ def main() -> None:
                         root_name=PurePosixPath(args.sharepoint_folder.rstrip("/")).name,
                     )
                 )
+            elif args.dr_nurse_match:
+                exit_code, written_csv = asyncio.run(
+                    _run_dr_nurse_match(
+                        local_dir,
+                        out_dir=out_dir,
+                        verbose=args.verbose,
+                        local_root=local_dir,
+                        sp_web_url=sp_web_url,
+                    )
+                )
             else:
                 exit_code, written_csv = asyncio.run(
                     _run(
@@ -382,6 +425,10 @@ def main() -> None:
     elif args.dr_validity:
         exit_code, written_csv = asyncio.run(
             _run_dr_validity(Path(args.input), out_dir=out_dir)
+        )
+    elif args.dr_nurse_match:
+        exit_code, written_csv = asyncio.run(
+            _run_dr_nurse_match(Path(args.input), out_dir=out_dir, verbose=args.verbose)
         )
     else:
         exit_code, written_csv = asyncio.run(
