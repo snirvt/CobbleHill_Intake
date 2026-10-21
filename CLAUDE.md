@@ -159,6 +159,7 @@ python -m classifier.cli --input path/to/file_or_folder
 
 # Run API server
 uv run cobblehill-api            # add --host 0.0.0.0 to expose on the network (needs API key)
+# On Spark it runs as a systemd service that restarts on `git pull` (deploy/README.md)
 
 # Set $KEY and $HOST for curl calls to the API (see the file for an example)
 source scripts/api_env.sh

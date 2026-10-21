@@ -1,9 +1,12 @@
 [Unit]
 Description=CobbleHill Intake API (dr-validity, dr-nurse-match)
 After=network-online.target
+Wants=network-online.target
 
 [Service]
-WorkingDirectory=%h/CobbleHill_Intake
+User=cobblehill
+Group=cobblehill
+WorkingDirectory=/home/cobblehill/CobbleHill_Intake
 # Login shell (-l) so the service gets the same PATH (uv) and env as a terminal.
 # `exec` replaces bash with the server so systemd tracks the real process.
 ExecStart=/bin/bash -lc 'exec uv run cobblehill-api --host 0.0.0.0'
@@ -13,4 +16,4 @@ RestartSec=5
 TimeoutStartSec=300
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

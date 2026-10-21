@@ -2,11 +2,6 @@
 # Runs after `git pull`. Restarts the API service when code changed.
 # Enabled on Spark only:  git config core.hooksPath deploy/git-hooks
 
-# Point systemctl --user at this user's systemd. Terminals such as VS Code's can carry stale
-# values, which make it fail with "Failed to connect to bus".
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-
 changed=$(git diff --name-only ORIG_HEAD HEAD)
 
 if echo "$changed" | grep -qE '^(uv\.lock|pyproject\.toml)$'; then
@@ -19,11 +14,16 @@ if ! echo "$changed" | grep -qE '^(classifier/|config/|cli\.py|uv\.lock|pyprojec
     exit 0
 fi
 
-if ! systemctl --user cat cobblehill-api >/dev/null 2>&1; then
+if ! systemctl cat cobblehill-api >/dev/null 2>&1; then
     echo "Code changed, but the cobblehill-api service is not installed (see deploy/README.md)."
     exit 0
 fi
 
 echo "Code changed, restarting API (requests running right now are cancelled)..."
-systemctl --user restart cobblehill-api && echo "API restarted."
+if sudo -n systemctl restart cobblehill-api; then
+    echo "API restarted."
+else
+    echo "Could not restart: install deploy/cobblehill-api.sudoers (deploy/README.md)"
+    echo "or run: sudo systemctl restart cobblehill-api"
+fi
 exit 0
