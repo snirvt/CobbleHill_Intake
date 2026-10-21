@@ -1,0 +1,16 @@
+[Unit]
+Description=CobbleHill Intake API (dr-validity, dr-nurse-match)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/CobbleHill_Intake
+# Login shell (-l) so the service gets the same PATH (uv) and env as a terminal.
+# `exec` replaces bash with the server so systemd tracks the real process.
+ExecStart=/bin/bash -lc 'exec uv run cobblehill-api --host 0.0.0.0'
+Restart=on-failure
+RestartSec=5
+# OCR model load can be slow on first start.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
