@@ -52,14 +52,25 @@ that changes code. No sudo needed for day-to-day use.
 ## Install once (on Spark, as `cobblehill`, from the repo folder)
 Stop any API you started by hand first (Ctrl+C), or port 8010 will be taken.
 ```bash
+sudo loginctl enable-linger cobblehill      # FIRST: starts your user systemd; keeps it on boot
+# Point systemctl --user at it (VS Code terminals can carry stale values). Add these two
+# lines to ~/.bashrc so every new terminal has them.
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+systemctl --user status                     # must print a tree, not an error
 mkdir -p ~/.config/systemd/user
 cp deploy/cobblehill-api.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now cobblehill-api
-sudo loginctl enable-linger cobblehill      # keep running without a login; start on boot
 git config core.hooksPath deploy/git-hooks  # restart the API on every git pull
+curl localhost:8010/health                  # check it answers
 ```
 The unit expects the repo at `~/CobbleHill_Intake`; edit `WorkingDirectory` if it is elsewhere.
+
+**"Failed to connect to bus: Connection refused"**: your user systemd is not running or the
+terminal points at the wrong place. Run the `enable-linger` and the two `export` lines above,
+then retry. Still failing → check `loginctl show-user cobblehill` (`Linger=yes`, `State=`)
+and `ls -la /run/user/$(id -u)/` (should contain `bus`).
 
 ## Day to day
 ```bash
