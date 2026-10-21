@@ -312,6 +312,19 @@ def test_health_needs_no_api_key(keyed_client: TestClient) -> None:
     assert keyed_client.get("/health").status_code == 200
 
 
+def test_version_reports_injected_commit_and_start_time(service: MagicMock) -> None:
+    app = create_app(service=service, match_service=service, api_key=None, commit="abc1234")
+    with TestClient(app) as c:
+        body = c.get("/version").json()
+    assert body["commit"] == "abc1234"
+    assert body["started_at"].endswith("+00:00")
+
+
+def test_version_requires_api_key(keyed_client: TestClient) -> None:
+    assert keyed_client.get("/version").status_code == 401
+    assert keyed_client.get("/version", headers={"X-API-Key": "s3cret"}).status_code == 200
+
+
 def test_app_uses_settings_key_by_default(
     service: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:

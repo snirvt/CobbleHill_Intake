@@ -36,6 +36,7 @@ import secrets
 import sys
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx
@@ -48,6 +49,7 @@ from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointAuthError
 from classifier.models import DrValidityPipelineResult, PairPipelineResult
 from classifier.output.examples import dr_nurse_match_example, dr_validity_example
+from classifier.version import git_commit
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -101,8 +103,11 @@ def create_app(
     service: FolderReportService[DrValidityPipelineResult] | None = None,
     api_key: str | None | object = _FROM_SETTINGS,
     match_service: FolderReportService[PairPipelineResult] | None = None,
+    commit: str | None = None,
 ) -> FastAPI:
     """Build the app; the real services are created once at startup unless injected.
+
+    ``commit`` is what /version reports; defaults to the repo's git HEAD at startup.
 
     ``service`` backs /dr-validity, ``match_service`` backs /dr-nurse-match. Real services
     share one set of limits (classifier.main.ConcurrencyLimits), so all concurrent requests
@@ -136,6 +141,8 @@ def create_app(
         limits = make_concurrency_limits()
         app.state.service = service or build_dr_validity_service(limits)
         app.state.match_service = match_service or build_dr_nurse_match_service(limits)
+        app.state.commit = commit or git_commit(settings.base_path)
+        app.state.started_at = datetime.now(UTC).isoformat(timespec="seconds")
         yield
 
     app = FastAPI(title="CobbleHill intake checks", lifespan=lifespan)
@@ -144,6 +151,11 @@ def create_app(
     async def health() -> dict[str, str]:
         """Liveness check."""
         return {"status": "ok"}
+
+    @app.get("/version", dependencies=[Depends(require_api_key)])
+    async def version(request: Request) -> dict[str, str]:
+        """Commit the running server was started from, and when it started."""
+        return {"commit": request.app.state.commit, "started_at": request.app.state.started_at}
 
     @app.post("/dr-validity", dependencies=[Depends(require_api_key)])
     async def dr_validity(body: FolderRequest, request: Request) -> dict[str, Any]:
