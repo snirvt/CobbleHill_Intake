@@ -20,10 +20,9 @@ if ! systemctl cat cobblehill-api >/dev/null 2>&1; then
 fi
 
 echo "Code changed, restarting API (requests running right now are cancelled)..."
-if sudo -n systemctl restart cobblehill-api; then
+if sudo systemctl restart cobblehill-api; then
     echo "API restarted."
 else
-    echo "Could not restart: install deploy/cobblehill-api.sudoers (deploy/README.md)"
-    echo "or run: sudo systemctl restart cobblehill-api"
+    echo "Restart failed. Restart by hand: sudo systemctl restart cobblehill-api"
 fi
 exit 0

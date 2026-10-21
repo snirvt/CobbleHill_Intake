@@ -45,34 +45,26 @@ curl -sS http://localhost:8001/v1/models | jq -r '.data[0].id'         # nemotro
 
 # Deploy: CobbleHill API service (auto-restart on `git pull`)
 
-`cobblehill-api.service` runs the API as a systemd service (like `vllm.service`): it starts
-on boot, restarts if it crashes, and the git hooks in `git-hooks/` restart it after every
-`git pull` that changes code. `cobblehill-api.sudoers` lets the hook run exactly
-`systemctl restart cobblehill-api` without a password; nothing else.
+`cobblehill-api.service` runs the API like `vllm.service`: it starts on boot, restarts if it
+crashes, and the git hook in `git-hooks/` restarts it after every `git pull` that changes code.
 
 ## Install once (on Spark, as `cobblehill`, from the repo folder)
 Stop any API you started by hand first (Ctrl+C), or port 8010 will be taken.
+Unit assumes the repo at `/home/cobblehill/CobbleHill_Intake` — edit `WorkingDirectory` if different.
 ```bash
-rm -f ~/.config/systemd/user/cobblehill-api.service   # leftover from the old user-service try
 sudo cp deploy/cobblehill-api.service /etc/systemd/system/
-sudo install -m 440 deploy/cobblehill-api.sudoers /etc/sudoers.d/cobblehill-api
-sudo visudo -c                                        # must end with "parsed OK"
 sudo systemctl daemon-reload
 sudo systemctl enable --now cobblehill-api
-git config core.hooksPath deploy/git-hooks            # restart the API on every git pull
-curl localhost:8010/health                            # check it answers
+git config core.hooksPath deploy/git-hooks   # restart on git pull (asks for the sudo password)
+curl localhost:8010/health                   # check it answers
 ```
-- The unit expects the repo at `/home/cobblehill/CobbleHill_Intake`. If it is somewhere else, edit
-  `WorkingDirectory`.
-- The sudoers rule assumes `/usr/bin/systemctl`. Check with `command -v systemctl`.
-- Linger is no longer needed. Undoing it with `sudo loginctl disable-linger cobblehill` is optional.
 
 ## Day to day
 ```bash
-git pull                                       # restarts the API if code changed
-systemctl status cobblehill-api                # running?
-sudo journalctl -u cobblehill-api -f           # logs
-sudo systemctl restart cobblehill-api          # manual restart
+git pull                                     # restarts the API if code changed
+systemctl status cobblehill-api              # running?
+sudo journalctl -u cobblehill-api -f         # logs
+sudo systemctl restart cobblehill-api        # manual restart
 ```
 A restart cancels requests that are running at that moment. If `uv.lock` or
 `pyproject.toml` changed, the hook runs `uv sync` before restarting.
