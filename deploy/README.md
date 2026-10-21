@@ -42,3 +42,31 @@ curl -sS http://localhost:8001/v1/models | jq -r '.data[0].id'         # nemotro
   (default `off`). Sent per request, so NurseBookSkill keeps its own thinking.
 - Full install / troubleshooting / NGC-container fallback: NurseBookSkill
   `agent/VLLM.md` and `agent/deploy/README.md`.
+
+# Deploy: CobbleHill API service (auto-restart on `git pull`)
+
+`cobblehill-api.service` runs the API as a systemd **user** service: it starts on boot,
+restarts if it crashes, and the git hooks in `git-hooks/` restart it after every `git pull`
+that changes code. No sudo needed for day-to-day use.
+
+## Install once (on Spark, as `cobblehill`, from the repo folder)
+Stop any API you started by hand first (Ctrl+C), or port 8010 will be taken.
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/cobblehill-api.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now cobblehill-api
+sudo loginctl enable-linger cobblehill      # keep running without a login; start on boot
+git config core.hooksPath deploy/git-hooks  # restart the API on every git pull
+```
+The unit expects the repo at `~/CobbleHill_Intake`; edit `WorkingDirectory` if it is elsewhere.
+
+## Day to day
+```bash
+git pull                                       # restarts the API if code changed
+systemctl --user status cobblehill-api         # running?
+journalctl --user -u cobblehill-api -f         # logs
+systemctl --user restart cobblehill-api        # manual restart
+```
+A restart cancels requests that are running at that moment. If `uv.lock` or
+`pyproject.toml` changed, the hook runs `uv sync` before restarting.
