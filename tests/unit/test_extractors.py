@@ -76,6 +76,15 @@ async def test_pdf_extractor_sets_path_env(tmp_path: Path) -> None:
     assert "/custom/node/bin" in os.environ.get("PATH", "")
 
 
+async def test_pdf_extractor_uses_explicit_liteparse_cli_without_auto_install() -> None:
+    with patch("classifier.extractors.pdf.LiteParse") as MockLiteParse:
+        PdfExtractor(node_bin_path="/custom/node/bin")
+
+    MockLiteParse.assert_called_once_with(
+        cli_path="/custom/node/bin/liteparse", install_if_not_available=False
+    )
+
+
 def _page(page_num: int, text: str) -> MagicMock:
     page = MagicMock()
     page.pageNum = page_num

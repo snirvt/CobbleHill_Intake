@@ -3,7 +3,7 @@ import platform
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, SecretStr, computed_field, model_validator
+from pydantic import BaseModel, Field, SecretStr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from _SECRETS._secrets import API_TOKEN, CLIENT_ID, CLIENT_SECRET, GRAPH_DRIVE_ID, TENANT_ID
@@ -19,6 +19,34 @@ def is_dgx_spark() -> bool:
     Apple Silicon reports ``arm64``, not ``aarch64``, so a Mac is treated as a laptop.
     """
     return platform.machine().lower() == "aarch64"
+
+
+def _nvm_bin_dirs(home: Path) -> list[str]:
+    """Return every ``~/.nvm/versions/node/v*/bin`` dir under ``home``, newest version first.
+
+    Discovered instead of pinned, so an nvm upgrade (e.g. v22.22.2 -> v22.22.3) can't
+    silently drop the box back to system node.
+    """
+    versions: list[tuple[tuple[int, ...], Path]] = []
+    root = home / ".nvm" / "versions" / "node"
+    if not root.is_dir():
+        return []
+    for d in root.iterdir():
+        try:
+            key = tuple(int(part) for part in d.name.lstrip("v").split("."))
+        except ValueError:
+            continue
+        versions.append((key, d / "bin"))
+    return [str(bin_dir) for _, bin_dir in sorted(versions, reverse=True)]
+
+
+def _default_node_bin_paths() -> list[str]:
+    """nvm bin dirs (newest first), then the standard system locations."""
+    return _nvm_bin_dirs(Path.home()) + [
+        "/usr/local/bin",   # Homebrew / standard Linux
+        "/usr/bin",         # system node
+        "/opt/homebrew/bin",  # Mac M1/M2
+    ]
 
 
 class PageTargetRule(BaseModel):
@@ -42,13 +70,7 @@ class Settings(BaseSettings):
 
     base_path: Path = _PROJECT_ROOT
     data_folder: Path = Path("data")
-    node_bin_paths: list[str] = [
-        "/home/snir/.nvm/versions/node/v22.22.2/bin",  # nvm (this machine)
-        str(Path.home() / ".nvm/versions/node/v22.22.2/bin"),
-        "/usr/local/bin",   # Homebrew / standard Linux
-        "/usr/bin",         # system node
-        "/opt/homebrew/bin",  # Mac M1/M2
-    ]
+    node_bin_paths: list[str] = Field(default_factory=_default_node_bin_paths)
     supported_extensions: dict[str, str] = {
         ".pdf": "pdf",
         ".txt": "txt",
@@ -199,13 +221,18 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def node_bin_path(self) -> str:
-        """Return first path in node_bin_paths that contains a node executable."""
+        """Return first path in node_bin_paths holding both node and the liteparse CLI.
+
+        Requiring liteparse too stops a node-only dir (e.g. /usr/bin) from winning,
+        which made PDF parsing silently fall back to `npx` and fail.
+        """
         for p in self.node_bin_paths:
-            if (Path(p) / "node").exists():
+            if (Path(p) / "node").exists() and (Path(p) / "liteparse").exists():
                 return p
         raise ValueError(
-            f"No node binary found. Searched: {self.node_bin_paths}. "
-            "Add your node bin dir to COBBLEHILL_NODE_BIN_PATHS."
+            f"No node bin dir with both node and liteparse found. Searched: "
+            f"{self.node_bin_paths}. Run `npm install -g @llamaindex/liteparse` and add "
+            "that node's bin dir to COBBLEHILL_NODE_BIN_PATHS."
         )
 
 

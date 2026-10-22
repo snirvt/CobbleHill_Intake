@@ -51,6 +51,9 @@ crashes, and the git hook in `git-hooks/` restarts it after every `git pull` tha
 ## Install once (on Spark, as `cobblehill`, from the repo folder)
 Stop any API you started by hand first (Ctrl+C), or port 8010 will be taken.
 Unit assumes the repo at `/home/cobblehill/CobbleHill_Intake` — edit `WorkingDirectory` if different.
+PDF parsing needs the `liteparse` CLI under `cobblehill`'s nvm node (`npm i -g @llamaindex/liteparse`);
+systemd doesn't load nvm, so system node (`/usr/bin`, v18) must not be relied on. The newest nvm
+version holding `liteparse` is picked automatically; the startup log shows `Using liteparse CLI: ...`.
 ```bash
 sudo cp deploy/cobblehill-api.service /etc/systemd/system/
 sudo systemctl daemon-reload

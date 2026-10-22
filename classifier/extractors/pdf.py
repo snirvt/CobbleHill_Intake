@@ -28,7 +28,10 @@ class PdfExtractor:
     ) -> None:
         if node_bin_path not in os.environ.get("PATH", ""):
             os.environ["PATH"] = node_bin_path + ":" + os.environ["PATH"]
-        self._parser = LiteParse()
+        # Explicit CLI path: never let liteparse fall back to `npx` or `npm install -g`.
+        cli_path = str(Path(node_bin_path) / "liteparse")
+        logger.info("Using liteparse CLI: %s", cli_path)
+        self._parser = LiteParse(cli_path=cli_path, install_if_not_available=False)
         self._dpi = dpi
         self._page_target_rules = page_target_rules
 
