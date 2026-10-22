@@ -25,16 +25,19 @@ from classifier.extractors.plaintext import PlaintextExtractor
 from classifier.folder_checks import RequiredNotesCheck
 from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointFolderDownloader
+from classifier.intake_review_pipeline import IntakeReviewPipeline
 from classifier.metadata.nurse_visit import NurseVisitExtractor
 from classifier.metadata.progress_note import ProgressNoteExtractor
 from classifier.models import (
     DiagnosisExtractionResult,
     DrValidityPipelineResult,
+    IntakeReviewPipelineResult,
     MainDiagnosisResult,
     PairPipelineResult,
     TreatmentRequestResult,
 )
 from classifier.output.dr_validity_report import dr_validity_report
+from classifier.output.intake_review_report import intake_review_report
 from classifier.output.pair_report import pair_report
 from classifier.pair_pipeline import PairPipeline
 from classifier.patient_pipeline import DrValidityPipeline
@@ -241,12 +244,43 @@ def build_dr_validity_pipeline(
         router=_make_router(),
         semaphore=file_semaphore,
         folder_check=RequiredNotesCheck(roles=("dr",)),
-        classifier=DrNoteValidityClassifier(
-            age_extractor=build_patient_age_extractor(llm("age")),
-            diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
-            care_extractor=build_treatment_request_extractor(llm("care")),
-            main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
-        ),
+        classifier=_build_dr_validity_classifier(llm),
+    )
+
+
+def _build_dr_validity_classifier(
+    llm: Callable[[str], BaseChatModel],
+) -> DrNoteValidityClassifier:
+    """The dr-validity classifier; ``llm`` maps a task name to its chat model."""
+    return DrNoteValidityClassifier(
+        age_extractor=build_patient_age_extractor(llm("age")),
+        diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
+        care_extractor=build_treatment_request_extractor(llm("care")),
+        main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
+    )
+
+
+def build_intake_review_pipeline(
+    semaphore: asyncio.Semaphore | None = None,
+    file_semaphore: asyncio.Semaphore | None = None,
+) -> IntakeReviewPipeline:
+    """Wire up the two-phase intake review: dr-validity rules, then dr/nurse clinical match.
+
+    Phase II's pair classifier gets only the clinical-match model: diagnosis and medical
+    necessity were already judged in Phase I. The nurse diagnosis extractor feeds the
+    verdict explanation. Semaphores work as in build_dr_validity_pipeline.
+    """
+    _make_env()
+    llm = _task_llm_factory(semaphore)
+    return IntakeReviewPipeline(
+        router=_make_router(),
+        validity_classifier=_build_dr_validity_classifier(llm),
+        pair_classifier=DrNurseMatchClassifier(llm=llm("clinical_match")),
+        nurse_diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
+        dr_meta_extractor=ProgressNoteExtractor(),
+        nurse_meta_extractor=NurseVisitExtractor(),
+        folder_check=RequiredNotesCheck(roles=("dr",)),
+        semaphore=file_semaphore,
     )
 
 
@@ -290,6 +324,22 @@ def build_dr_nurse_match_service(
         downloader=_make_downloader(limits.downloads),
         pipeline=build_pair_pipeline(limits.llm, limits.files),
         report_fn=pair_report,
+    )
+
+
+def build_intake_review_service(
+    limits: ConcurrencyLimits | None = None,
+) -> FolderReportService[IntakeReviewPipelineResult]:
+    """Wire the SharePoint downloader and intake-review pipeline for the API server.
+
+    ``limits`` caps LLM calls, patients in progress and downloads across every service
+    built with the same limits; a new set is made when none is given.
+    """
+    limits = limits or make_concurrency_limits()
+    return FolderReportService(
+        downloader=_make_downloader(limits.downloads),
+        pipeline=build_intake_review_pipeline(limits.llm, limits.files),
+        report_fn=intake_review_report,
     )
 
 

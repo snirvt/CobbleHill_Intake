@@ -6,6 +6,12 @@ shape of a real response. Nothing here touches SharePoint, an LLM or patient dat
 
 from pathlib import Path
 
+from classifier.classifiers.intake_verdict import (
+    explain,
+    final_verdict,
+    phase_1_verdict,
+    phase_2_verdict,
+)
 from classifier.models import (
     CareCheck,
     ClinicalVerdict,
@@ -18,16 +24,21 @@ from classifier.models import (
     ErrorCode,
     ErrorStage,
     IdentityMatchResult,
+    IntakeReviewPipelineResult,
+    IntakeReviewResult,
     NursePatientMeta,
     NurseVisitFields,
     PairClassificationResult,
+    PairMatch,
     PairPipelineResult,
     PatientGroup,
     PatientMetadata,
+    PhaseVerdict,
     RunError,
     ValidityVerdict,
 )
 from classifier.output.dr_validity_report import dr_validity_report
+from classifier.output.intake_review_report import intake_review_report
 from classifier.output.pair_report import pair_report
 
 _ROOT = Path("/example")
@@ -156,3 +167,98 @@ def dr_nurse_match_example() -> dict[str, object]:
     ]
     folder_errors = [_folder_error("Folder has no nurse notes")]
     return _wrap(pair_report(results, folder_errors, _ROOT, _ROOT_NAME, _WEB_URL))
+
+
+_NURSE_DIAGNOSIS = Diagnosis(
+    name="Other Example Diagnosis", icd_code="Z99.99", category=DiagnosisCategory.OTHER
+)
+
+
+def _review(
+    name: str,
+    age_years: float | None,
+    group: PatientGroup,
+    diagnosis: bool,
+    care: CareCheck | None,
+    nurse: tuple[ClinicalVerdict, Diagnosis] | None,
+) -> IntakeReviewPipelineResult:
+    """One fake reviewed patient; the verdicts go through the real intake rules."""
+    folder = _ROOT / name
+    dr_paths = [folder / "peds_dr_example.pdf"]
+    nurse_paths = [folder / "peds_nurse_example.pdf"] if nurse else []
+    phase_1 = DrValidityResult(
+        patient_folder=folder,
+        dr_paths=dr_paths,
+        age_years=age_years,
+        patient_group=group,
+        diagnosis_check=DiagnosisCheck.EXISTS if diagnosis else DiagnosisCheck.MISSING,
+        diagnoses=[_DIAGNOSIS] if diagnosis else [],
+        diagnosis_categories=[DiagnosisCategory.OTHER] if diagnosis else [],
+        care_check=care,
+        care_reasoning=_REASONING if care else "",
+        main_diagnosis="Example Diagnosis" if diagnosis else None,
+        diagnosis_category=DiagnosisCategory.OTHER if diagnosis else None,
+        main_diagnosis_icd="Z00.00" if diagnosis else None,
+        verdict=ValidityVerdict.VALID,
+    )
+    verdict_1, reasons, warnings = phase_1_verdict(phase_1)
+    pairs = (
+        [
+            PairMatch(
+                category="peds",
+                dr_paths=dr_paths,
+                nurse_paths=nurse_paths,
+                clinical_verdict=nurse[0],
+                clinical_reasoning=_REASONING,
+                nurse_diagnoses=[nurse[1]],
+            )
+        ]
+        if nurse and verdict_1 is PhaseVerdict.PASS
+        else []
+    )
+    verdict_2 = phase_2_verdict(pairs) if verdict_1 is PhaseVerdict.PASS else PhaseVerdict.NOT_RUN
+    return IntakeReviewPipelineResult(
+        patient_folder=folder,
+        dr_paths=dr_paths,
+        nurse_paths=nurse_paths,
+        success=True,
+        result=IntakeReviewResult(
+            patient_folder=folder,
+            phase_1=phase_1,
+            verdict_phase_1=verdict_1,
+            phase_1_reasons=reasons,
+            pairs=pairs,
+            verdict_phase_2=verdict_2,
+            verdict=final_verdict(verdict_1, verdict_2),
+            explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs),
+            warnings=warnings,
+        ),
+    )
+
+
+def intake_review_example() -> dict[str, object]:
+    """An /intake-review response: one patient per outcome, plus one skipped folder.
+
+    Accept; Phase I reject (adult, no diagnosis); Phase I reject (age not found, so
+    pediatric rules, no medical necessity); Phase II reject (notes do not match);
+    incomplete (no nurse note).
+    """
+    match = (ClinicalVerdict.MATCH, _DIAGNOSIS)
+    results = [
+        _review("EXAMPLE, ACCEPTED", 0.5, PatientGroup.PEDIATRIC, True, CareCheck.NEEDED, match),
+        _review("EXAMPLE, NO DIAGNOSIS", 40.0, PatientGroup.ADULT, False, None, match),
+        _review(
+            "EXAMPLE, NO NECESSITY", None, PatientGroup.UNKNOWN, True, CareCheck.NOT_NEEDED, match
+        ),
+        _review(
+            "EXAMPLE, MISMATCH",
+            40.0,
+            PatientGroup.ADULT,
+            True,
+            None,
+            (ClinicalVerdict.MISMATCH, _NURSE_DIAGNOSIS),
+        ),
+        _review("EXAMPLE, NO NURSE NOTE", 40.0, PatientGroup.ADULT, True, None, None),
+    ]
+    folder_errors = [_folder_error("Folder has no dr notes")]
+    return _wrap(intake_review_report(results, folder_errors, _ROOT, _ROOT_NAME, _WEB_URL))

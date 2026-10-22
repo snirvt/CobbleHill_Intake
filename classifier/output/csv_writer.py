@@ -15,6 +15,8 @@ from classifier.models import (
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DrValidityPipelineResult,
+    IntakeReviewPipelineResult,
+    IntakeVerdict,
     MainDiagnosisResult,
     PairPipelineResult,
     PipelineResult,
@@ -435,6 +437,82 @@ def write_dr_validity_xlsx(
         len(valid_rows),
         len(review_rows),
     )
+
+
+_INTAKE_REVIEW_COLUMNS = [
+    "folder", "patient_name", "dr_file_path", "nurse_file_path", "verdict", "verdict_phase_1",
+    "verdict_phase_2", "explanation", "warnings", "phase_1_reasons", "patient_group", "age",
+    "main_diagnosis", "diagnosis_category", "diagnoses", "care_check", "nurse_diagnoses",
+    "clinical_reasoning", "errors",
+]
+
+
+def write_intake_review_xlsx(
+    results: list[IntakeReviewPipelineResult],
+    output_path: Path,
+    *,
+    local_root: Path | None = None,
+    sp_web_url: str | None = None,
+    root_name: str | None = None,
+) -> None:
+    """Write per-patient intake-review results to an Excel workbook.
+
+    Sheets: All, Accept, Reject, Incomplete (failed patients appear only under All).
+    Pass local_root / sp_web_url / root_name as for write_dr_validity_xlsx.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [_intake_review_row(r, local_root, sp_web_url, root_name) for r in results]
+    wb = openpyxl.Workbook()
+    wb.active.title = "All"
+    _write_pair_sheet(wb.active, rows, _INTAKE_REVIEW_COLUMNS)
+    for verdict in IntakeVerdict:
+        _write_pair_sheet(
+            wb.create_sheet(verdict.title()),
+            [r for r in rows if r["verdict"] == verdict],
+            _INTAKE_REVIEW_COLUMNS,
+        )
+    wb.save(output_path)
+    logger.info("Intake-review XLSX written to %s (%d patients)", output_path, len(rows))
+
+
+def _intake_review_row(
+    result: IntakeReviewPipelineResult,
+    local_root: Path | None,
+    sp_web_url: str | None,
+    root_name: str | None = None,
+) -> dict[str, object]:
+    first = result.dr_paths[0] if result.dr_paths else result.patient_folder
+    row: dict[str, object] = {
+        "folder": resolve_folder(first, local_root, sp_web_url),
+        "patient_name": patient_display_name(result.patient_folder, local_root, root_name),
+        "dr_file_path": _join_names(result.dr_paths, first, local_root),
+        "nurse_file_path": (
+            _join_names(result.nurse_paths, first, local_root) if result.nurse_paths else ""
+        ),
+        "errors": result.error or "",
+    }
+    r = result.result
+    if not result.success or r is None:
+        row.update({col: "" for col in _INTAKE_REVIEW_COLUMNS if col not in row})
+        return row
+    p1 = r.phase_1
+    row.update({
+        "verdict": r.verdict,
+        "verdict_phase_1": r.verdict_phase_1,
+        "verdict_phase_2": r.verdict_phase_2,
+        "explanation": r.explanation,
+        "warnings": "; ".join(r.warnings),
+        "phase_1_reasons": "; ".join(r.phase_1_reasons),
+        "patient_group": p1.patient_group,
+        "age": format_age(p1.age_years),
+        "main_diagnosis": p1.main_diagnosis or "",
+        "diagnosis_category": p1.diagnosis_category or "",
+        "diagnoses": format_diagnoses(p1.diagnoses),
+        "care_check": p1.care_check or "",
+        "nurse_diagnoses": " | ".join(format_diagnoses(p.nurse_diagnoses) for p in r.pairs),
+        "clinical_reasoning": " | ".join(p.clinical_reasoning for p in r.pairs),
+    })
+    return row
 
 
 _DAYS_PER_YEAR = 365.25

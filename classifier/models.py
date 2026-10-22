@@ -388,3 +388,63 @@ class DrValidityPipelineResult(BaseModel):
     error: str | None = None
     # Structured errors; may be non-empty even when success is True (non-fatal issues).
     errors: list[RunError] = []
+
+
+class PhaseVerdict(StrEnum):
+    """Outcome of one intake-review phase; NOT_RUN when the phase never ran."""
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+    NOT_RUN = "NOT_RUN"
+
+
+class IntakeVerdict(StrEnum):
+    """Final intake-review decision for a patient.
+
+    INCOMPLETE: Phase I passed but no same-category nurse note exists for Phase II.
+    """
+
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+    INCOMPLETE = "INCOMPLETE"
+
+
+class PairMatch(BaseModel):
+    """Phase II result for one same-category dr + nurse note pair."""
+
+    category: str | None = None
+    dr_paths: list[Path] = []
+    nurse_paths: list[Path] = []
+    clinical_verdict: ClinicalVerdict
+    clinical_reasoning: str = ""
+    # Diagnoses read from the nurse note(s), shown in the verdict explanation.
+    nurse_diagnoses: list[Diagnosis] = []
+
+
+class IntakeReviewResult(BaseModel):
+    """Two-phase intake review for one patient: dr-note rules, then dr/nurse match."""
+
+    patient_folder: Path
+    phase_1: DrValidityResult
+    verdict_phase_1: PhaseVerdict
+    # What Phase I found missing, e.g. "no diagnosis"; empty when it passed.
+    phase_1_reasons: list[str] = []
+    pairs: list[PairMatch] = []
+    verdict_phase_2: PhaseVerdict
+    verdict: IntakeVerdict
+    explanation: str
+    # Non-fatal notes, e.g. "age not found — pediatric rules applied".
+    warnings: list[str] = []
+
+
+class IntakeReviewPipelineResult(BaseModel):
+    """Outcome of the intake-review pipeline for one patient folder."""
+
+    patient_folder: Path
+    dr_paths: list[Path] = []
+    nurse_paths: list[Path] = []
+    success: bool
+    result: IntakeReviewResult | None = None
+    error: str | None = None
+    # Structured errors; may be non-empty even when success is True (non-fatal issues).
+    errors: list[RunError] = []

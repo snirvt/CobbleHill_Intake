@@ -45,6 +45,18 @@ def scan_pairs(root: Path) -> list[tuple[list[Path], list[Path]]]:
 def _collect_pairs(
     folder: Path, root: Path, pairs: list[tuple[list[Path], list[Path]]]
 ) -> None:
+    pairs.extend(pairs_in_folder(folder))
+    for child in sorted(folder.iterdir()):
+        if child.is_dir() and not in_results_folder(child, root):
+            _collect_pairs(child, root, pairs)
+
+
+def pairs_in_folder(folder: Path) -> list[tuple[list[Path], list[Path]]]:
+    """Same-category (dr_files, nurse_files) pairs directly in folder (not recursive).
+
+    Categories come in ``category_order``; every note of a category and role is
+    included, sorted alphabetically.
+    """
     by_category: dict[str | None, dict[str, list[Path]]] = {}
     for f in sorted(folder.iterdir()):
         parsed = parse_note(f)
@@ -52,6 +64,7 @@ def _collect_pairs(
             continue
         by_category.setdefault(parsed.category, {}).setdefault(parsed.role, []).append(f)
 
+    pairs: list[tuple[list[Path], list[Path]]] = []
     for category in category_order():
         roles = by_category.get(category, {})
         dr_files, nurse_files = roles.get("dr", []), roles.get("nurse", [])
@@ -66,9 +79,49 @@ def _collect_pairs(
                 [f.name for f in dr_files],
                 [f.name for f in nurse_files],
             )
-    for child in sorted(folder.iterdir()):
-        if child.is_dir() and not in_results_folder(child, root):
-            _collect_pairs(child, root, pairs)
+    return pairs
+
+
+def build_pair_metadata(
+    dr_meta_extractor: NoteExtractor,
+    nurse_meta_extractor: NurseNoteExtractor,
+    dr_paths: list[Path],
+    nurse_paths: list[Path],
+    dr_texts: list[str],
+    nurse_texts: list[str],
+) -> PairDocumentMetadata:
+    """Combine each side's text and parse its fields into the pair classifier's input."""
+    dr_path, nurse_path = dr_paths[0], nurse_paths[0]
+    dr_full = concat_notes(dr_paths, dr_texts)
+    nurse_full = concat_notes(nurse_paths, nurse_texts)
+    dr_fields = dr_meta_extractor.extract(dr_full)
+    nurse_fields = nurse_meta_extractor.extract(nurse_full)
+    dr_meta = DocumentMetadata(
+        file_path=dr_path,
+        raw_text=dr_full,
+        meta=dr_fields.meta,
+        hpi=dr_fields.hpi,
+        examination=dr_fields.examination,
+        complaints=dr_fields.complaints,
+        medical_history=dr_fields.medical_history,
+        surgical_history=dr_fields.surgical_history,
+        hospitalization=dr_fields.hospitalization,
+        assessment=dr_fields.assessment,
+        ros=dr_fields.ros,
+        medications=dr_fields.medications,
+        plan=dr_fields.plan,
+        procedure_codes=dr_fields.procedure_codes,
+        preventive_medicine=dr_fields.preventive_medicine,
+    )
+    parsed = parse_note(dr_path)
+    return PairDocumentMetadata(
+        dr_file_path=dr_path,
+        nurse_file_path=nurse_path,
+        dr=dr_meta,
+        nurse=nurse_fields,
+        nurse_raw_text=nurse_full,
+        category=parsed.category if parsed else None,
+    )
 
 
 class PairPipeline:
@@ -172,36 +225,13 @@ class PairPipeline:
         nurse_extracted: list[ExtractedText],
     ) -> PairDocumentMetadata:
         """Combine each side's text and parse its fields into the classifier's input."""
-        dr_path, nurse_path = dr_paths[0], nurse_paths[0]
-        dr_full = concat_notes(dr_paths, [x.text for x in dr_extracted])
-        nurse_full = concat_notes(nurse_paths, [x.text for x in nurse_extracted])
-        dr_fields = self._dr_meta.extract(dr_full)
-        nurse_fields = self._nurse_meta.extract(nurse_full)
-        dr_meta = DocumentMetadata(
-            file_path=dr_path,
-            raw_text=dr_full,
-            meta=dr_fields.meta,
-            hpi=dr_fields.hpi,
-            examination=dr_fields.examination,
-            complaints=dr_fields.complaints,
-            medical_history=dr_fields.medical_history,
-            surgical_history=dr_fields.surgical_history,
-            hospitalization=dr_fields.hospitalization,
-            assessment=dr_fields.assessment,
-            ros=dr_fields.ros,
-            medications=dr_fields.medications,
-            plan=dr_fields.plan,
-            procedure_codes=dr_fields.procedure_codes,
-            preventive_medicine=dr_fields.preventive_medicine,
-        )
-        parsed = parse_note(dr_path)
-        return PairDocumentMetadata(
-            dr_file_path=dr_path,
-            nurse_file_path=nurse_path,
-            dr=dr_meta,
-            nurse=nurse_fields,
-            nurse_raw_text=nurse_full,
-            category=parsed.category if parsed else None,
+        return build_pair_metadata(
+            self._dr_meta,
+            self._nurse_meta,
+            dr_paths,
+            nurse_paths,
+            [x.text for x in dr_extracted],
+            [x.text for x in nurse_extracted],
         )
 
     @staticmethod

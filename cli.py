@@ -10,6 +10,7 @@ from classifier.ingest.sharepoint import SharePointFileUploader, SharePointFolde
 from classifier.main import (
     build_diagnosis_pipeline,
     build_dr_validity_pipeline,
+    build_intake_review_pipeline,
     build_main_diagnosis_pipeline,
     build_pair_pipeline,
     build_pipeline,
@@ -25,12 +26,14 @@ from classifier.naming import parse_note
 from classifier.output.csv_writer import (
     write_diagnosis_xlsx,
     write_dr_validity_xlsx,
+    write_intake_review_xlsx,
     write_main_diagnosis_xlsx,
     write_pair_xlsx,
     write_treatment_request_xlsx,
     write_xlsx,
 )
 from classifier.output.dr_validity_report import dr_validity_patient_dict
+from classifier.output.intake_review_report import intake_review_patient_dict
 from classifier.output.pair_report import pair_dict
 from classifier.pair_pipeline import scan_pairs
 from config.settings import settings
@@ -164,6 +167,32 @@ async def _run_dr_validity(
     print(json.dumps(output, indent=2, default=str))
     out_path = out_dir / "dr_validity_results.xlsx"
     write_dr_validity_xlsx(
+        results, out_path, local_root=path_root, sp_web_url=sp_web_url, root_name=root_name
+    )
+    return sum(1 for r in results if not r.success), out_path
+
+
+async def _run_intake_review(
+    input_path: Path,
+    *,
+    out_dir: Path,
+    local_root: Path | None = None,
+    sp_web_url: str | None = None,
+    root_name: str | None = None,
+) -> tuple[int, Path | None]:
+    """Two-phase review per patient folder: dr-note rules, then dr/nurse match.
+
+    Arguments work as for _run_dr_validity.
+    """
+    if not input_path.is_dir():
+        logger.error("--intake-review needs a folder of patient folders: %s", input_path)
+        return 1, None
+    results = await build_intake_review_pipeline().run_folder(input_path)
+    path_root = local_root or input_path
+    output = [intake_review_patient_dict(r, path_root, root_name) for r in results]
+    print(json.dumps(output, indent=2, default=str))
+    out_path = out_dir / "intake_review_results.xlsx"
+    write_intake_review_xlsx(
         results, out_path, local_root=path_root, sp_web_url=sp_web_url, root_name=root_name
     )
     return sum(1 for r in results if not r.success), out_path
@@ -341,6 +370,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--intake-review",
+        action="store_true",
+        default=False,
+        help=(
+            "Two-phase review per patient folder: Phase I dr-note rules (as --dr-validity), "
+            "then, if passed, Phase II dr/nurse match; ACCEPT / REJECT / INCOMPLETE"
+        ),
+    )
+    parser.add_argument(
         "--dr-nurse-match",
         action="store_true",
         default=False,
@@ -387,6 +425,16 @@ def main() -> None:
                         root_name=PurePosixPath(args.sharepoint_folder.rstrip("/")).name,
                     )
                 )
+            elif args.intake_review:
+                exit_code, written_csv = asyncio.run(
+                    _run_intake_review(
+                        local_dir,
+                        out_dir=out_dir,
+                        local_root=local_dir,
+                        sp_web_url=sp_web_url,
+                        root_name=PurePosixPath(args.sharepoint_folder.rstrip("/")).name,
+                    )
+                )
             elif args.dr_nurse_match:
                 exit_code, written_csv = asyncio.run(
                     _run_dr_nurse_match(
@@ -425,6 +473,10 @@ def main() -> None:
     elif args.dr_validity:
         exit_code, written_csv = asyncio.run(
             _run_dr_validity(Path(args.input), out_dir=out_dir)
+        )
+    elif args.intake_review:
+        exit_code, written_csv = asyncio.run(
+            _run_intake_review(Path(args.input), out_dir=out_dir)
         )
     elif args.dr_nurse_match:
         exit_code, written_csv = asyncio.run(
@@ -499,6 +551,10 @@ uv run python -m cli --sharepoint-folder "Patient Encounters/Physician Notes/Pen
 uv run python -m cli --sharepoint-folder "Patient Encounters/Physician Notes/Pending" \
     --dr-validity --results-folder ./out --upload-results "Patient Encounters/Physician Notes/Reviewed"
 
+# Intake review — Phase I dr-note rules, then (if passed) Phase II dr/nurse match.
+# Writes output/intake_review_results.xlsx (All / Accept / Reject / Incomplete)
+uv run python -m cli --input ./data --intake-review
+
 # Same check over HTTP (FastAPI, localhost only, no auth). Blocks until done, returns JSON:
 uv run cobblehill-api
 # Reachable from the local network — needs an API key (clients send X-API-Key):
@@ -545,5 +601,10 @@ curl -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
 curl -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
      -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}' \
      http://$HOST/dr-nurse-match
+
+# intake review (two phases: verdict_phase_1, verdict_phase_2, verdict, explanation)
+curl -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+     -d '{"sharepoint_folder": "Patient Encounters/Physician Notes/Pending"}' \
+     http://$HOST/intake-review
 
 """

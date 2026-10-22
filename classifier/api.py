@@ -1,13 +1,17 @@
 """FastAPI server: run a check on a SharePoint folder, return JSON.
 
-Routes (both take ``{"sharepoint_folder": "..."}`` and block until done):
+Routes (all take ``{"sharepoint_folder": "..."}`` and block until done):
 
 - ``POST /dr-validity``: every patient's dr notes against the intake rules.
 - ``POST /dr-nurse-match``: every same-category dr + nurse note pair compared. Folders
   without such a pair are reported under ``errors``, not processed.
+- ``POST /intake-review``: per patient, Phase I (dr-validity rules) then — only if it
+  passed — Phase II (dr + nurse notes must match); ``verdict_phase_1``,
+  ``verdict_phase_2``, a final ACCEPT / REJECT / INCOMPLETE ``verdict`` and an
+  ``explanation``.
 
-``GET /dr-validity/example`` and ``GET /dr-nurse-match/example`` return a sample response in
-exactly the same format, built from fake data (no SharePoint, no LLM, no patient data).
+``GET /<route>/example`` returns a sample response of each in exactly the same format,
+built from fake data (no SharePoint, no LLM, no patient data).
 
 Run: ``uv run cobblehill-api`` (binds settings.api_host:api_port, localhost by default).
 
@@ -47,8 +51,16 @@ from pydantic import BaseModel, field_validator
 
 from classifier.folder_service import FolderReportService
 from classifier.ingest.sharepoint import SharePointAuthError
-from classifier.models import DrValidityPipelineResult, PairPipelineResult
-from classifier.output.examples import dr_nurse_match_example, dr_validity_example
+from classifier.models import (
+    DrValidityPipelineResult,
+    IntakeReviewPipelineResult,
+    PairPipelineResult,
+)
+from classifier.output.examples import (
+    dr_nurse_match_example,
+    dr_validity_example,
+    intake_review_example,
+)
 from classifier.version import git_commit
 from config.settings import settings
 
@@ -56,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 class FolderRequest(BaseModel):
-    """Body of POST /dr-validity and POST /dr-nurse-match."""
+    """Body of POST /dr-validity, /dr-nurse-match and /intake-review."""
 
     sharepoint_folder: str
 
@@ -104,14 +116,16 @@ def create_app(
     api_key: str | None | object = _FROM_SETTINGS,
     match_service: FolderReportService[PairPipelineResult] | None = None,
     commit: str | None = None,
+    review_service: FolderReportService[IntakeReviewPipelineResult] | None = None,
 ) -> FastAPI:
     """Build the app; the real services are created once at startup unless injected.
 
     ``commit`` is what /version reports; defaults to the repo's git HEAD at startup.
 
-    ``service`` backs /dr-validity, ``match_service`` backs /dr-nurse-match. Real services
-    share one set of limits (classifier.main.ConcurrencyLimits), so all concurrent requests
-    to both routes together stay within max_concurrent_llm_calls, max_concurrent_files and
+    ``service`` backs /dr-validity, ``match_service`` backs /dr-nurse-match and
+    ``review_service`` backs /intake-review. Real services share one set of limits
+    (classifier.main.ConcurrencyLimits), so all concurrent requests to every route together
+    stay within max_concurrent_llm_calls, max_concurrent_files and
     sharepoint_download_concurrency.
 
     api_key defaults to settings.api_key. When set, every route except /health requires a
@@ -135,12 +149,14 @@ def create_app(
         from classifier.main import (
             build_dr_nurse_match_service,
             build_dr_validity_service,
+            build_intake_review_service,
             make_concurrency_limits,
         )
 
         limits = make_concurrency_limits()
         app.state.service = service or build_dr_validity_service(limits)
         app.state.match_service = match_service or build_dr_nurse_match_service(limits)
+        app.state.review_service = review_service or build_intake_review_service(limits)
         app.state.commit = commit or git_commit(settings.base_path)
         app.state.started_at = datetime.now(UTC).isoformat(timespec="seconds")
         yield
@@ -171,6 +187,13 @@ def create_app(
         logger.info("dr-nurse-match request for %r", body.sharepoint_folder)
         return await _run_report(svc.run(body.sharepoint_folder), body.sharepoint_folder)
 
+    @app.post("/intake-review", dependencies=[Depends(require_api_key)])
+    async def intake_review(body: FolderRequest, request: Request) -> dict[str, Any]:
+        """Two-phase accept/reject review of every patient in the folder; blocks until done."""
+        svc: FolderReportService[IntakeReviewPipelineResult] = request.app.state.review_service
+        logger.info("intake-review request for %r", body.sharepoint_folder)
+        return await _run_report(svc.run(body.sharepoint_folder), body.sharepoint_folder)
+
     @app.get("/dr-validity/example", dependencies=[Depends(require_api_key)])
     async def dr_validity_example_route() -> dict[str, Any]:
         """Sample /dr-validity response built from fake data, to show the output format."""
@@ -180,6 +203,11 @@ def create_app(
     async def dr_nurse_match_example_route() -> dict[str, Any]:
         """Sample /dr-nurse-match response built from fake data, to show the output format."""
         return dr_nurse_match_example()
+
+    @app.get("/intake-review/example", dependencies=[Depends(require_api_key)])
+    async def intake_review_example_route() -> dict[str, Any]:
+        """Sample /intake-review response built from fake data, to show the output format."""
+        return intake_review_example()
 
     return app
 
