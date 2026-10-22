@@ -22,6 +22,7 @@ from classifier.models import (
     PipelineResult,
     TreatmentRequestResult,
     ValidityVerdict,
+    unique_categories,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,9 +110,10 @@ def write_pair_xlsx(
     local_root: Path | None = None,
     sp_web_url: str | None = None,
 ) -> None:
-    """Write pair pipeline results to a 3-sheet Excel workbook.
+    """Write pair pipeline results to a 4-sheet Excel workbook.
 
-    Sheets: All (every row), No Issues (clean rows), Issues (rows with problems).
+    Sheets: All (every row), No Issues (clean rows), Issues (rows with problems) and
+    All Categories (category of any dr-note diagnosis -> pair count).
     Each row lists ALL files of the pair in dr_file_path / nurse_file_path.
     Pass verbose=True to include identity_match, dr_fields, nurse_fields columns.
     Pass local_root to list those files relative to the scanned root (bare names
@@ -130,6 +132,13 @@ def write_pair_xlsx(
 
     _write_pair_sheet(wb.create_sheet("No Issues"), clean_rows, columns)
     _write_pair_sheet(wb.create_sheet("Issues"), issue_rows, columns)
+    _write_counts_sheet(
+        wb.create_sheet("All Categories"),
+        "diagnosis_category",
+        count_all_categories(
+            [unique_categories(r.result.dr_diagnoses) if r.result else None for r in results]
+        ),
+    )
 
     wb.save(output_path)
     logger.info(
@@ -376,9 +385,28 @@ def count_main_diagnoses(labels: Sequence[str | None]) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
+def count_all_categories(
+    category_lists: Sequence[list[DiagnosisCategory] | None],
+) -> list[tuple[str, int]]:
+    """Count patients per category of ANY of their diagnoses, most common first.
+
+    Each entry is one patient's categories (None for a failed run). A patient counts once
+    per distinct category, so counts can sum to more than the number of patients; a patient
+    with no categories (or a failed run) counts as "Unknown". Ties ordered by label.
+    """
+    counts: Counter[str] = Counter()
+    for categories in category_lists:
+        counts.update({str(c) for c in categories or []} or {_UNKNOWN_DIAGNOSIS})
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
 def _write_groups_sheet(ws: Worksheet, header: str, labels: Sequence[str | None]) -> int:
     """Write <header>/count rows, most common first; return the number of groups."""
-    groups = count_main_diagnoses(labels)
+    return _write_counts_sheet(ws, header, count_main_diagnoses(labels))
+
+
+def _write_counts_sheet(ws: Worksheet, header: str, groups: list[tuple[str, int]]) -> int:
+    """Write <header>/count rows as given; return the number of groups."""
     ws.append([header, "count"])
     for label, count in groups:
         ws.append([label, count])
@@ -400,10 +428,11 @@ def write_dr_validity_xlsx(
     sp_web_url: str | None = None,
     root_name: str | None = None,
 ) -> None:
-    """Write per-patient dr-validity results to a five-sheet Excel workbook.
+    """Write per-patient dr-validity results to a six-sheet Excel workbook.
 
     Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), Groups
-    (main diagnosis -> patient count) and Categories (diagnosis category -> patient count).
+    (main diagnosis -> patient count), Categories (main diagnosis category -> patient count)
+    and All Categories (category of any diagnosis -> patient count).
     Pass local_root / sp_web_url as for write_pair_xlsx.
     Pass root_name to name a patient whose notes sit directly in local_root (see
     ``patient_display_name``).
@@ -427,6 +456,13 @@ def write_dr_validity_xlsx(
         wb.create_sheet("Categories"),
         "diagnosis_category",
         [r.result.diagnosis_category if r.result else None for r in results],
+    )
+    _write_counts_sheet(
+        wb.create_sheet("All Categories"),
+        "diagnosis_category",
+        count_all_categories(
+            [r.result.diagnosis_categories if r.result else None for r in results]
+        ),
     )
 
     wb.save(output_path)
@@ -457,7 +493,8 @@ def write_intake_review_xlsx(
 ) -> None:
     """Write per-patient intake-review results to an Excel workbook.
 
-    Sheets: All, Accept, Reject, Incomplete (failed patients appear only under All).
+    Sheets: All, Accept, Reject, Incomplete (failed patients appear only under All) and
+    All Categories (category of any Phase I diagnosis -> patient count).
     Pass local_root / sp_web_url / root_name as for write_dr_validity_xlsx.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -471,6 +508,13 @@ def write_intake_review_xlsx(
             [r for r in rows if r["verdict"] == verdict],
             _INTAKE_REVIEW_COLUMNS,
         )
+    _write_counts_sheet(
+        wb.create_sheet("All Categories"),
+        "diagnosis_category",
+        count_all_categories(
+            [r.result.phase_1.diagnosis_categories if r.result else None for r in results]
+        ),
+    )
     wb.save(output_path)
     logger.info("Intake-review XLSX written to %s (%d patients)", output_path, len(rows))
 

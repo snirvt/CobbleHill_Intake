@@ -36,6 +36,7 @@ from classifier.models import (
     PhaseVerdict,
     RunError,
     ValidityVerdict,
+    unique_categories,
 )
 from classifier.output.dr_validity_report import dr_validity_report
 from classifier.output.intake_review_report import intake_review_report
@@ -172,6 +173,9 @@ def dr_nurse_match_example() -> dict[str, object]:
 _NURSE_DIAGNOSIS = Diagnosis(
     name="Other Example Diagnosis", icd_code="Z99.99", category=DiagnosisCategory.OTHER
 )
+_SECOND_DIAGNOSIS = Diagnosis(
+    name="Example Respiratory Diagnosis", icd_code="Z11.11", category=DiagnosisCategory.RESPIRATORY
+)
 
 
 def _review(
@@ -181,9 +185,14 @@ def _review(
     diagnosis: bool,
     care: CareCheck | None,
     nurse: tuple[ClinicalVerdict, Diagnosis] | None,
+    extra: list[Diagnosis] | None = None,
 ) -> IntakeReviewPipelineResult:
-    """One fake reviewed patient; the verdicts go through the real intake rules."""
+    """One fake reviewed patient; the verdicts go through the real intake rules.
+
+    ``extra`` adds secondary diagnoses after the main one.
+    """
     folder = _ROOT / name
+    diagnoses = [_DIAGNOSIS, *(extra or [])] if diagnosis else []
     dr_paths = [folder / "peds_dr_example.pdf"]
     nurse_paths = [folder / "peds_nurse_example.pdf"] if nurse else []
     phase_1 = DrValidityResult(
@@ -192,8 +201,8 @@ def _review(
         age_years=age_years,
         patient_group=group,
         diagnosis_check=DiagnosisCheck.EXISTS if diagnosis else DiagnosisCheck.MISSING,
-        diagnoses=[_DIAGNOSIS] if diagnosis else [],
-        diagnosis_categories=[DiagnosisCategory.OTHER] if diagnosis else [],
+        diagnoses=diagnoses,
+        diagnosis_categories=unique_categories(diagnoses),
         care_check=care,
         care_reasoning=_REASONING if care else "",
         main_diagnosis="Example Diagnosis" if diagnosis else None,
@@ -245,7 +254,15 @@ def intake_review_example() -> dict[str, object]:
     """
     match = (ClinicalVerdict.MATCH, _DIAGNOSIS)
     results = [
-        _review("EXAMPLE, ACCEPTED", 0.5, PatientGroup.PEDIATRIC, True, CareCheck.NEEDED, match),
+        _review(
+            "EXAMPLE, ACCEPTED",
+            0.5,
+            PatientGroup.PEDIATRIC,
+            True,
+            CareCheck.NEEDED,
+            match,
+            extra=[_SECOND_DIAGNOSIS],
+        ),
         _review("EXAMPLE, NO DIAGNOSIS", 40.0, PatientGroup.ADULT, False, None, match),
         _review(
             "EXAMPLE, NO NECESSITY", None, PatientGroup.UNKNOWN, True, CareCheck.NOT_NEEDED, match

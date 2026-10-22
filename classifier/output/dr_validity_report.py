@@ -4,6 +4,7 @@ from pathlib import Path
 
 from classifier.models import DrValidityPipelineResult, RunError, ValidityVerdict
 from classifier.output.csv_writer import (
+    count_all_categories,
     count_main_diagnoses,
     format_age,
     patient_display_name,
@@ -112,6 +113,17 @@ def dr_validity_category_groups(
     ]
 
 
+def dr_validity_all_category_groups(
+    results: list[DrValidityPipelineResult],
+) -> list[dict[str, object]]:
+    """Patients per category of any of their diagnoses (once per category), most common first."""
+    categories = [r.result.diagnosis_categories if r.result else None for r in results]
+    return [
+        {"diagnosis_category": category, "count": count}
+        for category, count in count_all_categories(categories)
+    ]
+
+
 def dr_validity_report(
     results: list[DrValidityPipelineResult],
     folder_errors: list[RunError],
@@ -119,7 +131,7 @@ def dr_validity_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, groups, category_groups, patients, errors}.
+    """Full report body: {summary, groups, category_groups, all_category_groups, patients, errors}.
 
     ``web_url`` is accepted for the shared report-builder signature and not used.
     """
@@ -127,6 +139,7 @@ def dr_validity_report(
         "summary": dr_validity_summary(results, folder_errors),
         "groups": dr_validity_groups(results),
         "category_groups": dr_validity_category_groups(results),
+        "all_category_groups": dr_validity_all_category_groups(results),
         "patients": [dr_validity_patient_dict(r, local_root, root_name) for r in results],
         "errors": dr_validity_errors(results, folder_errors, local_root, root_name),
     }

@@ -9,7 +9,12 @@ from classifier.models import (
     PhaseVerdict,
     RunError,
 )
-from classifier.output.csv_writer import format_age, patient_display_name, relative_file_names
+from classifier.output.csv_writer import (
+    count_all_categories,
+    format_age,
+    patient_display_name,
+    relative_file_names,
+)
 from classifier.output.dr_validity_report import run_error_dict
 
 
@@ -89,6 +94,17 @@ def intake_review_summary(
     }
 
 
+def intake_review_all_category_groups(
+    results: list[IntakeReviewPipelineResult],
+) -> list[dict[str, object]]:
+    """Patients per category of any Phase I diagnosis (once per category), most common first."""
+    categories = [r.result.phase_1.diagnosis_categories if r.result else None for r in results]
+    return [
+        {"diagnosis_category": category, "count": count}
+        for category, count in count_all_categories(categories)
+    ]
+
+
 def intake_review_report(
     results: list[IntakeReviewPipelineResult],
     folder_errors: list[RunError],
@@ -96,13 +112,14 @@ def intake_review_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, patients, errors}.
+    """Full report body: {summary, all_category_groups, patients, errors}.
 
     ``web_url`` is accepted for the shared report-builder signature and not used.
     """
     errors = [*folder_errors, *(e for r in results for e in r.errors)]
     return {
         "summary": intake_review_summary(results, folder_errors),
+        "all_category_groups": intake_review_all_category_groups(results),
         "patients": [intake_review_patient_dict(r, local_root, root_name) for r in results],
         "errors": [run_error_dict(e, local_root, root_name) for e in errors],
     }

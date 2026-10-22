@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
-from classifier.models import ClinicalVerdict, PairPipelineResult, RunError
+from classifier.models import ClinicalVerdict, PairPipelineResult, RunError, unique_categories
 from classifier.naming import parse_note_name
 from classifier.output.csv_writer import (
+    count_all_categories,
     count_main_diagnoses,
     patient_display_name,
     relative_file_names,
@@ -126,6 +127,15 @@ def pair_category_groups(results: list[PairPipelineResult]) -> list[dict[str, ob
     ]
 
 
+def pair_all_category_groups(results: list[PairPipelineResult]) -> list[dict[str, object]]:
+    """Pairs per category of any dr-note diagnosis (once per category), most common first."""
+    categories = [unique_categories(r.result.dr_diagnoses) if r.result else None for r in results]
+    return [
+        {"diagnosis_category": category, "count": count}
+        for category, count in count_all_categories(categories)
+    ]
+
+
 def pair_report(
     results: list[PairPipelineResult],
     folder_errors: list[RunError],
@@ -133,7 +143,7 @@ def pair_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, groups, category_groups, pairs, errors}.
+    """Full report body: {summary, groups, category_groups, all_category_groups, pairs, errors}.
 
     Pass ``web_url`` (the SharePoint folder link) so each pair's ``folder`` is a link
     rather than a path inside the temporary download dir.
@@ -142,6 +152,7 @@ def pair_report(
         "summary": pair_summary(results, folder_errors),
         "groups": pair_groups(results),
         "category_groups": pair_category_groups(results),
+        "all_category_groups": pair_all_category_groups(results),
         "pairs": [
             pair_dict(r, local_root=local_root, sp_web_url=web_url, root_name=root_name)
             for r in results

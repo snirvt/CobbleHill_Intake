@@ -220,6 +220,8 @@ source scripts/api_env.sh
   rename a bucket — the output schema, prompt bucket list and validation all derive from it.
   The same buckets tag every extracted diagnosis (`Diagnosis.category`, plus a deduped
   `diagnosis_categories` list on results). Bucket list + rules shared via `classifiers/categories.py`.
+  Reports count patients per main-diagnosis bucket (`category_groups`) and per bucket of ANY
+  diagnosis (`all_category_groups`, xlsx "All Categories"; `csv_writer.count_all_categories`).
 - **Multi-step classifiers:** A classifier may chain several LLM calls with code logic in between. Each intermediate step should be its own testable method (e.g. `_extract_features()`, `_normalize()`, `_assign_category()`, `_validate()`). This keeps each step independently mockable and testable even though the classifier orchestrates them as a pipeline. If the chain can fail at any step, return partial results or a structured error that identifies which step failed.
 
 ---
