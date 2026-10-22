@@ -87,7 +87,7 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "age": "6 months",
         "age_years": 0.5,
         "main_diagnosis": "GERD",
-        "diagnosis_category": "Reflux / GERD",
+        "main_diagnosis_category": "Reflux / GERD",
         "main_diagnosis_icd": "K21.9",
         "diagnosis_check": "EXISTS",
         "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}],
@@ -212,9 +212,9 @@ def test_category_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
         _failed(tmp_path, "D"),
     ]
     assert dr_validity_category_groups(results) == [
-        {"diagnosis_category": "Fracture / Fall", "count": 2},
-        {"diagnosis_category": "Reflux / GERD", "count": 1},
-        {"diagnosis_category": "Unknown", "count": 1},
+        {"main_diagnosis_category": "Fracture / Fall", "count": 2},
+        {"main_diagnosis_category": "Reflux / GERD", "count": 1},
+        {"main_diagnosis_category": "Unknown", "count": 1},
     ]
 
 

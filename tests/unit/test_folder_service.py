@@ -124,7 +124,7 @@ async def test_run_returns_report_for_folder_of_patients() -> None:
     }
     assert report["errors"] == []
     assert report["groups"] == [{"main_diagnosis": "GERD", "count": 2}]
-    assert report["category_groups"] == [{"diagnosis_category": "Reflux / GERD", "count": 2}]
+    assert report["category_groups"] == [{"main_diagnosis_category": "Reflux / GERD", "count": 2}]
     patients = report["patients"]
     assert isinstance(patients, list)
     assert [p["patient"] for p in patients] == ["A, B", "C, D"]

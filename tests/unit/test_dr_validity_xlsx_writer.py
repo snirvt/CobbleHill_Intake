@@ -21,7 +21,8 @@ from classifier.output.csv_writer import (
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
+    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd", "diagnosis_check",
+    "diagnoses",
     "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 
@@ -94,7 +95,7 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["patient_group"] == "PEDIATRIC"
     assert row["age"] == "6 months"
     assert row["main_diagnosis"] == "GERD"
-    assert row["diagnosis_category"] == "Reflux / GERD"
+    assert row["main_diagnosis_category"] == "Reflux / GERD"
     assert row["main_diagnosis_icd"] == "K21.9"
     assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD]"
     assert row["diagnosis_categories"] == "Reflux / GERD"
@@ -231,7 +232,7 @@ def test_categories_sheet_counts_patients_by_category(tmp_path: Path) -> None:
 
     rows = list(openpyxl.load_workbook(out)["Categories"].iter_rows(values_only=True))
     assert rows == [
-        ("diagnosis_category", "count"),
+        ("main_diagnosis_category", "count"),
         ("Reflux / GERD", 2),
         ("Developmental / Cognitive", 1),
         ("Unknown", 1),

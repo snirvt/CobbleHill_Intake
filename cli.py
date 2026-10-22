@@ -120,7 +120,7 @@ def _main_diagnosis_result_to_dict(r: MainDiagnosisResult) -> dict:  # type: ign
     return {
         "file": str(r.file_path),
         "main_diagnosis": r.main_diagnosis,
-        "diagnosis_category": r.diagnosis_category,
+        "main_diagnosis_category": r.diagnosis_category,
         "icd_code": r.icd_code,
         "reasoning": r.reasoning,
     }

@@ -42,7 +42,7 @@ def test_writes_one_row_per_file(tmp_path: Path) -> None:
     write_main_diagnosis_xlsx(results, out)
 
     assert _rows(out, "MainDiagnosis") == [
-        ("file_path", "main_diagnosis", "diagnosis_category", "icd_code", "reasoning"),
+        ("file_path", "main_diagnosis", "main_diagnosis_category", "icd_code", "reasoning"),
         ("data/1/dr_progress_note.pdf", "Pneumonia", "Respiratory", "J18.9", "CAP in assessment"),
         ("data/2/dr_progress_note.pdf", "", "", "", ""),
     ]
@@ -92,7 +92,7 @@ def test_categories_sheet_counts_by_category(tmp_path: Path) -> None:
     write_main_diagnosis_xlsx(results, out)
 
     assert _rows(out, "Categories") == [
-        ("diagnosis_category", "count"),
+        ("main_diagnosis_category", "count"),
         ("Reflux / GERD", 2),
         ("Fracture / Fall", 1),
         ("Unknown", 1),

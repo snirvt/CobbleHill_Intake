@@ -46,7 +46,7 @@ def pair_dict(
     out.update({
         "overall": res.overall,
         "main_diagnosis": res.main_diagnosis,
-        "diagnosis_category": res.diagnosis_category,
+        "main_diagnosis_category": res.diagnosis_category,
         "main_diagnosis_icd": res.main_diagnosis_icd,
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
@@ -122,7 +122,7 @@ def pair_category_groups(results: list[PairPipelineResult]) -> list[dict[str, ob
     """Pairs per diagnosis category, most common first ("Unknown" when none/failed)."""
     categories = [r.result.diagnosis_category if r.result else None for r in results]
     return [
-        {"diagnosis_category": category, "count": count}
+        {"main_diagnosis_category": category, "count": count}
         for category, count in count_main_diagnoses(categories)
     ]
 

@@ -102,6 +102,25 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     ]
 
 
+def test_patient_has_main_and_all_diagnosis_categories(tmp_path: Path) -> None:
+    accepted = intake_review_example()["patients"][0]
+    assert accepted["phase_1"]["main_diagnosis_category"] == "Other"
+    assert accepted["phase_1"]["diagnosis_categories"] == ["Other", "Respiratory"]
+
+    from classifier.output import examples
+
+    result = examples._review(
+        "A", 40.0, examples.PatientGroup.ADULT, True, None, None,
+        extra=[examples._SECOND_DIAGNOSIS],
+    )
+    out = tmp_path / "intake.xlsx"
+    write_intake_review_xlsx([result], out)
+    rows = list(openpyxl.load_workbook(out)["All"].iter_rows(values_only=True))
+    row = dict(zip(rows[0], rows[1], strict=True))
+    assert row["main_diagnosis_category"] == "Other"
+    assert row["diagnosis_categories"] == "Other; Respiratory"
+
+
 def test_all_category_groups_use_phase_1_diagnoses() -> None:
     example = intake_review_example()
     assert example["all_category_groups"] == [

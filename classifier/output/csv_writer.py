@@ -53,13 +53,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
+    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
+    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "diagnosis_categories", "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
@@ -202,7 +202,8 @@ def _pair_result_to_row(
     }
     if not result.success or result.result is None:
         base.update({
-            "overall": "", "main_diagnosis": "", "diagnosis_category": "", "main_diagnosis_icd": "",
+            "overall": "", "main_diagnosis": "", "main_diagnosis_category": "",
+            "main_diagnosis_icd": "",
             "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "", "diagnosis_categories": "",
             "care_check": "", "care_reasoning": "",
@@ -215,7 +216,7 @@ def _pair_result_to_row(
     base.update({
         "overall": r.overall,
         "main_diagnosis": r.main_diagnosis or "",
-        "diagnosis_category": r.diagnosis_category or "",
+        "main_diagnosis_category": r.diagnosis_category or "",
         "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
@@ -326,7 +327,7 @@ def write_treatment_request_xlsx(
 
 
 _MAIN_DIAGNOSIS_COLUMNS = [
-    "file_path", "main_diagnosis", "diagnosis_category", "icd_code", "reasoning",
+    "file_path", "main_diagnosis", "main_diagnosis_category", "icd_code", "reasoning",
 ]
 # Group label for notes with no main diagnosis (none found, or the call failed).
 _UNKNOWN_DIAGNOSIS = "Unknown"
@@ -363,7 +364,7 @@ def write_main_diagnosis_xlsx(
     )
     _write_groups_sheet(
         wb.create_sheet("Categories"),
-        "diagnosis_category",
+        "main_diagnosis_category",
         [r.diagnosis_category for r in results],
     )
 
@@ -415,7 +416,8 @@ def _write_counts_sheet(ws: Worksheet, header: str, groups: list[tuple[str, int]
 
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
+    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd", "diagnosis_check",
+    "diagnoses",
     "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 
@@ -454,7 +456,7 @@ def write_dr_validity_xlsx(
     )
     _write_groups_sheet(
         wb.create_sheet("Categories"),
-        "diagnosis_category",
+        "main_diagnosis_category",
         [r.result.diagnosis_category if r.result else None for r in results],
     )
     _write_counts_sheet(
@@ -478,8 +480,8 @@ def write_dr_validity_xlsx(
 _INTAKE_REVIEW_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "verdict", "verdict_phase_1",
     "verdict_phase_2", "explanation", "warnings", "phase_1_reasons", "patient_group", "age",
-    "main_diagnosis", "diagnosis_category", "diagnoses", "care_check", "nurse_diagnoses",
-    "clinical_reasoning", "errors",
+    "main_diagnosis", "main_diagnosis_category", "diagnosis_categories", "diagnoses", "care_check",
+    "nurse_diagnoses", "clinical_reasoning", "errors",
 ]
 
 
@@ -550,7 +552,8 @@ def _intake_review_row(
         "patient_group": p1.patient_group,
         "age": format_age(p1.age_years),
         "main_diagnosis": p1.main_diagnosis or "",
-        "diagnosis_category": p1.diagnosis_category or "",
+        "main_diagnosis_category": p1.diagnosis_category or "",
+        "diagnosis_categories": format_categories(p1.diagnosis_categories),
         "diagnoses": format_diagnoses(p1.diagnoses),
         "care_check": p1.care_check or "",
         "nurse_diagnoses": " | ".join(format_diagnoses(p.nurse_diagnoses) for p in r.pairs),
@@ -623,7 +626,7 @@ def _dr_validity_row(
         "patient_group": r.patient_group,
         "age": format_age(r.age_years),
         "main_diagnosis": r.main_diagnosis or "",
-        "diagnosis_category": r.diagnosis_category or "",
+        "main_diagnosis_category": r.diagnosis_category or "",
         "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),

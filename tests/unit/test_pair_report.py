@@ -103,7 +103,7 @@ def test_pair_dict_success_has_verdicts_and_relative_files(tmp_path: Path) -> No
     assert out["dr_file"] == ["DOE, JANE/peds_dr_a.pdf"]
     assert out["nurse_file"] == ["DOE, JANE/peds_nurse_b.pdf"]
     assert (out["success"], out["overall"], out["main_diagnosis"]) == (True, "MATCH", "GERD")
-    assert out["diagnosis_category"] == "Reflux / GERD"
+    assert out["main_diagnosis_category"] == "Reflux / GERD"
     assert out["dr_diagnoses"] == [
         {"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}
     ]
@@ -164,8 +164,8 @@ def test_pair_groups_count_labels_and_unknown(tmp_path: Path) -> None:
         {"main_diagnosis": "Unknown", "count": 1},
     ]
     assert pair_category_groups([*results, _failed(tmp_path, "D")]) == [
-        {"diagnosis_category": "Reflux / GERD", "count": 2},
-        {"diagnosis_category": "Unknown", "count": 2},
+        {"main_diagnosis_category": "Reflux / GERD", "count": 2},
+        {"main_diagnosis_category": "Unknown", "count": 2},
     ]
 
 

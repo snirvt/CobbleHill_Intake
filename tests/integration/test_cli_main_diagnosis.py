@@ -44,6 +44,8 @@ def test_cli_main_diagnosis_processes_dr_notes_only(tmp_path: Path) -> None:
     wb = openpyxl.load_workbook(xlsx_path)
     ws = wb["MainDiagnosis"]
     rows = list(ws.iter_rows(values_only=True))  # type: ignore[union-attr]
-    assert rows[0] == ("file_path", "main_diagnosis", "diagnosis_category", "icd_code", "reasoning")
+    assert rows[0] == (
+        "file_path", "main_diagnosis", "main_diagnosis_category", "icd_code", "reasoning",
+    )
     assert wb.sheetnames == ["MainDiagnosis", "Groups", "Categories"]
     assert any(str(r[0]).endswith("dr_progress_note.txt") for r in rows[1:])
