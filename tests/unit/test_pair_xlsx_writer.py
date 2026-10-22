@@ -6,6 +6,7 @@ import pytest
 from classifier.models import (
     CareCheck,
     Diagnosis,
+    DiagnosisCategory,
     DiagnosisCheck,
     DocumentMetadata,
     IdentityMatchResult,
@@ -15,6 +16,7 @@ from classifier.models import (
     PatientMetadata,
 )
 from classifier.output.csv_writer import (
+    format_categories,
     format_diagnoses,
     format_pair_diagnoses,
     relative_file_names,
@@ -35,6 +37,7 @@ def _make_pair_result(
     care_check: CareCheck | None = None,
     care_reasoning: str = "",
     main_diagnosis: str | None = None,
+    diagnosis_categories: list[DiagnosisCategory] | None = None,
 ) -> PairPipelineResult:
     result = PairClassificationResult(
         dr_file_path=dr,
@@ -50,6 +53,7 @@ def _make_pair_result(
         diagnosis_check=diagnosis_check,
         dr_diagnoses=dr_diagnoses or [],
         nurse_diagnoses=nurse_diagnoses or [],
+        diagnosis_categories=diagnosis_categories or [],
         care_check=care_check,
         care_reasoning=care_reasoning,
         main_diagnosis=main_diagnosis,
@@ -268,6 +272,32 @@ def test_diagnosis_columns_present_in_both_modes(tmp_path: Path) -> None:
         header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
         assert "diagnosis_check" in header
         assert "diagnoses" in header
+        assert "diagnosis_categories" in header
+
+
+def test_diagnosis_categories_column_joins_categories(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    result = _make_pair_result(
+        dr,
+        nurse,
+        diagnosis_categories=[DiagnosisCategory.RESPIRATORY, DiagnosisCategory.REFLUX],
+    )
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    ws = openpyxl.load_workbook(out)["All"]
+    assert _row_value(ws, "diagnosis_categories") == "Respiratory; Reflux / GERD"
+
+
+def test_format_diagnoses_appends_category() -> None:
+    diagnoses = [
+        Diagnosis(name="Pneumonia", icd_code="J18.9", category=DiagnosisCategory.RESPIRATORY),
+        Diagnosis(name="Reflux", category=DiagnosisCategory.REFLUX),
+    ]
+    assert format_diagnoses(diagnoses) == "Pneumonia (J18.9) [Respiratory]; Reflux [Reflux / GERD]"
+
+
+def test_format_categories_empty_list_is_blank() -> None:
+    assert format_categories([]) == ""
 
 
 def test_diagnosis_proof_labels_note_and_icd_code(tmp_path: Path) -> None:

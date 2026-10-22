@@ -213,13 +213,6 @@ async def test_stub_provider_returns_valid_category() -> None:
     assert result.diagnosis_category is DiagnosisCategory.OTHER
 
 
-def test_prompt_lists_every_category() -> None:
-    from classifier.classifiers.main_diagnosis import _CATEGORY_LIST
-
-    for category in DiagnosisCategory:
-        assert f"- {category.value}" in _CATEGORY_LIST
-
-
 async def test_rendered_prompt_contains_categories() -> None:
     llm = _fake_llm("GERD", category="Reflux / GERD")
     classifier = MainDiagnosisClassifier(llm=llm)

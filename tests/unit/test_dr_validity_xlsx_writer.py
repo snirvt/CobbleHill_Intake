@@ -22,7 +22,7 @@ from classifier.output.csv_writer import (
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
     "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
-    "care_check", "care_reasoning", "errors",
+    "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 
 
@@ -46,7 +46,8 @@ def _ok(
             age_years=0.5,
             patient_group=group,
             diagnosis_check=DiagnosisCheck.EXISTS,
-            diagnoses=[Diagnosis(name="GERD", icd_code="K21.9")],
+            diagnoses=[Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.REFLUX)],
+            diagnosis_categories=[DiagnosisCategory.REFLUX],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
             main_diagnosis=main,
@@ -93,7 +94,8 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["main_diagnosis"] == "GERD"
     assert row["diagnosis_category"] == "Reflux / GERD"
     assert row["main_diagnosis_icd"] == "K21.9"
-    assert row["diagnoses"] == "GERD (K21.9)"
+    assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD]"
+    assert row["diagnosis_categories"] == "Reflux / GERD"
     assert row["care_check"] == "NEEDED"
 
 

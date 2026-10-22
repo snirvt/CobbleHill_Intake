@@ -8,7 +8,7 @@ from classifier.classifiers.diagnosis_extraction import (
     _PROMPT_TEMPLATE,
     DiagnosisExtractionClassifier,
 )
-from classifier.models import DocumentMetadata, PatientMetadata
+from classifier.models import DiagnosisCategory, DocumentMetadata, PatientMetadata
 from classifier.providers.stub import create_stub_chat_model
 
 
@@ -73,6 +73,75 @@ async def test_empty_result_when_no_diagnoses() -> None:
     result = await classifier.extract_diagnoses(_make_metadata())
 
     assert result.diagnoses == []
+    assert result.diagnosis_categories == []
+
+
+@pytest.mark.asyncio
+async def test_each_diagnosis_gets_its_category() -> None:
+    llm = _fake_llm(
+        [
+            {"name": "Pneumonia", "icd_code": "J18.9", "category": "Respiratory"},
+            {"name": "Hypertension", "icd_code": None, "category": "Cardiovascular"},
+        ]
+    )
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert [d.category for d in result.diagnoses] == [
+        DiagnosisCategory.RESPIRATORY,
+        DiagnosisCategory.CARDIOVASCULAR,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_diagnosis_categories_are_deduped_in_order() -> None:
+    llm = _fake_llm(
+        [
+            {"name": "Pneumonia", "icd_code": None, "category": "Respiratory"},
+            {"name": "GERD", "icd_code": None, "category": "Reflux / GERD"},
+            {"name": "Asthma", "icd_code": None, "category": "Respiratory"},
+        ]
+    )
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert result.diagnosis_categories == [
+        DiagnosisCategory.RESPIRATORY,
+        DiagnosisCategory.REFLUX,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_is_parse_error() -> None:
+    llm = _fake_llm([{"name": "Pneumonia", "icd_code": None, "category": "Lungs"}])
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    result = await classifier.extract_diagnoses(_make_metadata())
+
+    assert result.diagnoses == []
+    assert result.diagnosis_categories == []
+    assert result.error is not None and result.error.startswith("Parse error")
+
+
+@pytest.mark.asyncio
+async def test_rendered_prompt_lists_categories_and_rules() -> None:
+    llm = _fake_llm([])
+    classifier = DiagnosisExtractionClassifier(llm=llm)
+
+    seen: list[str] = []
+    original = llm._call
+
+    def spy(messages, *args, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(str(messages[0].content))
+        return original(messages, *args, **kwargs)
+
+    object.__setattr__(llm, "_call", spy)
+    await classifier.extract_diagnoses(_make_metadata())
+
+    assert seen and all(f"- {c.value}" in seen[0] for c in DiagnosisCategory)
+    assert "Pick the most specific category" in seen[0]
 
 
 @pytest.mark.asyncio
@@ -147,6 +216,7 @@ async def test_stub_provider_returns_fixed_fake_diagnosis() -> None:
     assert len(result.diagnoses) == 1
     assert result.diagnoses[0].name == "STUB_DIAGNOSIS"
     assert result.diagnoses[0].icd_code == "Z00.0"
+    assert result.diagnosis_categories == [DiagnosisCategory.OTHER]
 
 
 def test_create_stub_chat_model_accepts_custom_response() -> None:

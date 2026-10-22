@@ -52,7 +52,10 @@ def _ok(
             overall=overall,
             dr_metadata=DocumentMetadata(file_path=dr, raw_text="t", meta=PatientMetadata()),
             nurse_fields=NurseVisitFields(meta=NursePatientMeta()),
-            dr_diagnoses=[Diagnosis(name="GERD", icd_code="K21.9")],
+            dr_diagnoses=[
+                Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.REFLUX)
+            ],
+            diagnosis_categories=[DiagnosisCategory.REFLUX],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs care",
             main_diagnosis=main,
@@ -100,7 +103,10 @@ def test_pair_dict_success_has_verdicts_and_relative_files(tmp_path: Path) -> No
     assert out["nurse_file"] == ["DOE, JANE/peds_nurse_b.pdf"]
     assert (out["success"], out["overall"], out["main_diagnosis"]) == (True, "MATCH", "GERD")
     assert out["diagnosis_category"] == "Reflux / GERD"
-    assert out["dr_diagnoses"] == [{"name": "GERD", "icd_code": "K21.9"}]
+    assert out["dr_diagnoses"] == [
+        {"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}
+    ]
+    assert out["diagnosis_categories"] == ["Reflux / GERD"]
     assert out["errors"] == []
     assert "identity_match" not in out
 

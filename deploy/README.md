@@ -65,6 +65,9 @@ git pull                                     # restarts the API if code changed
 systemctl status cobblehill-api              # running?
 sudo journalctl -u cobblehill-api -f         # logs
 sudo systemctl restart cobblehill-api        # manual restart
+curl -H "X-API-Key: $KEY" $HOST/version      # commit the running API started from
 ```
+After a `git pull` that restarted the API, `/version` shows the new commit
+(`git rev-parse --short HEAD`) and a fresh `started_at`.
 A restart cancels requests that are running at that moment. If `uv.lock` or
 `pyproject.toml` changed, the hook runs `uv sync` before restarting.

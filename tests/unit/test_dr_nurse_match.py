@@ -351,6 +351,34 @@ async def test_diagnosis_check_collects_proof_from_both_notes() -> None:
     assert [d.name for d in result.nurse_diagnoses] == ["Reflux"]
 
 
+async def test_diagnosis_categories_combine_dr_and_nurse_deduped() -> None:
+    extractor = _fake_diagnosis_extractor(
+        dr_diagnoses=[
+            Diagnosis(name="Colic", category=DiagnosisCategory.GASTROINTESTINAL),
+            Diagnosis(name="Pneumonia", category=DiagnosisCategory.RESPIRATORY),
+        ],
+        nurse_diagnoses=[
+            Diagnosis(name="Bronchiolitis", category=DiagnosisCategory.RESPIRATORY),
+            Diagnosis(name="Reflux", category=DiagnosisCategory.REFLUX),
+        ],
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
+    result = await clf.classify_pair(pair)
+    assert result.diagnosis_categories == [
+        DiagnosisCategory.GASTROINTESTINAL,
+        DiagnosisCategory.RESPIRATORY,
+        DiagnosisCategory.REFLUX,
+    ]
+
+
+async def test_diagnosis_categories_empty_when_check_skipped() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
+    pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
+    result = await clf.classify_pair(pair)
+    assert result.diagnosis_categories == []
+
+
 async def test_diagnosis_missing_forces_overall_mismatch() -> None:
     extractor = _fake_diagnosis_extractor()
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)

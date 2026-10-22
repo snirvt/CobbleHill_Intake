@@ -39,7 +39,13 @@ def _make_classifier(
         "diagnosis": AsyncMock(
             side_effect=lambda m: DiagnosisExtractionResult(
                 file_path=m.file_path,
-                diagnoses=[Diagnosis(name="Colic", icd_code="R10.83")] if has_diagnosis else [],
+                diagnoses=[
+                    Diagnosis(
+                        name="Colic", icd_code="R10.83", category=DiagnosisCategory.GASTROINTESTINAL
+                    )
+                ]
+                if has_diagnosis
+                else [],
             )
         ),
         "care": AsyncMock(
@@ -154,6 +160,7 @@ async def test_classify_peds_valid_populates_all_fields() -> None:
     assert result.verdict is ValidityVerdict.VALID
     assert result.diagnosis_check is DiagnosisCheck.EXISTS
     assert [d.name for d in result.diagnoses] == ["Colic"]
+    assert result.diagnosis_categories == [DiagnosisCategory.GASTROINTESTINAL]
     assert result.care_check is CareCheck.NEEDED
     assert result.care_reasoning == "needs home care"
     assert result.main_diagnosis == "Colic"
