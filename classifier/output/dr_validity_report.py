@@ -40,6 +40,7 @@ def dr_validity_patient_dict(
         "main_diagnosis_icd": res.main_diagnosis_icd,
         "diagnosis_check": res.diagnosis_check,
         "diagnoses": [d.model_dump() for d in res.diagnoses],
+        "diagnosis_categories": res.diagnosis_categories,
         "care_check": res.care_check,
         "care_reasoning": res.care_reasoning,
     })

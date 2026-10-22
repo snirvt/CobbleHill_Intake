@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DiagnosisCategory, DocumentMetadata, MainDiagnosisResult
 from classifier.providers.structured import bind_output_schema
@@ -64,15 +65,7 @@ Also put the main diagnosis into exactly one diagnosis_category from this list \
 {categories}
 
 Category rules:
-- Pick the most specific category: a hip fracture or fall is "Fracture / Fall", not \
-"Musculoskeletal / Spine"; a subdural or subarachnoid bleed is "Brain Bleed / Stroke", \
-not "Neurological".
-- Reflux/GERD (including in infants) is "Reflux / GERD", not "Feeding / Growth".
-- "Infection / Sepsis" only when a systemic infection is the main problem; an infection \
-of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / Urinary").
-- Postpartum depression is "Mental Health"; other postpartum or pregnancy conditions are \
-"Pregnancy / Postpartum".
-- Use "Other" only when a diagnosis exists but fits no category.
+{category_rules}
 - If main_diagnosis is null, diagnosis_category is null too.
 
 ICD code:
@@ -95,8 +88,6 @@ _ICD_CODE_PATTERN = re.compile(r"[A-TV-Z]\d[0-9A-Z](\.[0-9A-Z]{1,4})?")
 _PUNCT_PATTERN = re.compile(r"[^\w\s'-]|_")
 # LLM answers that mean "no diagnosis".
 _EMPTY_LABELS = {"none", "n/a", "na", "null", "unknown", "no diagnosis"}
-# Bucket list shown in the prompt, one per line, derived from the enum.
-_CATEGORY_LIST = "\n".join(f"- {c.value}" for c in DiagnosisCategory)
 # All-caps words up to this length are kept as acronyms (UTI, COPD); longer ones are title-cased.
 _ACRONYM_MAX_LEN = 4
 
@@ -110,7 +101,8 @@ class MainDiagnosisClassifier:
         )
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
             format_instructions=parser.get_format_instructions(),
-            categories=_CATEGORY_LIST,
+            categories=CATEGORY_LIST,
+            category_rules=CATEGORY_RULES,
         )
         self._chain = with_llm_retry(prompt | bind_output_schema(llm, MainDiagnosisOutput) | parser)
 

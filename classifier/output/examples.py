@@ -35,7 +35,9 @@ _SHAREPOINT_FOLDER = "EXAMPLE/Physician Notes/Pending"
 _WEB_URL = "https://sharepoint.example/EXAMPLE/Physician%20Notes/Pending"
 _ROOT_NAME = "Pending"
 _REASONING = "EXAMPLE - not real data"
-_DIAGNOSIS = Diagnosis(name="Example Diagnosis", icd_code="Z00.00")
+_DIAGNOSIS = Diagnosis(
+    name="Example Diagnosis", icd_code="Z00.00", category=DiagnosisCategory.OTHER
+)
 
 _OK_FOLDER = _ROOT / "EXAMPLE, PATIENT ONE"
 _FAILED_FOLDER = _ROOT / "EXAMPLE, PATIENT TWO"
@@ -83,6 +85,7 @@ def dr_validity_example() -> dict[str, object]:
                 patient_group=PatientGroup.PEDIATRIC,
                 diagnosis_check=DiagnosisCheck.EXISTS,
                 diagnoses=[_DIAGNOSIS],
+                diagnosis_categories=[DiagnosisCategory.OTHER],
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,
                 main_diagnosis="Example Diagnosis",
@@ -132,6 +135,7 @@ def dr_nurse_match_example() -> dict[str, object]:
                 nurse_fields=NurseVisitFields(meta=NursePatientMeta()),
                 dr_diagnoses=[_DIAGNOSIS],
                 nurse_diagnoses=[_DIAGNOSIS],
+                diagnosis_categories=[DiagnosisCategory.OTHER],
                 diagnosis_check=DiagnosisCheck.EXISTS,
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,

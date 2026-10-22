@@ -11,6 +11,7 @@ from classifier.models import (
     ErrorStage,
     PatientGroup,
     ValidityVerdict,
+    unique_categories,
 )
 from classifier.protocols import (
     DiagnosisExtractor,
@@ -93,6 +94,7 @@ class DrNoteValidityClassifier:
             patient_group=group,
             diagnosis_check=diagnosis_check,
             diagnoses=diagnoses.diagnoses,
+            diagnosis_categories=unique_categories(diagnoses.diagnoses),
             care_check=None if is_adult else care_check,
             care_reasoning="" if is_adult else care.reasoning or "",
             main_diagnosis=main.main_diagnosis,

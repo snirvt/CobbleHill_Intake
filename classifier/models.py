@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from enum import StrEnum
 from pathlib import Path
 
@@ -141,6 +142,13 @@ class Diagnosis(BaseModel):
 
     name: str
     icd_code: str | None = None
+    # Fixed bucket for this diagnosis; None only for results built without one.
+    category: DiagnosisCategory | None = None
+
+
+def unique_categories(diagnoses: Iterable[Diagnosis]) -> list[DiagnosisCategory]:
+    """Distinct categories of the given diagnoses, in order of first appearance."""
+    return list(dict.fromkeys(d.category for d in diagnoses if d.category is not None))
 
 
 class DiagnosisExtractionResult(BaseModel):
@@ -148,6 +156,8 @@ class DiagnosisExtractionResult(BaseModel):
 
     file_path: Path
     diagnoses: list[Diagnosis] = []
+    # Distinct categories of ``diagnoses``, first appearance first.
+    diagnosis_categories: list[DiagnosisCategory] = []
     reasoning: str | None = None
     # Set when the LLM call or parse failed; diagnoses is then empty, not "none found".
     error: str | None = None
@@ -250,6 +260,8 @@ class PairClassificationResult(BaseModel):
     diagnosis_check: DiagnosisCheck | None = None
     dr_diagnoses: list[Diagnosis] = []
     nurse_diagnoses: list[Diagnosis] = []
+    # Distinct categories across dr and nurse diagnoses.
+    diagnosis_categories: list[DiagnosisCategory] = []
     care_check: CareCheck | None = None
     care_reasoning: str = ""
     # Short primary-diagnosis label (dr note only) for grouping; not a check.
@@ -309,6 +321,7 @@ class DrValidityResult(BaseModel):
     patient_group: PatientGroup
     diagnosis_check: DiagnosisCheck
     diagnoses: list[Diagnosis] = []
+    diagnosis_categories: list[DiagnosisCategory] = []
     # None for adults: medical necessity is not required for them.
     care_check: CareCheck | None = None
     care_reasoning: str = ""

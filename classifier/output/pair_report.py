@@ -52,6 +52,7 @@ def pair_dict(
         "diagnosis_check": res.diagnosis_check or "",
         "dr_diagnoses": [d.model_dump() for d in res.dr_diagnoses],
         "nurse_diagnoses": [d.model_dump() for d in res.nurse_diagnoses],
+        "diagnosis_categories": res.diagnosis_categories,
         "care_check": res.care_check or "",
         "care_reasoning": res.care_reasoning,
     })
