@@ -23,6 +23,7 @@ from classifier.models import (
     PairClassificationResult,
     PairDocumentMetadata,
     PatientMetadata,
+    unique_categories,
 )
 from classifier.protocols import (
     DiagnosisExtractor,
@@ -127,6 +128,7 @@ class DrNurseMatchClassifier:
             diagnosis_check=diagnosis_check,
             dr_diagnoses=dr_diagnoses,
             nurse_diagnoses=nurse_diagnoses,
+            diagnosis_categories=unique_categories([*dr_diagnoses, *nurse_diagnoses]),
             care_check=care_check,
             care_reasoning=care_reasoning,
             main_diagnosis=main.main_diagnosis if main else None,

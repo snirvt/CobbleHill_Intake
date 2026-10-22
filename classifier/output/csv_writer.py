@@ -11,6 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from classifier.models import (
     CareCheck,
     Diagnosis,
+    DiagnosisCategory,
     DiagnosisCheck,
     DiagnosisExtractionResult,
     DrValidityPipelineResult,
@@ -51,21 +52,31 @@ _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "care_check", "care_reasoning", "errors",
+    "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "main_diagnosis", "diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "care_check", "care_reasoning",
+    "diagnosis_categories", "care_check", "care_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
     "errors",
 ]
 
 
 def format_diagnoses(diagnoses: list[Diagnosis]) -> str:
-    """Render diagnoses as proof text: 'name (ICD); name'."""
-    return "; ".join(f"{d.name} ({d.icd_code})" if d.icd_code else d.name for d in diagnoses)
+    """Render diagnoses as proof text: 'name (ICD) [Category]; name [Category]'."""
+    return "; ".join(_format_diagnosis(d) for d in diagnoses)
+
+
+def _format_diagnosis(d: Diagnosis) -> str:
+    text = f"{d.name} ({d.icd_code})" if d.icd_code else d.name
+    return f"{text} [{d.category}]" if d.category else text
+
+
+def format_categories(categories: list[DiagnosisCategory]) -> str:
+    """Render a category list as one cell: 'Respiratory; Cardiovascular'."""
+    return "; ".join(categories)
 
 
 def format_pair_diagnoses(dr: list[Diagnosis], nurse: list[Diagnosis]) -> str:
@@ -182,7 +193,7 @@ def _pair_result_to_row(
         base.update({
             "overall": "", "main_diagnosis": "", "diagnosis_category": "", "main_diagnosis_icd": "",
             "clinical_verdict": "", "clinical_reasoning": "",
-            "diagnosis_check": "", "diagnoses": "",
+            "diagnosis_check": "", "diagnoses": "", "diagnosis_categories": "",
             "care_check": "", "care_reasoning": "",
         })
         if verbose:
@@ -199,6 +210,7 @@ def _pair_result_to_row(
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
         "diagnoses": format_pair_diagnoses(r.dr_diagnoses, r.nurse_diagnoses),
+        "diagnosis_categories": format_categories(r.diagnosis_categories),
         "care_check": r.care_check or "",
         "care_reasoning": r.care_reasoning,
     })
@@ -231,7 +243,7 @@ def write_xlsx(results: list[PipelineResult], output_path: Path, task_names: lis
     logger.info("XLSX written to %s (%d rows)", output_path, len(results))
 
 
-_DIAGNOSIS_COLUMNS = ["file_path", "diagnosis", "icd_code"]
+_DIAGNOSIS_COLUMNS = ["file_path", "diagnosis", "icd_code", "category"]
 
 
 def write_diagnosis_xlsx(
@@ -239,8 +251,8 @@ def write_diagnosis_xlsx(
 ) -> None:
     """Write diagnosis-extraction results to a single-sheet Excel workbook.
 
-    One row per diagnosis (file_path, diagnosis, icd_code). A file with no
-    diagnoses still gets one row with empty diagnosis/icd_code columns.
+    One row per diagnosis (file_path, diagnosis, icd_code, category). A file with no
+    diagnoses still gets one row with empty diagnosis/icd_code/category columns.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -253,11 +265,13 @@ def write_diagnosis_xlsx(
     for result in results:
         file_path = str(result.file_path)
         if not result.diagnoses:
-            ws.append([file_path, "", ""])
+            ws.append([file_path, "", "", ""])
             row_count += 1
             continue
         for diagnosis in result.diagnoses:
-            ws.append([file_path, diagnosis.name, diagnosis.icd_code or ""])
+            ws.append(
+                [file_path, diagnosis.name, diagnosis.icd_code or "", diagnosis.category or ""]
+            )
             row_count += 1
 
     wb.save(output_path)
@@ -372,7 +386,7 @@ def _write_groups_sheet(ws: Worksheet, header: str, labels: Sequence[str | None]
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
     "main_diagnosis", "diagnosis_category", "main_diagnosis_icd", "diagnosis_check", "diagnoses",
-    "care_check", "care_reasoning", "errors",
+    "diagnosis_categories", "care_check", "care_reasoning", "errors",
 ]
 
 
@@ -491,6 +505,7 @@ def _dr_validity_row(
         "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
+        "diagnosis_categories": format_categories(r.diagnosis_categories),
         "care_check": r.care_check or "",
         "care_reasoning": r.care_reasoning,
     })
