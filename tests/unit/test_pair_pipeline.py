@@ -441,3 +441,37 @@ async def test_injected_semaphore_caps_pairs_across_concurrent_runs(tmp_path: Pa
     )
 
     assert peak == 1
+
+
+def _touch(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"%PDF")
+    return path
+
+
+def test_pairs_in_folder_does_not_recurse(tmp_path: Path) -> None:
+    from classifier.pair_pipeline import pairs_in_folder
+
+    dr = _touch(tmp_path / "dr_a.pdf")
+    nurse = _touch(tmp_path / "nurse_a.pdf")
+    _touch(tmp_path / "SUB" / "dr_b.pdf")
+    _touch(tmp_path / "SUB" / "nurse_b.pdf")
+
+    assert pairs_in_folder(tmp_path) == [([dr], [nurse])]
+
+
+def test_build_pair_metadata_combines_texts_and_reads_category(tmp_path: Path) -> None:
+    from classifier.metadata.nurse_visit import NurseVisitExtractor
+    from classifier.metadata.progress_note import ProgressNoteExtractor
+    from classifier.pair_pipeline import build_pair_metadata
+
+    dr = _touch(tmp_path / "peds_dr_a.pdf")
+    nurse = _touch(tmp_path / "peds_nurse_a.pdf")
+
+    pair = build_pair_metadata(
+        ProgressNoteExtractor(), NurseVisitExtractor(), [dr], [nurse], ["dr text"], ["nurse text"]
+    )
+
+    assert pair.category == "peds"
+    assert pair.dr.raw_text == "--- peds_dr_a.pdf ---\ndr text"
+    assert pair.nurse_raw_text == "--- peds_nurse_a.pdf ---\nnurse text"

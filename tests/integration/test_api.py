@@ -40,6 +40,17 @@ def _http_error(status: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError(str(status), request=request, response=httpx.Response(status))
 
 
+@pytest.fixture(autouse=True)
+def fake_review_service_builder(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stop the lifespan building the real intake-review service (OCR, node, LLM)."""
+    from classifier import main as wiring
+
+    svc = MagicMock()
+    svc.run = AsyncMock(return_value=_REPORT)
+    monkeypatch.setattr(wiring, "build_intake_review_service", lambda limits: svc)
+    return svc
+
+
 @pytest.fixture
 def service() -> MagicMock:
     svc = MagicMock()
@@ -194,10 +205,13 @@ def test_real_services_share_one_set_of_limits(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         wiring, "build_dr_nurse_match_service", lambda limits: seen.setdefault("match", limits)
     )
+    monkeypatch.setattr(
+        wiring, "build_intake_review_service", lambda limits: seen.setdefault("review", limits)
+    )
     with TestClient(create_app(api_key=None)):
         pass
     assert isinstance(seen["validity"], wiring.ConcurrencyLimits)
-    assert seen["validity"] is seen["match"]
+    assert seen["validity"] is seen["match"] is seen["review"]
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +242,9 @@ def test_example_routes_return_sample_without_running(
     match_service.run.assert_not_awaited()
 
 
-@pytest.mark.parametrize("route", ["/dr-validity/example", "/dr-nurse-match/example"])
+@pytest.mark.parametrize(
+    "route", ["/dr-validity/example", "/dr-nurse-match/example", "/intake-review/example"]
+)
 def test_example_routes_require_api_key(keyed_client: TestClient, route: str) -> None:
     assert keyed_client.get(route).status_code == 401
     assert keyed_client.get(route, headers={"X-API-Key": "s3cret"}).status_code == 200
@@ -352,3 +368,58 @@ def test_settings_api_key_defaults_to_secrets_api_token(monkeypatch: pytest.Monk
     monkeypatch.delenv("COBBLEHILL_API_KEY", raising=False)
     key = Settings().api_key
     assert key is not None and key.get_secret_value() == API_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# POST /intake-review
+# ---------------------------------------------------------------------------
+
+_REVIEW_REPORT = {
+    "sharepoint_folder": "Pending",
+    "web_url": "https://sp/Pending",
+    "summary": {"total": 1, "accept": 1},
+    "patients": [{"patient": "DOE, JANE", "verdict": "ACCEPT"}],
+    "errors": [],
+}
+
+
+@pytest.fixture
+def review_client(service: MagicMock) -> Iterator[tuple[TestClient, MagicMock]]:
+    review = MagicMock()
+    review.run = AsyncMock(return_value=_REVIEW_REPORT)
+    app = create_app(
+        service=service, match_service=service, review_service=review, api_key=None
+    )
+    with TestClient(app) as c:
+        yield c, review
+
+
+def test_intake_review_returns_report(
+    review_client: tuple[TestClient, MagicMock], service: MagicMock
+) -> None:
+    client, review = review_client
+    resp = client.post("/intake-review", json={"sharepoint_folder": "/Pending/"})
+
+    assert resp.status_code == 200
+    assert resp.json() == _REVIEW_REPORT
+    review.run.assert_awaited_once_with("Pending")
+    service.run.assert_not_awaited()
+
+
+def test_intake_review_maps_sharepoint_errors(review_client: tuple[TestClient, MagicMock]) -> None:
+    client, review = review_client
+    review.run.side_effect = _http_error(404)
+    assert client.post("/intake-review", json={"sharepoint_folder": "Nope"}).status_code == 404
+
+
+def test_intake_review_requires_api_key(keyed_client: TestClient) -> None:
+    assert keyed_client.post("/intake-review", json=_BODY).status_code == 401
+
+
+def test_intake_review_example_route(review_client: tuple[TestClient, MagicMock]) -> None:
+    client, review = review_client
+    body = client.get("/intake-review/example").json()
+
+    assert list(body) == ["sharepoint_folder", "web_url", "summary", "patients", "errors"]
+    assert {p["verdict"] for p in body["patients"]} == {"ACCEPT", "REJECT", "INCOMPLETE"}
+    review.run.assert_not_awaited()

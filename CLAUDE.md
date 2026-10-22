@@ -213,6 +213,9 @@ source scripts/api_env.sh
 - API routes are thin: each wraps a `FolderReportService(downloader, pipeline, report_fn)`
   (`folder_service.py`). New route = pipeline with `run_folder` + `folder_errors`, a report builder
   in `output/`, a `build_*_service` in `main.py`. All services share one LLM semaphore.
+- `/intake-review` composes existing pieces instead of new prompts: Phase I = the dr-validity
+  classifier, Phase II = `DrNurseMatchClassifier` (clinical match only) per same-category pair.
+  Verdict rules + explanation templates are pure functions in `classifiers/intake_verdict.py`.
 - Main-diagnosis buckets live in `DiagnosisCategory` (`models.py`). Edit that enum to add or
   rename a bucket — the output schema, prompt bucket list and validation all derive from it.
   The same buckets tag every extracted diagnosis (`Diagnosis.category`, plus a deduped

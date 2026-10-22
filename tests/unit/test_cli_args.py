@@ -133,3 +133,9 @@ async def test_run_dr_nurse_match_rejects_non_folder(tmp_path: Path) -> None:
     note = tmp_path / "dr_a.txt"
     note.write_text("x")
     assert await cli._run_dr_nurse_match(note, out_dir=tmp_path) == (1, None)
+
+
+def test_intake_review_flag_parses() -> None:
+    args = cli.build_parser().parse_args(["--input", "./data", "--intake-review"])
+    assert args.intake_review is True
+    assert cli.build_parser().parse_args([]).intake_review is False
