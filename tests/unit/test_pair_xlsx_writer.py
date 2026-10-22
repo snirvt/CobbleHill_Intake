@@ -79,11 +79,34 @@ def test_creates_file(tmp_path: Path, sample_document_metadata: DocumentMetadata
     assert out.exists()
 
 
-def test_three_sheets(tmp_path: Path) -> None:
+def test_four_sheets(tmp_path: Path) -> None:
     out = tmp_path / "results.xlsx"
     write_pair_xlsx([], out)
     wb = openpyxl.load_workbook(out)
-    assert wb.sheetnames == ["All", "No Issues", "Issues"]
+    assert wb.sheetnames == ["All", "No Issues", "Issues", "All Categories"]
+
+
+def test_all_categories_sheet_counts_dr_diagnoses_per_pair(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
+    results = [
+        _make_pair_result(
+            dr,
+            nurse,
+            dr_diagnoses=[
+                Diagnosis(name="GERD", category=DiagnosisCategory.REFLUX),
+                Diagnosis(name="Asthma", category=DiagnosisCategory.RESPIRATORY),
+            ],
+            nurse_diagnoses=[Diagnosis(name="Fall", category=DiagnosisCategory.FRACTURE)],
+        ),
+        _make_failure(dr, nurse),
+    ]
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx(results, out)
+
+    rows = _sheet_rows(openpyxl.load_workbook(out)["All Categories"])
+    assert rows == [
+        ["diagnosis_category", "count"], ["Reflux / GERD", 1], ["Respiratory", 1], ["Unknown", 1],
+    ]
 
 
 def test_all_sheet_contains_every_row(tmp_path: Path) -> None:
@@ -146,7 +169,8 @@ def test_all_sheets_share_same_headers(tmp_path: Path) -> None:
     out = tmp_path / "results.xlsx"
     write_pair_xlsx([], out)
     wb = openpyxl.load_workbook(out)
-    headers = [list(wb[s].iter_rows(max_row=1, values_only=True))[0] for s in wb.sheetnames]
+    pair_sheets = ["All", "No Issues", "Issues"]
+    headers = [list(wb[s].iter_rows(max_row=1, values_only=True))[0] for s in pair_sheets]
     assert headers[0] == headers[1] == headers[2]
 
 

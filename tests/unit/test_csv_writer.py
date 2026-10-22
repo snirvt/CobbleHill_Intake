@@ -8,7 +8,7 @@ from classifier.models import (
     MedicationData,
     PipelineResult,
 )
-from classifier.output.csv_writer import write_xlsx
+from classifier.output.csv_writer import count_all_categories, write_xlsx
 
 
 def _make_success(result: ClassificationResult) -> PipelineResult:
@@ -145,3 +145,19 @@ def test_xlsx_sheet_named_results(tmp_path: Path) -> None:
     write_xlsx([], out, task_names=[])
     wb = openpyxl.load_workbook(out)
     assert wb.sheetnames == ["Results"]
+
+
+def test_count_all_categories_counts_each_patient_once_per_category() -> None:
+    from classifier.models import DiagnosisCategory as C
+
+    groups = count_all_categories([
+        [C.REFLUX, C.RESPIRATORY, C.REFLUX],
+        [C.RESPIRATORY],
+        [C.FRACTURE],
+        [],
+        None,
+    ])
+
+    assert groups == [
+        ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Reflux / GERD", 1),
+    ]

@@ -17,6 +17,7 @@ from classifier.models import (
     RunError,
 )
 from classifier.output.pair_report import (
+    pair_all_category_groups,
     pair_category_groups,
     pair_dict,
     pair_errors,
@@ -168,6 +169,22 @@ def test_pair_groups_count_labels_and_unknown(tmp_path: Path) -> None:
     ]
 
 
+def test_pair_all_category_groups_count_dr_diagnoses_only(tmp_path: Path) -> None:
+    ok = _ok(tmp_path, "A")
+    assert ok.result is not None
+    ok.result.dr_diagnoses.append(
+        Diagnosis(name="Asthma", category=DiagnosisCategory.RESPIRATORY)
+    )
+    ok.result.dr_diagnoses.append(Diagnosis(name="GERD again", category=DiagnosisCategory.REFLUX))
+    ok.result.nurse_diagnoses = [Diagnosis(name="Fall", category=DiagnosisCategory.FRACTURE)]
+
+    assert pair_all_category_groups([ok, _failed(tmp_path, "D")]) == [
+        {"diagnosis_category": "Reflux / GERD", "count": 1},
+        {"diagnosis_category": "Respiratory", "count": 1},
+        {"diagnosis_category": "Unknown", "count": 1},
+    ]
+
+
 def test_pair_errors_lists_folder_errors_first(tmp_path: Path) -> None:
     errors = pair_errors([_failed(tmp_path, "D")], [_folder_error(tmp_path, "E")], tmp_path)
     assert [(e["patient"], e["stage"]) for e in errors] == [
@@ -181,7 +198,9 @@ def test_pair_report_combines_all_sections(tmp_path: Path) -> None:
 
     report = pair_report(results, [], tmp_path, "root", "https://sp/P")
 
-    assert list(report) == ["summary", "groups", "category_groups", "pairs", "errors"]
+    assert list(report) == [
+        "summary", "groups", "category_groups", "all_category_groups", "pairs", "errors",
+    ]
     pairs = report["pairs"]
     assert isinstance(pairs, list)
     assert pairs[0]["folder"] == "https://sp/P/A"

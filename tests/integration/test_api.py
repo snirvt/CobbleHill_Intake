@@ -234,8 +234,8 @@ def test_example_routes_return_sample_without_running(
     assert resp.status_code == 200
     body = resp.json()
     assert list(body) == [
-        "sharepoint_folder", "web_url", "summary", "groups", "category_groups", items_key,
-        "errors",
+        "sharepoint_folder", "web_url", "summary", "groups", "category_groups",
+        "all_category_groups", items_key, "errors",
     ]
     assert "EXAMPLE" in body["sharepoint_folder"]
     service.run.assert_not_awaited()
@@ -420,6 +420,8 @@ def test_intake_review_example_route(review_client: tuple[TestClient, MagicMock]
     client, review = review_client
     body = client.get("/intake-review/example").json()
 
-    assert list(body) == ["sharepoint_folder", "web_url", "summary", "patients", "errors"]
+    assert list(body) == [
+        "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
+    ]
     assert {p["verdict"] for p in body["patients"]} == {"ACCEPT", "REJECT", "INCOMPLETE"}
     review.run.assert_not_awaited()

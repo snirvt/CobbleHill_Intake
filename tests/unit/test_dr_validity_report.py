@@ -14,6 +14,7 @@ from classifier.models import (
     ValidityVerdict,
 )
 from classifier.output.dr_validity_report import (
+    dr_validity_all_category_groups,
     dr_validity_category_groups,
     dr_validity_errors,
     dr_validity_groups,
@@ -217,6 +218,19 @@ def test_category_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
     ]
 
 
+def test_all_category_groups_count_each_patient_once_per_category(tmp_path: Path) -> None:
+    multi = _ok(tmp_path, "A", ValidityVerdict.VALID)
+    assert multi.result is not None
+    multi.result.diagnosis_categories = [DiagnosisCategory.REFLUX, DiagnosisCategory.RESPIRATORY]
+    results = [multi, _ok(tmp_path, "B", ValidityVerdict.VALID), _failed(tmp_path, "C")]
+
+    assert dr_validity_all_category_groups(results) == [
+        {"diagnosis_category": "Reflux / GERD", "count": 2},
+        {"diagnosis_category": "Respiratory", "count": 1},
+        {"diagnosis_category": "Unknown", "count": 1},
+    ]
+
+
 def test_dr_validity_report_combines_all_sections(tmp_path: Path) -> None:
     from classifier.output.dr_validity_report import dr_validity_report
 
@@ -224,6 +238,8 @@ def test_dr_validity_report_combines_all_sections(tmp_path: Path) -> None:
 
     report = dr_validity_report(results, [], tmp_path, "root", "https://sp/x")
 
-    assert list(report) == ["summary", "groups", "category_groups", "patients", "errors"]
+    assert list(report) == [
+        "summary", "groups", "category_groups", "all_category_groups", "patients", "errors",
+    ]
     assert report["summary"] == dr_validity_summary(results, [])
     assert report["patients"] == [dr_validity_patient_dict(results[0], tmp_path, "root")]

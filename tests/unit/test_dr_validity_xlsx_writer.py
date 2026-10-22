@@ -75,7 +75,9 @@ def test_sheets_and_columns(tmp_path: Path) -> None:
     out = tmp_path / "dr_validity_results.xlsx"
     write_dr_validity_xlsx([], out)
     wb = openpyxl.load_workbook(out)
-    assert wb.sheetnames == ["All", "Valid", "Needs Review", "Groups", "Categories"]
+    assert wb.sheetnames == [
+        "All", "Valid", "Needs Review", "Groups", "Categories", "All Categories",
+    ]
     header = next(wb["All"].iter_rows(max_row=1, values_only=True))
     assert list(header) == _COLUMNS
 
@@ -135,6 +137,17 @@ def test_groups_sheet_counts_patients_by_main_diagnosis(tmp_path: Path) -> None:
 
     rows = list(openpyxl.load_workbook(out)["Groups"].iter_rows(values_only=True))
     assert rows == [("main_diagnosis", "count"), ("Dementia", 2), ("GERD", 1), ("Unknown", 1)]
+
+
+def test_all_categories_sheet_counts_patients_by_any_diagnosis(tmp_path: Path) -> None:
+    out = tmp_path / "dr_validity_results.xlsx"
+    multi = _ok(tmp_path, "A", ValidityVerdict.VALID)
+    assert multi.result is not None
+    multi.result.diagnosis_categories = [DiagnosisCategory.RESPIRATORY, DiagnosisCategory.REFLUX]
+    write_dr_validity_xlsx([multi, _ok(tmp_path, "B", ValidityVerdict.VALID)], out)
+
+    rows = list(openpyxl.load_workbook(out)["All Categories"].iter_rows(values_only=True))
+    assert rows == [("diagnosis_category", "count"), ("Reflux / GERD", 2), ("Respiratory", 1)]
 
 
 # ---------------------------------------------------------------------------

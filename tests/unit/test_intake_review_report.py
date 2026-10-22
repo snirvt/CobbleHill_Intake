@@ -7,6 +7,7 @@ from classifier.models import ErrorCode, ErrorStage, IntakeReviewPipelineResult,
 from classifier.output.csv_writer import write_intake_review_xlsx
 from classifier.output.examples import intake_review_example
 from classifier.output.intake_review_report import (
+    intake_review_all_category_groups,
     intake_review_patient_dict,
     intake_review_report,
     intake_review_summary,
@@ -50,14 +51,16 @@ def test_report_lists_folder_errors_first() -> None:
         stage=ErrorStage.FOLDER, code=ErrorCode.EMPTY_FOLDER, message="e", folder=_ROOT / "E"
     )
     report = intake_review_report([_failed()], [folder_error], _ROOT)
-    assert list(report) == ["summary", "patients", "errors"]
+    assert list(report) == ["summary", "all_category_groups", "patients", "errors"]
     assert [e["stage"] for e in report["errors"]] == ["folder", "age"]
 
 
 def test_example_covers_every_outcome() -> None:
     example = intake_review_example()
 
-    assert list(example) == ["sharepoint_folder", "web_url", "summary", "patients", "errors"]
+    assert list(example) == [
+        "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
+    ]
     patients = example["patients"]
     assert [p["verdict"] for p in patients] == [
         "ACCEPT", "REJECT", "REJECT", "REJECT", "INCOMPLETE",
@@ -85,7 +88,7 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     write_intake_review_xlsx(results, out, local_root=_ROOT)
 
     wb = openpyxl.load_workbook(out)
-    assert wb.sheetnames == ["All", "Accept", "Reject", "Incomplete"]
+    assert wb.sheetnames == ["All", "Accept", "Reject", "Incomplete", "All Categories"]
     header = [c.value for c in wb["All"][1]]
     assert header[:8] == [
         "folder", "patient_name", "dr_file_path", "nurse_file_path", "verdict",
@@ -94,3 +97,18 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     assert wb["All"].max_row == 3
     assert wb["Incomplete"].max_row == 2
     assert wb["Accept"].max_row == 1
+    assert list(wb["All Categories"].iter_rows(values_only=True)) == [
+        ("diagnosis_category", "count"), ("Other", 1), ("Unknown", 1),
+    ]
+
+
+def test_all_category_groups_use_phase_1_diagnoses() -> None:
+    example = intake_review_example()
+    assert example["all_category_groups"] == [
+        {"diagnosis_category": "Other", "count": 4},
+        {"diagnosis_category": "Respiratory", "count": 1},
+        {"diagnosis_category": "Unknown", "count": 1},
+    ]
+    assert intake_review_all_category_groups([_failed()]) == [
+        {"diagnosis_category": "Unknown", "count": 1},
+    ]
