@@ -96,7 +96,7 @@ def test_example_covers_every_outcome() -> None:
         "PASS", "NOT_RUN", "NOT_RUN", "FAIL", "UNDECIDED", None, None, None,
     ]
     assert patients[2]["warnings"] == ["age not found — pediatric rules applied"]
-    assert patients[0]["phase_2"] == {"comparison": "EXAMPLE - not real data"}
+    assert patients[0]["phase_2"] == {"dr_nurse_compare": "EXAMPLE - not real data"}
     assert patients[5]["phase_2"] is None and patients[5]["explanation"] is None
     assert example["summary"]["phase_1_failed"] == 3
     text = json.dumps(example)
@@ -148,7 +148,7 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     assert header == [
         "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
         "verdict", "verdict_phase_1", "verdict_phase_2", "explanation", "diagnosis_categories",
-        "diagnoses", "medical_necessity", "medical_necessity_reasoning", "comparison",
+        "diagnoses", "medical_necessity", "medical_necessity_reasoning", "dr_nurse_compare",
         "warnings", "errors",
     ]
     assert wb["All"].max_row == 4
@@ -164,7 +164,7 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     ]
 
 
-def test_xlsx_row_has_care_and_comparison(tmp_path: Path) -> None:
+def test_xlsx_row_has_care_and_dr_nurse_compare(tmp_path: Path) -> None:
     from classifier.output import examples
 
     match = (examples.ClinicalVerdict.MATCH, examples._DIAGNOSIS)
@@ -180,7 +180,7 @@ def test_xlsx_row_has_care_and_comparison(tmp_path: Path) -> None:
     assert row["diagnosis_categories"] == "Other; Respiratory"
     assert row["medical_necessity"] is True
     assert row["medical_necessity_reasoning"] == "EXAMPLE - not real data"
-    assert row["comparison"] == "EXAMPLE - not real data"
+    assert row["dr_nurse_compare"] == "EXAMPLE - not real data"
 
 
 def test_all_category_groups_use_phase_1_diagnoses() -> None:

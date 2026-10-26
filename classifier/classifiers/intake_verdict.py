@@ -103,8 +103,8 @@ def explain(
     return " ".join(sentences)
 
 
-def comparison(pairs: list[PairMatch]) -> str | None:
-    """Phase II comparison text: each pair's clinical reasoning, category-prefixed when
+def dr_nurse_compare(pairs: list[PairMatch]) -> str | None:
+    """Phase II dr-vs-nurse comparison text: each pair's clinical reasoning, category-prefixed when
     there are several pairs; None without pairs."""
     if not pairs:
         return None

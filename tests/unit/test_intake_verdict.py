@@ -6,7 +6,7 @@ from classifier.classifiers.intake_verdict import (
     REASON_NO_DIAGNOSIS,
     REASON_NO_NECESSITY,
     WARNING_UNKNOWN_AGE,
-    comparison,
+    dr_nurse_compare,
     explain,
     final_verdict,
     format_diagnosis_names,
@@ -184,26 +184,26 @@ def test_explain_multiple_matching_pairs_is_one_sentence() -> None:
 
 
 # ---------------------------------------------------------------------------
-# comparison
+# dr_nurse_compare
 # ---------------------------------------------------------------------------
 
-def test_comparison_is_none_without_pairs() -> None:
-    assert comparison([]) is None
+def test_dr_nurse_compare_is_none_without_pairs() -> None:
+    assert dr_nurse_compare([]) is None
 
 
-def test_comparison_single_pair_is_its_reasoning() -> None:
+def test_dr_nurse_compare_single_pair_is_its_reasoning() -> None:
     pair = PairMatch(clinical_verdict=ClinicalVerdict.MATCH, clinical_reasoning="Same story.")
-    assert comparison([pair]) == "Same story."
+    assert dr_nurse_compare([pair]) == "Same story."
 
 
-def test_comparison_multiple_pairs_prefixes_each_category() -> None:
+def test_dr_nurse_compare_multiple_pairs_prefixes_each_category() -> None:
     pairs = [
         PairMatch(category="hospital", clinical_verdict=ClinicalVerdict.MATCH,
                   clinical_reasoning="A."),
         PairMatch(category="peds", clinical_verdict=ClinicalVerdict.MISMATCH,
                   clinical_reasoning="B."),
     ]
-    assert comparison(pairs) == "[hospital] A. [peds] B."
+    assert dr_nurse_compare(pairs) == "[hospital] A. [peds] B."
 
 
 def test_format_diagnosis_names_adds_icd_when_present() -> None:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from classifier.classifiers.intake_verdict import comparison
+from classifier.classifiers.intake_verdict import dr_nurse_compare
 from classifier.models import (
     IntakeReviewPipelineResult,
     IntakeVerdict,
@@ -77,7 +77,7 @@ def intake_review_patient_dict(
             "medical_necessity": medical_necessity_flag(p1.care_check),
             "medical_necessity_reasoning": (p1.care_reasoning or None) if pediatric else None,
         },
-        "phase_2": {"comparison": comparison(res.pairs)} if res.pairs else None,
+        "phase_2": {"dr_nurse_compare": dr_nurse_compare(res.pairs)} if res.pairs else None,
         "warnings": res.warnings,
     })
     return out

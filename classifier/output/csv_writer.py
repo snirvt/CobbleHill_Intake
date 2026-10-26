@@ -8,7 +8,7 @@ from urllib.parse import quote
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
-from classifier.classifiers.intake_verdict import comparison
+from classifier.classifiers.intake_verdict import dr_nurse_compare
 from classifier.models import (
     CareCheck,
     Diagnosis,
@@ -463,7 +463,7 @@ def write_dr_validity_xlsx(
 _INTAKE_REVIEW_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
     "verdict", "verdict_phase_1", "verdict_phase_2", "explanation", "diagnosis_categories",
-    "diagnoses", "medical_necessity", "medical_necessity_reasoning", "comparison", "warnings",
+    "diagnoses", "medical_necessity", "medical_necessity_reasoning", "dr_nurse_compare", "warnings",
     "errors",
 ]
 
@@ -556,7 +556,7 @@ def _intake_review_row(
         "medical_necessity_reasoning": (
             p1.care_reasoning if p1.patient_group is not PatientGroup.ADULT else ""
         ),
-        "comparison": comparison(r.pairs) or "",
+        "dr_nurse_compare": dr_nurse_compare(r.pairs) or "",
         "warnings": "; ".join(r.warnings),
     })
     return row
