@@ -418,7 +418,7 @@ def test_intake_review_example_route(review_client: tuple[TestClient, MagicMock]
     assert list(body) == [
         "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
     ]
-    assert {p["verdict"] for p in body["patients"]} == {
+    assert {p["final_verdict"] for p in body["patients"]} == {
         "ACCEPT", "REJECT", "NEEDS_REVIEW", "NO_NURSE_NOTE", None,
     }
     review.run.assert_not_awaited()

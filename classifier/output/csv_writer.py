@@ -462,9 +462,9 @@ def write_dr_validity_xlsx(
 
 _INTAKE_REVIEW_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
-    "verdict", "verdict_phase_1", "verdict_phase_2", "explanation", "diagnosis_categories",
-    "diagnoses", "medical_necessity", "medical_necessity_reasoning", "dr_nurse_compare", "warnings",
-    "errors",
+    "final_verdict", "verdict_phase_1", "verdict_phase_2", "final_verdict_explanation",
+    "diagnosis_categories", "diagnoses", "medical_necessity", "medical_necessity_reasoning",
+    "dr_nurse_compare", "warnings", "errors",
 ]
 
 _INTAKE_VERDICT_SHEETS = {
@@ -502,7 +502,7 @@ def write_intake_review_xlsx(
     for verdict, title in _INTAKE_VERDICT_SHEETS.items():
         _write_pair_sheet(
             wb.create_sheet(title),
-            [r for r in rows if r["verdict"] == verdict],
+            [r for r in rows if r["final_verdict"] == verdict],
             _INTAKE_REVIEW_COLUMNS,
         )
     _write_counts_sheet(
@@ -546,10 +546,10 @@ def _intake_review_row(
     row.update({
         "age": format_age(p1.age_years),
         "patient_group": p1.patient_group,
-        "verdict": r.verdict,
+        "final_verdict": r.verdict,
         "verdict_phase_1": r.verdict_phase_1,
         "verdict_phase_2": r.verdict_phase_2 or "",
-        "explanation": r.explanation or "",
+        "final_verdict_explanation": r.explanation or "",
         "diagnosis_categories": format_categories(p1.diagnosis_categories),
         "diagnoses": format_diagnoses(p1.diagnoses),
         "medical_necessity": "" if care is None else care,

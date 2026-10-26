@@ -219,7 +219,8 @@ source scripts/api_env.sh
   Final verdict: ACCEPT / REJECT / NEEDS_REVIEW (an UNDECIDED pair, no mismatch) /
   NO_NURSE_NOTE (no same-category nurse note, whatever Phase I found; Phase II + explanation
   None). Folders with no dr note are listed with no result (every review field None). Report
-  per patient: identity, age fields, verdicts, explanation, flat `phase_1` details and
+  per patient: identity, age fields, `final_verdict`, phase verdicts,
+  `final_verdict_explanation`, flat `phase_1` details and
   `phase_2.dr_nurse_compare` (the pairs' clinical reasoning); no `pairs` list in the output.
 - The care check ("does the dr note show the patient needs care") is `care_check` /
   `care_reasoning` on the models but `medical_necessity` / `medical_necessity_reasoning`

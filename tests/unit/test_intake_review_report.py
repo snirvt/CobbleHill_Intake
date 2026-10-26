@@ -37,8 +37,8 @@ def _no_dr_note() -> IntakeReviewPipelineResult:
 
 
 _REVIEW_FIELDS = [
-    "age", "age_years", "patient_group", "verdict", "verdict_phase_1", "verdict_phase_2",
-    "explanation", "phase_1", "phase_2",
+    "age", "age_years", "patient_group", "final_verdict", "verdict_phase_1", "verdict_phase_2",
+    "final_verdict_explanation", "phase_1", "phase_2",
 ]
 
 
@@ -85,7 +85,7 @@ def test_example_covers_every_outcome() -> None:
         "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
     ]
     patients = example["patients"]
-    assert [p["verdict"] for p in patients] == [
+    assert [p["final_verdict"] for p in patients] == [
         "ACCEPT", "REJECT", "REJECT", "REJECT", "NEEDS_REVIEW", "NO_NURSE_NOTE",
         "NO_NURSE_NOTE", None,
     ]
@@ -97,7 +97,7 @@ def test_example_covers_every_outcome() -> None:
     ]
     assert patients[2]["warnings"] == ["age not found — pediatric rules applied"]
     assert patients[0]["phase_2"] == {"dr_nurse_compare": "EXAMPLE - not real data"}
-    assert patients[5]["phase_2"] is None and patients[5]["explanation"] is None
+    assert patients[5]["phase_2"] is None and patients[5]["final_verdict_explanation"] is None
     assert example["summary"]["phase_1_failed"] == 3
     text = json.dumps(example)
     assert "EXAMPLE" in text and "/tmp" not in text and '"pairs"' not in text
@@ -147,9 +147,9 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     header = [c.value for c in wb["All"][1]]
     assert header == [
         "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
-        "verdict", "verdict_phase_1", "verdict_phase_2", "explanation", "diagnosis_categories",
-        "diagnoses", "medical_necessity", "medical_necessity_reasoning", "dr_nurse_compare",
-        "warnings", "errors",
+        "final_verdict", "verdict_phase_1", "verdict_phase_2", "final_verdict_explanation",
+        "diagnosis_categories", "diagnoses", "medical_necessity", "medical_necessity_reasoning",
+        "dr_nurse_compare", "warnings", "errors",
     ]
     assert wb["All"].max_row == 4
     assert wb["No Nurse Note"].max_row == 2
@@ -158,7 +158,7 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     only_nurse = dict(zip(rows[0], rows[3], strict=True))
     assert only_nurse["patient_name"] == "ONLY NURSE"
     assert only_nurse["nurse_file_path"] == "ONLY NURSE/nurse_visit.pdf"
-    assert only_nurse["verdict"] is None and only_nurse["dr_file_path"] is None
+    assert only_nurse["final_verdict"] is None and only_nurse["dr_file_path"] is None
     assert list(wb["All Categories"].iter_rows(values_only=True)) == [
         ("diagnosis_category", "count"), ("Other", 1), ("Unknown", 1),
     ]
@@ -176,7 +176,7 @@ def test_xlsx_row_has_care_and_dr_nurse_compare(tmp_path: Path) -> None:
     write_intake_review_xlsx([result], out)
     rows = list(openpyxl.load_workbook(out)["All"].iter_rows(values_only=True))
     row = dict(zip(rows[0], rows[1], strict=True))
-    assert row["verdict"] == "ACCEPT"
+    assert row["final_verdict"] == "ACCEPT"
     assert row["diagnosis_categories"] == "Other; Respiratory"
     assert row["medical_necessity"] is True
     assert row["medical_necessity_reasoning"] == "EXAMPLE - not real data"
