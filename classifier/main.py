@@ -231,8 +231,8 @@ def build_dr_validity_pipeline(
 ) -> DrValidityPipeline:
     """Wire up the per-patient dr-note validity pipeline (dr notes only).
 
-    Age, diagnosis, medical-necessity and main-diagnosis extractors each get their own
-    chat model at the task's thinking level (settings.task_thinking), all sharing one
+    Age, diagnosis and medical-necessity extractors each get their own chat model (the
+    main-diagnosis step is disabled for now) at the task's thinking level (settings.task_thinking), all sharing one
     semaphore so the pipeline honours a single max_concurrent_llm_calls budget. Pass
     ``semaphore`` to share that budget with other pipelines, and ``file_semaphore`` to
     share the max_concurrent_files patient limit.
@@ -256,7 +256,6 @@ def _build_dr_validity_classifier(
         age_extractor=build_patient_age_extractor(llm("age")),
         diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
         care_extractor=build_treatment_request_extractor(llm("care")),
-        main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
     )
 
 
@@ -368,8 +367,8 @@ def build_pair_pipeline(
     The pair classifier gets a diagnosis extractor (pairs in
     ``settings.diagnosis_check_categories`` are checked for missing diagnoses) and a
     care extractor (pairs in ``settings.care_check_categories`` are checked for a
-    treatment request or medical necessity), plus a main-diagnosis extractor that labels
-    every pair for grouping. Each task gets its own chat model at its thinking level
+    treatment request or medical necessity); the main-diagnosis step is disabled for
+    now. Each task gets its own chat model at its thinking level
     (settings.task_thinking), all sharing one semaphore so the pipeline honours a single
     max_concurrent_llm_calls budget (pass ``semaphore`` to share it); ``file_semaphore``
     shares the max_concurrent_files pair limit. Leaf folders without a same-category
@@ -385,7 +384,6 @@ def build_pair_pipeline(
             llm=llm("clinical_match"),
             diagnosis_extractor=build_diagnosis_extractor(llm("diagnosis")),
             care_extractor=build_treatment_request_extractor(llm("care")),
-            main_diagnosis_extractor=build_main_diagnosis_extractor(llm("main_diagnosis")),
         ),
         folder_check=RequiredNotesCheck(roles=("dr", "nurse"), same_category=True),
         semaphore=file_semaphore,

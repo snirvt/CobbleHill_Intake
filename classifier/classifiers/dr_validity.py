@@ -9,6 +9,7 @@ from classifier.models import (
     DocumentMetadata,
     DrValidityResult,
     ErrorStage,
+    MainDiagnosisResult,
     PatientGroup,
     ValidityVerdict,
     unique_categories,
@@ -34,8 +35,9 @@ class DrNoteValidityClassifier:
     """Checks a patient's combined dr notes against the intake rules for their age.
 
     Pediatric (under ``settings.pediatric_age_threshold``): needs a diagnosis AND medical
-    necessity. Adult: needs a diagnosis. Every patient also gets a short main-diagnosis
-    label for grouping. The four LLM steps run concurrently.
+    necessity. Adult: needs a diagnosis. With a main-diagnosis extractor injected, every
+    patient also gets a short main-diagnosis label (currently not wired in main.py). The
+    LLM steps run concurrently.
     """
 
     def __init__(
@@ -43,7 +45,7 @@ class DrNoteValidityClassifier:
         age_extractor: PatientAgeExtractor,
         diagnosis_extractor: DiagnosisExtractor,
         care_extractor: TreatmentRequestExtractor,
-        main_diagnosis_extractor: MainDiagnosisExtractor,
+        main_diagnosis_extractor: MainDiagnosisExtractor | None = None,
     ) -> None:
         self._age_extractor = age_extractor
         self._diagnosis_extractor = diagnosis_extractor
@@ -61,10 +63,7 @@ class DrNoteValidityClassifier:
             step("age", self._age_extractor.extract_age(metadata)),
             step("diagnosis", self._diagnosis_extractor.extract_diagnoses(metadata)),
             step("care", self._care_extractor.extract_treatment_request(metadata)),
-            step(
-                "main_diagnosis",
-                self._main_diagnosis_extractor.extract_main_diagnosis(metadata),
-            ),
+            step("main_diagnosis", self._extract_main_diagnosis(metadata)),
         )
         raise_on_step_errors(
             metadata.file_path.parent,
@@ -72,7 +71,7 @@ class DrNoteValidityClassifier:
                 ErrorStage.AGE: age.error,
                 ErrorStage.DIAGNOSIS: diagnoses.error,
                 ErrorStage.CARE: care.error,
-                ErrorStage.MAIN_DIAGNOSIS: main.error,
+                ErrorStage.MAIN_DIAGNOSIS: main.error if main else None,
             },
         )
         group = self._patient_group(age.age_years)
@@ -97,12 +96,20 @@ class DrNoteValidityClassifier:
             diagnosis_categories=unique_categories(diagnoses.diagnoses),
             care_check=None if is_adult else care_check,
             care_reasoning="" if is_adult else care.reasoning or "",
-            main_diagnosis=main.main_diagnosis,
-            diagnosis_category=main.diagnosis_category,
-            main_diagnosis_icd=main.icd_code,
+            main_diagnosis=main.main_diagnosis if main else None,
+            diagnosis_category=main.diagnosis_category if main else None,
+            main_diagnosis_icd=main.icd_code if main else None,
             verdict=verdict,
             reasons=reasons,
         )
+
+    async def _extract_main_diagnosis(
+        self, metadata: DocumentMetadata
+    ) -> MainDiagnosisResult | None:
+        """Main-diagnosis label + category, for grouping; None when no extractor was injected."""
+        if self._main_diagnosis_extractor is None:
+            return None
+        return await self._main_diagnosis_extractor.extract_main_diagnosis(metadata)
 
     @staticmethod
     def _patient_group(age_years: float | None) -> PatientGroup:

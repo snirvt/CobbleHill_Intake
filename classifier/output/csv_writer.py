@@ -8,6 +8,7 @@ from urllib.parse import quote
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
+from classifier.classifiers.intake_verdict import comparison
 from classifier.models import (
     CareCheck,
     Diagnosis,
@@ -19,6 +20,7 @@ from classifier.models import (
     IntakeVerdict,
     MainDiagnosisResult,
     PairPipelineResult,
+    PatientGroup,
     PipelineResult,
     TreatmentRequestResult,
     ValidityVerdict,
@@ -36,7 +38,7 @@ _CLEAN_VALUES: dict[str, set[object]] = {
     "errors": {"", None},
     # "" = check did not apply to this pair's category.
     "diagnosis_check": {"", DiagnosisCheck.EXISTS},
-    "care_check": {"", CareCheck.NEEDED},
+    "medical_necessity": {"", CareCheck.NEEDED},
 }
 
 # Fixed patient metadata columns in output order
@@ -53,15 +55,13 @@ _META_COLUMNS = [
 
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "diagnosis_categories", "care_check", "care_reasoning", "errors",
+    "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
-    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "diagnosis_categories", "care_check", "care_reasoning",
+    "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning",
     "identity_match", "dr_fields", "nurse_fields",
     "errors",
 ]
@@ -202,11 +202,10 @@ def _pair_result_to_row(
     }
     if not result.success or result.result is None:
         base.update({
-            "overall": "", "main_diagnosis": "", "main_diagnosis_category": "",
-            "main_diagnosis_icd": "",
+            "overall": "",
             "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "", "diagnosis_categories": "",
-            "care_check": "", "care_reasoning": "",
+            "medical_necessity": "", "medical_necessity_reasoning": "",
         })
         if verbose:
             base.update({"identity_match": "", "dr_fields": "", "nurse_fields": ""})
@@ -215,16 +214,13 @@ def _pair_result_to_row(
     r = result.result
     base.update({
         "overall": r.overall,
-        "main_diagnosis": r.main_diagnosis or "",
-        "main_diagnosis_category": r.diagnosis_category or "",
-        "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "clinical_verdict": r.clinical_verdict,
         "clinical_reasoning": r.clinical_reasoning,
         "diagnosis_check": r.diagnosis_check or "",
         "diagnoses": format_pair_diagnoses(r.dr_diagnoses, r.nurse_diagnoses),
         "diagnosis_categories": format_categories(r.diagnosis_categories),
-        "care_check": r.care_check or "",
-        "care_reasoning": r.care_reasoning,
+        "medical_necessity": r.care_check or "",
+        "medical_necessity_reasoning": r.care_reasoning,
     })
     if verbose:
         base.update({
@@ -416,9 +412,7 @@ def _write_counts_sheet(ws: Worksheet, header: str, groups: list[tuple[str, int]
 
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd", "diagnosis_check",
-    "diagnoses",
-    "diagnosis_categories", "care_check", "care_reasoning", "errors",
+    "diagnosis_check", "diagnoses", "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
 ]
 
 
@@ -430,11 +424,10 @@ def write_dr_validity_xlsx(
     sp_web_url: str | None = None,
     root_name: str | None = None,
 ) -> None:
-    """Write per-patient dr-validity results to a six-sheet Excel workbook.
+    """Write per-patient dr-validity results to a four-sheet Excel workbook.
 
-    Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows), Groups
-    (main diagnosis -> patient count), Categories (main diagnosis category -> patient count)
-    and All Categories (category of any diagnosis -> patient count).
+    Sheets: All, Valid, Needs Review (INVALID, UNKNOWN_AGE and failed rows) and All
+    Categories (category of any diagnosis -> patient count).
     Pass local_root / sp_web_url as for write_pair_xlsx.
     Pass root_name to name a patient whose notes sit directly in local_root (see
     ``patient_display_name``).
@@ -449,16 +442,6 @@ def write_dr_validity_xlsx(
     _write_pair_sheet(wb.active, rows, _DR_VALIDITY_COLUMNS)  # type: ignore[arg-type]
     _write_pair_sheet(wb.create_sheet("Valid"), valid_rows, _DR_VALIDITY_COLUMNS)
     _write_pair_sheet(wb.create_sheet("Needs Review"), review_rows, _DR_VALIDITY_COLUMNS)
-    _write_groups_sheet(
-        wb.create_sheet("Groups"),
-        "main_diagnosis",
-        [r.result.main_diagnosis if r.result else None for r in results],
-    )
-    _write_groups_sheet(
-        wb.create_sheet("Categories"),
-        "main_diagnosis_category",
-        [r.result.diagnosis_category if r.result else None for r in results],
-    )
     _write_counts_sheet(
         wb.create_sheet("All Categories"),
         "diagnosis_category",
@@ -478,11 +461,23 @@ def write_dr_validity_xlsx(
 
 
 _INTAKE_REVIEW_COLUMNS = [
-    "folder", "patient_name", "dr_file_path", "nurse_file_path", "verdict", "verdict_phase_1",
-    "verdict_phase_2", "explanation", "warnings", "phase_1_reasons", "patient_group", "age",
-    "main_diagnosis", "main_diagnosis_category", "diagnosis_categories", "diagnoses", "care_check",
-    "nurse_diagnoses", "clinical_reasoning", "errors",
+    "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
+    "verdict", "verdict_phase_1", "verdict_phase_2", "explanation", "diagnosis_categories",
+    "diagnoses", "medical_necessity", "medical_necessity_reasoning", "comparison", "warnings",
+    "errors",
 ]
+
+_INTAKE_VERDICT_SHEETS = {
+    IntakeVerdict.ACCEPT: "Accept",
+    IntakeVerdict.REJECT: "Reject",
+    IntakeVerdict.NEEDS_REVIEW: "Needs Review",
+    IntakeVerdict.NO_NURSE_NOTE: "No Nurse Note",
+}
+
+
+def medical_necessity_flag(care: CareCheck | None) -> bool | None:
+    """Medical necessity (the care check) as true/false; None when not evaluated (adults)."""
+    return None if care is None else care is CareCheck.NEEDED
 
 
 def write_intake_review_xlsx(
@@ -495,18 +490,18 @@ def write_intake_review_xlsx(
 ) -> None:
     """Write per-patient intake-review results to an Excel workbook.
 
-    Sheets: All, Accept, Reject, Incomplete (failed patients appear only under All) and
-    All Categories (category of any Phase I diagnosis -> patient count).
-    Pass local_root / sp_web_url / root_name as for write_dr_validity_xlsx.
+    Sheets: All, then one per final verdict (failed patients and folders with no dr note
+    appear only under All), and All Categories (category of any Phase I diagnosis ->
+    patient count). Pass local_root / sp_web_url / root_name as for write_dr_validity_xlsx.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [_intake_review_row(r, local_root, sp_web_url, root_name) for r in results]
     wb = openpyxl.Workbook()
     wb.active.title = "All"
     _write_pair_sheet(wb.active, rows, _INTAKE_REVIEW_COLUMNS)
-    for verdict in IntakeVerdict:
+    for verdict, title in _INTAKE_VERDICT_SHEETS.items():
         _write_pair_sheet(
-            wb.create_sheet(verdict.title()),
+            wb.create_sheet(title),
             [r for r in rows if r["verdict"] == verdict],
             _INTAKE_REVIEW_COLUMNS,
         )
@@ -514,7 +509,11 @@ def write_intake_review_xlsx(
         wb.create_sheet("All Categories"),
         "diagnosis_category",
         count_all_categories(
-            [r.result.phase_1.diagnosis_categories if r.result else None for r in results]
+            [
+                r.result.phase_1.diagnosis_categories if r.result else None
+                for r in results
+                if r.result or not r.success  # folders with no dr note are not counted
+            ]
         ),
     )
     wb.save(output_path)
@@ -527,11 +526,12 @@ def _intake_review_row(
     sp_web_url: str | None,
     root_name: str | None = None,
 ) -> dict[str, object]:
-    first = result.dr_paths[0] if result.dr_paths else result.patient_folder
+    # Any file in the patient folder locates it; a folder with no notes gets a stand-in.
+    first = (result.dr_paths or result.nurse_paths or [result.patient_folder / "_"])[0]
     row: dict[str, object] = {
         "folder": resolve_folder(first, local_root, sp_web_url),
         "patient_name": patient_display_name(result.patient_folder, local_root, root_name),
-        "dr_file_path": _join_names(result.dr_paths, first, local_root),
+        "dr_file_path": _join_names(result.dr_paths, first, local_root) if result.dr_paths else "",
         "nurse_file_path": (
             _join_names(result.nurse_paths, first, local_root) if result.nurse_paths else ""
         ),
@@ -542,22 +542,22 @@ def _intake_review_row(
         row.update({col: "" for col in _INTAKE_REVIEW_COLUMNS if col not in row})
         return row
     p1 = r.phase_1
+    care = medical_necessity_flag(p1.care_check)
     row.update({
+        "age": format_age(p1.age_years),
+        "patient_group": p1.patient_group,
         "verdict": r.verdict,
         "verdict_phase_1": r.verdict_phase_1,
-        "verdict_phase_2": r.verdict_phase_2,
-        "explanation": r.explanation,
-        "warnings": "; ".join(r.warnings),
-        "phase_1_reasons": "; ".join(r.phase_1_reasons),
-        "patient_group": p1.patient_group,
-        "age": format_age(p1.age_years),
-        "main_diagnosis": p1.main_diagnosis or "",
-        "main_diagnosis_category": p1.diagnosis_category or "",
+        "verdict_phase_2": r.verdict_phase_2 or "",
+        "explanation": r.explanation or "",
         "diagnosis_categories": format_categories(p1.diagnosis_categories),
         "diagnoses": format_diagnoses(p1.diagnoses),
-        "care_check": p1.care_check or "",
-        "nurse_diagnoses": " | ".join(format_diagnoses(p.nurse_diagnoses) for p in r.pairs),
-        "clinical_reasoning": " | ".join(p.clinical_reasoning for p in r.pairs),
+        "medical_necessity": "" if care is None else care,
+        "medical_necessity_reasoning": (
+            p1.care_reasoning if p1.patient_group is not PatientGroup.ADULT else ""
+        ),
+        "comparison": comparison(r.pairs) or "",
+        "warnings": "; ".join(r.warnings),
     })
     return row
 
@@ -625,14 +625,11 @@ def _dr_validity_row(
         "reasons": "; ".join(r.reasons),
         "patient_group": r.patient_group,
         "age": format_age(r.age_years),
-        "main_diagnosis": r.main_diagnosis or "",
-        "main_diagnosis_category": r.diagnosis_category or "",
-        "main_diagnosis_icd": r.main_diagnosis_icd or "",
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
         "diagnosis_categories": format_categories(r.diagnosis_categories),
-        "care_check": r.care_check or "",
-        "care_reasoning": r.care_reasoning,
+        "medical_necessity": r.care_check or "",
+        "medical_necessity_reasoning": r.care_reasoning,
     })
     return row
 

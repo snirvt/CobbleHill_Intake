@@ -59,7 +59,7 @@ _SKIPPED_FOLDER = _ROOT / "EXAMPLE, PATIENT THREE"
 def _llm_error(folder: Path) -> RunError:
     """A failed LLM step, as reported after retries."""
     return RunError(
-        stage=ErrorStage.MAIN_DIAGNOSIS,
+        stage=ErrorStage.DIAGNOSIS,
         code=ErrorCode.LLM_FAILED,
         message="LLM error: EXAMPLE timeout",
         folder=folder,
@@ -100,9 +100,6 @@ def dr_validity_example() -> dict[str, object]:
                 diagnosis_categories=[DiagnosisCategory.OTHER],
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,
-                main_diagnosis="Example Diagnosis",
-                diagnosis_category=DiagnosisCategory.OTHER,
-                main_diagnosis_icd="Z00.00",
                 verdict=ValidityVerdict.VALID,
                 reasons=[],
             ),
@@ -111,7 +108,7 @@ def dr_validity_example() -> dict[str, object]:
             patient_folder=_FAILED_FOLDER,
             dr_paths=failed_paths,
             success=False,
-            error="main_diagnosis: LLM error: EXAMPLE timeout",
+            error="diagnosis: LLM error: EXAMPLE timeout",
             errors=[_llm_error(_FAILED_FOLDER)],
         ),
     ]
@@ -151,9 +148,6 @@ def dr_nurse_match_example() -> dict[str, object]:
                 diagnosis_check=DiagnosisCheck.EXISTS,
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,
-                main_diagnosis="Example Diagnosis",
-                diagnosis_category=DiagnosisCategory.OTHER,
-                main_diagnosis_icd="Z00.00",
             ),
         ),
         PairPipelineResult(
@@ -162,7 +156,7 @@ def dr_nurse_match_example() -> dict[str, object]:
             dr_paths=[failed_dr],
             nurse_paths=[failed_nurse],
             success=False,
-            error="main_diagnosis: LLM error: EXAMPLE timeout",
+            error="diagnosis: LLM error: EXAMPLE timeout",
             errors=[_llm_error(_FAILED_FOLDER)],
         ),
     ]
@@ -205,9 +199,6 @@ def _review(
         diagnosis_categories=unique_categories(diagnoses),
         care_check=care,
         care_reasoning=_REASONING if care else "",
-        main_diagnosis="Example Diagnosis" if diagnosis else None,
-        diagnosis_category=DiagnosisCategory.OTHER if diagnosis else None,
-        main_diagnosis_icd="Z00.00" if diagnosis else None,
         verdict=ValidityVerdict.VALID,
     )
     verdict_1, reasons, warnings = phase_1_verdict(phase_1)
@@ -225,7 +216,12 @@ def _review(
         if nurse and verdict_1 is PhaseVerdict.PASS
         else []
     )
-    verdict_2 = phase_2_verdict(pairs) if verdict_1 is PhaseVerdict.PASS else PhaseVerdict.NOT_RUN
+    has_pair = nurse is not None
+    verdict_2 = None
+    if has_pair:
+        verdict_2 = (
+            phase_2_verdict(pairs) if verdict_1 is PhaseVerdict.PASS else PhaseVerdict.NOT_RUN
+        )
     return IntakeReviewPipelineResult(
         patient_folder=folder,
         dr_paths=dr_paths,
@@ -238,19 +234,20 @@ def _review(
             phase_1_reasons=reasons,
             pairs=pairs,
             verdict_phase_2=verdict_2,
-            verdict=final_verdict(verdict_1, verdict_2),
-            explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs),
+            verdict=final_verdict(verdict_1, verdict_2, has_pair),
+            explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs, has_pair),
             warnings=warnings,
         ),
     )
 
 
 def intake_review_example() -> dict[str, object]:
-    """An /intake-review response: one patient per outcome, plus one skipped folder.
+    """An /intake-review response: one patient per outcome, plus a folder with no dr note.
 
     Accept; Phase I reject (adult, no diagnosis); Phase I reject (age not found, so
-    pediatric rules, no medical necessity); Phase II reject (notes do not match);
-    incomplete (no nurse note).
+    pediatric rules, no medical necessity); Phase II reject (notes do not match); needs
+    review (match undecided); no nurse note (Phase I passed, and Phase I failed); the
+    nurse-only folder is listed with no review and reported under ``errors``.
     """
     match = (ClinicalVerdict.MATCH, _DIAGNOSIS)
     results = [
@@ -275,7 +272,23 @@ def intake_review_example() -> dict[str, object]:
             None,
             (ClinicalVerdict.MISMATCH, _NURSE_DIAGNOSIS),
         ),
+        _review(
+            "EXAMPLE, UNDECIDED",
+            40.0,
+            PatientGroup.ADULT,
+            True,
+            None,
+            (ClinicalVerdict.UNDECIDED, _NURSE_DIAGNOSIS),
+        ),
         _review("EXAMPLE, NO NURSE NOTE", 40.0, PatientGroup.ADULT, True, None, None),
+        _review(
+            "EXAMPLE, NO NURSE NOTE, NO DIAGNOSIS", 40.0, PatientGroup.ADULT, False, None, None
+        ),
+        IntakeReviewPipelineResult(
+            patient_folder=_SKIPPED_FOLDER,
+            nurse_paths=[_SKIPPED_FOLDER / "peds_nurse_example.pdf"],
+            success=True,
+        ),
     ]
     folder_errors = [_folder_error("Folder has no dr notes")]
     return _wrap(intake_review_report(results, folder_errors, _ROOT, _ROOT_NAME, _WEB_URL))

@@ -50,6 +50,8 @@ class IntakeReviewPipeline:
     it passes are the folder's same-category dr + nurse pairs compared (Phase II): the
     pair classifier gives the clinical match and the diagnosis extractor reads the nurse
     note's diagnoses for the explanation. Nurse notes are not extracted when Phase I fails.
+    A patient with no same-category nurse note comes out NO_NURSE_NOTE; a folder with no
+    dr note is listed with no result.
     """
 
     def __init__(
@@ -118,6 +120,7 @@ class IntakeReviewPipeline:
         errors: list[RunError],
     ) -> IntakeReviewPipelineResult:
         """Phase I, then Phase II when it passed. Appends non-fatal issues to ``errors``."""
+        pair_paths = pairs_in_folder(folder)
         started = time.perf_counter()
         texts = await self._extract_texts(dr_paths, timings)
         timings.extract_wall_s = time.perf_counter() - started
@@ -136,14 +139,17 @@ class IntakeReviewPipeline:
 
         pairs: list[PairMatch] | None = []
         if verdict_1 is PhaseVerdict.PASS:
-            pairs = await self._phase_2(folder, texts, timings, errors)
+            pairs = await self._phase_2(pair_paths, texts, timings, errors)
         timings.classify_wall_s = time.perf_counter() - classify_started
         if pairs is None:
             return self._failed(folder, dr_paths, nurse_paths, errors)
 
-        verdict_2 = (
-            phase_2_verdict(pairs) if verdict_1 is PhaseVerdict.PASS else PhaseVerdict.NOT_RUN
-        )
+        has_pair = bool(pair_paths)
+        verdict_2: PhaseVerdict | None = None
+        if has_pair:
+            verdict_2 = (
+                phase_2_verdict(pairs) if verdict_1 is PhaseVerdict.PASS else PhaseVerdict.NOT_RUN
+            )
         result = IntakeReviewResult(
             patient_folder=folder,
             phase_1=phase_1,
@@ -151,8 +157,8 @@ class IntakeReviewPipeline:
             phase_1_reasons=reasons,
             pairs=pairs,
             verdict_phase_2=verdict_2,
-            verdict=final_verdict(verdict_1, verdict_2),
-            explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs),
+            verdict=final_verdict(verdict_1, verdict_2, has_pair),
+            explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs, has_pair),
             warnings=warnings,
         )
         logger.debug(
@@ -173,17 +179,16 @@ class IntakeReviewPipeline:
 
     async def _phase_2(
         self,
-        folder: Path,
+        pair_paths: list[tuple[list[Path], list[Path]]],
         texts: dict[Path, str],
         timings: PatientTimings,
         errors: list[RunError],
     ) -> list[PairMatch] | None:
-        """Compare every same-category pair in folder; [] when there is none.
+        """Compare every same-category (dr, nurse) pair; [] when there is none.
 
         Returns None (patient fails) when every nurse note of some pair has no text, since
         that pair cannot be judged.
         """
-        pair_paths = pairs_in_folder(folder)
         nurse_paths = sorted({p for _, nurse in pair_paths for p in nurse})
         texts.update(await self._extract_texts(nurse_paths, timings))
         nurse_errors = self._empty_text_errors(nurse_paths, texts)
@@ -278,7 +283,7 @@ class IntakeReviewPipeline:
         """Leaf folders under root that cannot be processed (empty, or no dr notes).
 
         A missing nurse note is not a folder error: that patient is reviewed and comes out
-        INCOMPLETE.
+        NO_NURSE_NOTE.
         """
         return [
             error
@@ -287,8 +292,30 @@ class IntakeReviewPipeline:
         ]
 
     async def run_folder(self, root: Path) -> list[IntakeReviewPipelineResult]:
-        """Scan root for patient folders with dr notes and review them."""
+        """Review every patient folder with dr notes under root.
+
+        Leaf folders with no dr note (nurse notes only, or empty) are listed after them
+        with no result, so every patient folder appears in the report.
+        """
         patients = scan_patient_dr_notes(root)
         if not patients:
             logger.warning("No dr notes found in %s", root)
-        return await self.run(patients)
+        reviewed = await self.run(patients)
+        return [*reviewed, *self._no_dr_note_results(root)]
+
+    @staticmethod
+    def _no_dr_note_results(root: Path) -> list[IntakeReviewPipelineResult]:
+        """A result-less entry for each leaf folder under root that holds no dr note."""
+        results = []
+        for folder in leaf_folders(root):
+            files = sorted(folder.iterdir())
+            if any(parse_note(f, role="dr") for f in files):
+                continue
+            results.append(
+                IntakeReviewPipelineResult(
+                    patient_folder=folder,
+                    nurse_paths=[f for f in files if parse_note(f, role="nurse")],
+                    success=True,
+                )
+            )
+        return results

@@ -375,7 +375,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help=(
             "Two-phase review per patient folder: Phase I dr-note rules (as --dr-validity), "
-            "then, if passed, Phase II dr/nurse match; ACCEPT / REJECT / INCOMPLETE"
+            "then, if passed, Phase II dr/nurse match; "
+            "ACCEPT / REJECT / NEEDS_REVIEW / NO_NURSE_NOTE"
         ),
     )
     parser.add_argument(

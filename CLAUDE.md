@@ -216,14 +216,25 @@ source scripts/api_env.sh
 - `/intake-review` composes existing pieces instead of new prompts: Phase I = the dr-validity
   classifier, Phase II = `DrNurseMatchClassifier` (clinical match only) per same-category pair.
   Verdict rules + explanation templates are pure functions in `classifiers/intake_verdict.py`.
-- Main-diagnosis buckets live in `DiagnosisCategory` (`models.py`). Edit that enum to add or
+  Final verdict: ACCEPT / REJECT / NEEDS_REVIEW (an UNDECIDED pair, no mismatch) /
+  NO_NURSE_NOTE (no same-category nurse note, whatever Phase I found; Phase II + explanation
+  None). Folders with no dr note are listed with no result (every review field None). Report
+  per patient: identity, age fields, verdicts, explanation, flat `phase_1` details and
+  `phase_2.comparison` (the pairs' clinical reasoning); no `pairs` list in the output.
+- The care check ("does the dr note show the patient needs care") is `care_check` /
+  `care_reasoning` on the models but `medical_necessity` / `medical_necessity_reasoning`
+  in every JSON/xlsx output.
+- Diagnosis buckets live in `DiagnosisCategory` (`models.py`). Edit that enum to add or
   rename a bucket — the output schema, prompt bucket list and validation all derive from it.
-  The same buckets tag every extracted diagnosis (`Diagnosis.category`, plus a deduped
+  Every extracted diagnosis is tagged (`Diagnosis.category`, plus a deduped
   `diagnosis_categories` list on results). Bucket list + rules shared via `classifiers/categories.py`.
-  Report/xlsx names: `main_diagnosis_category` (main bucket, from the model's `diagnosis_category`)
-  and `diagnosis_categories` (buckets of all diagnoses).
-  Reports count patients per main-diagnosis bucket (`category_groups`) and per bucket of ANY
-  diagnosis (`all_category_groups`, xlsx "All Categories"; `csv_writer.count_all_categories`).
+  Reports count patients per bucket of ANY diagnosis (`all_category_groups`, xlsx
+  "All Categories"; `csv_writer.count_all_categories`).
+- The main-diagnosis LLM step is **disabled** in every route: `main.py` injects no
+  `main_diagnosis_extractor` (it is optional in `DrNoteValidityClassifier` and
+  `DrNurseMatchClassifier`), and reports have no `main_diagnosis*` fields or
+  `groups`/`category_groups`. Only the standalone CLI `--main-diagnosis` mode still uses it.
+  To re-enable, pass the extractor in `main.py` and restore the report fields.
 - **Multi-step classifiers:** A classifier may chain several LLM calls with code logic in between. Each intermediate step should be its own testable method (e.g. `_extract_features()`, `_normalize()`, `_assign_category()`, `_validate()`). This keeps each step independently mockable and testable even though the classifier orchestrates them as a pipeline. If the chain can fail at any step, return partial results or a structured error that identifies which step failed.
 
 ---

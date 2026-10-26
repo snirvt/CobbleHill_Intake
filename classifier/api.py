@@ -7,8 +7,8 @@ Routes (all take ``{"sharepoint_folder": "..."}`` and block until done):
   without such a pair are reported under ``errors``, not processed.
 - ``POST /intake-review``: per patient, Phase I (dr-validity rules) then — only if it
   passed — Phase II (dr + nurse notes must match); ``verdict_phase_1``,
-  ``verdict_phase_2``, a final ACCEPT / REJECT / INCOMPLETE ``verdict`` and an
-  ``explanation``.
+  ``verdict_phase_2``, a final ACCEPT / REJECT / NEEDS_REVIEW / NO_NURSE_NOTE ``verdict``
+  and an ``explanation``.
 
 ``GET /<route>/example`` returns a sample response of each in exactly the same format,
 built from fake data (no SharePoint, no LLM, no patient data).

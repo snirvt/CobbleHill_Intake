@@ -391,22 +391,28 @@ class DrValidityPipelineResult(BaseModel):
 
 
 class PhaseVerdict(StrEnum):
-    """Outcome of one intake-review phase; NOT_RUN when the phase never ran."""
+    """Outcome of one intake-review phase; NOT_RUN when the phase never ran.
+
+    UNDECIDED: Phase II only — no pair mismatched, but the model could not decide one.
+    """
 
     PASS = "PASS"
     FAIL = "FAIL"
+    UNDECIDED = "UNDECIDED"
     NOT_RUN = "NOT_RUN"
 
 
 class IntakeVerdict(StrEnum):
     """Final intake-review decision for a patient.
 
-    INCOMPLETE: Phase I passed but no same-category nurse note exists for Phase II.
+    NEEDS_REVIEW: no pair mismatched, but at least one clinical match was UNDECIDED.
+    NO_NURSE_NOTE: no same-category nurse note exists, whatever Phase I found.
     """
 
     ACCEPT = "ACCEPT"
     REJECT = "REJECT"
-    INCOMPLETE = "INCOMPLETE"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    NO_NURSE_NOTE = "NO_NURSE_NOTE"
 
 
 class PairMatch(BaseModel):
@@ -430,15 +436,20 @@ class IntakeReviewResult(BaseModel):
     # What Phase I found missing, e.g. "no diagnosis"; empty when it passed.
     phase_1_reasons: list[str] = []
     pairs: list[PairMatch] = []
-    verdict_phase_2: PhaseVerdict
+    # None when the patient has no same-category nurse note.
+    verdict_phase_2: PhaseVerdict | None
     verdict: IntakeVerdict
-    explanation: str
+    # None when the patient has no same-category nurse note.
+    explanation: str | None
     # Non-fatal notes, e.g. "age not found — pediatric rules applied".
     warnings: list[str] = []
 
 
 class IntakeReviewPipelineResult(BaseModel):
-    """Outcome of the intake-review pipeline for one patient folder."""
+    """Outcome of the intake-review pipeline for one patient folder.
+
+    A folder with no dr note (nurse notes only, or empty) is success=True with no result.
+    """
 
     patient_folder: Path
     dr_paths: list[Path] = []

@@ -5,7 +5,6 @@ from pathlib import Path
 from classifier.models import DrValidityPipelineResult, RunError, ValidityVerdict
 from classifier.output.csv_writer import (
     count_all_categories,
-    count_main_diagnoses,
     format_age,
     patient_display_name,
     relative_file_names,
@@ -36,14 +35,11 @@ def dr_validity_patient_dict(
         "patient_group": res.patient_group,
         "age": format_age(res.age_years),
         "age_years": res.age_years,
-        "main_diagnosis": res.main_diagnosis,
-        "main_diagnosis_category": res.diagnosis_category,
-        "main_diagnosis_icd": res.main_diagnosis_icd,
         "diagnosis_check": res.diagnosis_check,
         "diagnoses": [d.model_dump() for d in res.diagnoses],
         "diagnosis_categories": res.diagnosis_categories,
-        "care_check": res.care_check,
-        "care_reasoning": res.care_reasoning,
+        "medical_necessity": res.care_check,
+        "medical_necessity_reasoning": res.care_reasoning,
     })
     return out
 
@@ -93,26 +89,6 @@ def dr_validity_summary(
     }
 
 
-def dr_validity_groups(results: list[DrValidityPipelineResult]) -> list[dict[str, object]]:
-    """Patients per main diagnosis, most common first ("Unknown" when none/failed)."""
-    labels = [r.result.main_diagnosis if r.result else None for r in results]
-    return [
-        {"main_diagnosis": label, "count": count}
-        for label, count in count_main_diagnoses(labels)
-    ]
-
-
-def dr_validity_category_groups(
-    results: list[DrValidityPipelineResult],
-) -> list[dict[str, object]]:
-    """Patients per diagnosis category, most common first ("Unknown" when none/failed)."""
-    categories = [r.result.diagnosis_category if r.result else None for r in results]
-    return [
-        {"main_diagnosis_category": category, "count": count}
-        for category, count in count_main_diagnoses(categories)
-    ]
-
-
 def dr_validity_all_category_groups(
     results: list[DrValidityPipelineResult],
 ) -> list[dict[str, object]]:
@@ -131,14 +107,12 @@ def dr_validity_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, groups, category_groups, all_category_groups, patients, errors}.
+    """Full report body: {summary, all_category_groups, patients, errors}.
 
     ``web_url`` is accepted for the shared report-builder signature and not used.
     """
     return {
         "summary": dr_validity_summary(results, folder_errors),
-        "groups": dr_validity_groups(results),
-        "category_groups": dr_validity_category_groups(results),
         "all_category_groups": dr_validity_all_category_groups(results),
         "patients": [dr_validity_patient_dict(r, local_root, root_name) for r in results],
         "errors": dr_validity_errors(results, folder_errors, local_root, root_name),

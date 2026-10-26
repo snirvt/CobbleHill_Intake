@@ -6,7 +6,6 @@ from classifier.models import ClinicalVerdict, PairPipelineResult, RunError, uni
 from classifier.naming import parse_note_name
 from classifier.output.csv_writer import (
     count_all_categories,
-    count_main_diagnoses,
     patient_display_name,
     relative_file_names,
     resolve_folder,
@@ -45,17 +44,14 @@ def pair_dict(
     res = r.result
     out.update({
         "overall": res.overall,
-        "main_diagnosis": res.main_diagnosis,
-        "main_diagnosis_category": res.diagnosis_category,
-        "main_diagnosis_icd": res.main_diagnosis_icd,
         "clinical_verdict": res.clinical_verdict,
         "clinical_reasoning": res.clinical_reasoning,
         "diagnosis_check": res.diagnosis_check or "",
         "dr_diagnoses": [d.model_dump() for d in res.dr_diagnoses],
         "nurse_diagnoses": [d.model_dump() for d in res.nurse_diagnoses],
         "diagnosis_categories": res.diagnosis_categories,
-        "care_check": res.care_check or "",
-        "care_reasoning": res.care_reasoning,
+        "medical_necessity": res.care_check or "",
+        "medical_necessity_reasoning": res.care_reasoning,
     })
     if verbose:
         dr = res.dr_metadata
@@ -109,24 +105,6 @@ def pair_summary(
     }
 
 
-def pair_groups(results: list[PairPipelineResult]) -> list[dict[str, object]]:
-    """Pairs per main diagnosis, most common first ("Unknown" when none/failed)."""
-    labels = [r.result.main_diagnosis if r.result else None for r in results]
-    return [
-        {"main_diagnosis": label, "count": count}
-        for label, count in count_main_diagnoses(labels)
-    ]
-
-
-def pair_category_groups(results: list[PairPipelineResult]) -> list[dict[str, object]]:
-    """Pairs per diagnosis category, most common first ("Unknown" when none/failed)."""
-    categories = [r.result.diagnosis_category if r.result else None for r in results]
-    return [
-        {"main_diagnosis_category": category, "count": count}
-        for category, count in count_main_diagnoses(categories)
-    ]
-
-
 def pair_all_category_groups(results: list[PairPipelineResult]) -> list[dict[str, object]]:
     """Pairs per category of any dr-note diagnosis (once per category), most common first."""
     categories = [unique_categories(r.result.dr_diagnoses) if r.result else None for r in results]
@@ -143,15 +121,13 @@ def pair_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, groups, category_groups, all_category_groups, pairs, errors}.
+    """Full report body: {summary, all_category_groups, pairs, errors}.
 
     Pass ``web_url`` (the SharePoint folder link) so each pair's ``folder`` is a link
     rather than a path inside the temporary download dir.
     """
     return {
         "summary": pair_summary(results, folder_errors),
-        "groups": pair_groups(results),
-        "category_groups": pair_category_groups(results),
         "all_category_groups": pair_all_category_groups(results),
         "pairs": [
             pair_dict(r, local_root=local_root, sp_web_url=web_url, root_name=root_name)
