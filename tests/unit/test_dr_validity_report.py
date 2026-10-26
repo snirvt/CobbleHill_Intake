@@ -15,9 +15,7 @@ from classifier.models import (
 )
 from classifier.output.dr_validity_report import (
     dr_validity_all_category_groups,
-    dr_validity_category_groups,
     dr_validity_errors,
-    dr_validity_groups,
     dr_validity_patient_dict,
     dr_validity_summary,
     run_error_dict,
@@ -86,14 +84,11 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "patient_group": "PEDIATRIC",
         "age": "6 months",
         "age_years": 0.5,
-        "main_diagnosis": "GERD",
-        "main_diagnosis_category": "Reflux / GERD",
-        "main_diagnosis_icd": "K21.9",
         "diagnosis_check": "EXISTS",
         "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}],
         "diagnosis_categories": ["Reflux / GERD"],
-        "care_check": "NEEDED",
-        "care_reasoning": "needs home services",
+        "medical_necessity": "NEEDED",
+        "medical_necessity_reasoning": "needs home services",
     }
 
 
@@ -189,35 +184,6 @@ def test_errors_lists_folder_errors_then_patient_errors(tmp_path: Path) -> None:
     ]
 
 
-def test_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
-    results = [
-        _ok(tmp_path, "A", ValidityVerdict.VALID, main="Dementia"),
-        _ok(tmp_path, "B", ValidityVerdict.VALID, main="GERD"),
-        _ok(tmp_path, "C", ValidityVerdict.VALID, main="Dementia"),
-        _failed(tmp_path, "D"),
-    ]
-    assert dr_validity_groups(results) == [
-        {"main_diagnosis": "Dementia", "count": 2},
-        {"main_diagnosis": "GERD", "count": 1},
-        {"main_diagnosis": "Unknown", "count": 1},
-    ]
-
-
-def test_category_groups_most_common_first_with_unknown(tmp_path: Path) -> None:
-    results = [
-        _ok(tmp_path, "A", ValidityVerdict.VALID, main="Hip Fracture",
-            category=DiagnosisCategory.FRACTURE),
-        _ok(tmp_path, "B", ValidityVerdict.VALID, main="GERD"),
-        _ok(tmp_path, "C", ValidityVerdict.VALID, main="Fall", category=DiagnosisCategory.FRACTURE),
-        _failed(tmp_path, "D"),
-    ]
-    assert dr_validity_category_groups(results) == [
-        {"main_diagnosis_category": "Fracture / Fall", "count": 2},
-        {"main_diagnosis_category": "Reflux / GERD", "count": 1},
-        {"main_diagnosis_category": "Unknown", "count": 1},
-    ]
-
-
 def test_all_category_groups_count_each_patient_once_per_category(tmp_path: Path) -> None:
     multi = _ok(tmp_path, "A", ValidityVerdict.VALID)
     assert multi.result is not None
@@ -239,7 +205,7 @@ def test_dr_validity_report_combines_all_sections(tmp_path: Path) -> None:
     report = dr_validity_report(results, [], tmp_path, "root", "https://sp/x")
 
     assert list(report) == [
-        "summary", "groups", "category_groups", "all_category_groups", "patients", "errors",
+        "summary", "all_category_groups", "patients", "errors",
     ]
     assert report["summary"] == dr_validity_summary(results, [])
     assert report["patients"] == [dr_validity_patient_dict(results[0], tmp_path, "root")]

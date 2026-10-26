@@ -86,8 +86,7 @@ def test_dr_validity_pipeline_gives_each_task_its_level_and_one_semaphore(
         "build_patient_age_extractor": "off",
         "build_diagnosis_extractor": "low",
         "build_treatment_request_extractor": "high",
-        "build_main_diagnosis_extractor": "off",
-    }
+    }  # main diagnosis is disabled: its builder is never called
     assert len({id(sem) for sem, _ in built}) == 1
 
 
@@ -148,8 +147,7 @@ def test_pair_pipeline_gives_each_task_its_level_and_given_semaphore(
         "clinical_match": "high",
         "build_diagnosis_extractor": "low",
         "build_treatment_request_extractor": "off",
-        "build_main_diagnosis_extractor": "low",
-    }
+    }  # main diagnosis is disabled: its builder is never called
     assert {id(s) for s, _ in built} == {id(sem)}
     check = pipeline._folder_check
     assert isinstance(check, RequiredNotesCheck)

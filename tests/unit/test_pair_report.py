@@ -18,10 +18,8 @@ from classifier.models import (
 )
 from classifier.output.pair_report import (
     pair_all_category_groups,
-    pair_category_groups,
     pair_dict,
     pair_errors,
-    pair_groups,
     pair_report,
     pair_summary,
 )
@@ -102,8 +100,8 @@ def test_pair_dict_success_has_verdicts_and_relative_files(tmp_path: Path) -> No
     assert out["category"] == "peds"
     assert out["dr_file"] == ["DOE, JANE/peds_dr_a.pdf"]
     assert out["nurse_file"] == ["DOE, JANE/peds_nurse_b.pdf"]
-    assert (out["success"], out["overall"], out["main_diagnosis"]) == (True, "MATCH", "GERD")
-    assert out["main_diagnosis_category"] == "Reflux / GERD"
+    assert (out["success"], out["overall"]) == (True, "MATCH")
+    assert "main_diagnosis" not in out
     assert out["dr_diagnoses"] == [
         {"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}
     ]
@@ -156,19 +154,6 @@ def test_pair_summary_counts_outcomes_and_errors(tmp_path: Path) -> None:
     }
 
 
-def test_pair_groups_count_labels_and_unknown(tmp_path: Path) -> None:
-    results = [_ok(tmp_path, "A"), _ok(tmp_path, "B"), _ok(tmp_path, "C", main=None, category=None)]
-
-    assert pair_groups(results) == [
-        {"main_diagnosis": "GERD", "count": 2},
-        {"main_diagnosis": "Unknown", "count": 1},
-    ]
-    assert pair_category_groups([*results, _failed(tmp_path, "D")]) == [
-        {"main_diagnosis_category": "Reflux / GERD", "count": 2},
-        {"main_diagnosis_category": "Unknown", "count": 2},
-    ]
-
-
 def test_pair_all_category_groups_count_dr_diagnoses_only(tmp_path: Path) -> None:
     ok = _ok(tmp_path, "A")
     assert ok.result is not None
@@ -199,7 +184,7 @@ def test_pair_report_combines_all_sections(tmp_path: Path) -> None:
     report = pair_report(results, [], tmp_path, "root", "https://sp/P")
 
     assert list(report) == [
-        "summary", "groups", "category_groups", "all_category_groups", "pairs", "errors",
+        "summary", "all_category_groups", "pairs", "errors",
     ]
     pairs = report["pairs"]
     assert isinstance(pairs, list)

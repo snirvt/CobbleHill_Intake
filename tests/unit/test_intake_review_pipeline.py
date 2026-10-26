@@ -125,7 +125,7 @@ async def test_matching_pair_after_phase_1_pass_is_accepted(tmp_path: Path) -> N
     assert r.result.verdict is IntakeVerdict.ACCEPT
     assert r.result.pairs[0].dr_paths == [dr]
     assert r.result.pairs[0].nurse_diagnoses == [_GERD]
-    assert "The two reports match" in r.result.explanation
+    assert r.result.explanation == "Doctor and nurse both report GERD (K21.9)."
 
 
 async def test_phase_1_failure_skips_phase_2_and_nurse_extraction(tmp_path: Path) -> None:
@@ -140,7 +140,7 @@ async def test_phase_1_failure_skips_phase_2_and_nurse_extraction(tmp_path: Path
     assert r.result.verdict_phase_1 is PhaseVerdict.FAIL
     assert r.result.verdict_phase_2 is PhaseVerdict.NOT_RUN
     assert r.result.verdict is IntakeVerdict.REJECT
-    assert r.result.explanation == "Patient did not pass Phase I: no valid diagnosis."
+    assert r.result.explanation == "Phase I failed: no valid diagnosis."
     pair_clf.classify_pair.assert_not_awaited()
     nurse_dx.extract_diagnoses.assert_not_awaited()
     routed = [c.args[0].name for c in router.route.call_args_list]
@@ -169,23 +169,61 @@ async def test_unknown_age_gets_warning_and_pediatric_rules(tmp_path: Path) -> N
     assert r.result.warnings == ["age not found — pediatric rules applied"]
 
 
-async def test_no_nurse_note_is_incomplete(tmp_path: Path) -> None:
+async def test_no_nurse_note_has_no_phase_2_or_explanation(tmp_path: Path) -> None:
     _touch(tmp_path / "P" / "dr_note.pdf")
 
     [r] = await _make().run_folder(tmp_path)
 
     assert r.result is not None
-    assert r.result.verdict_phase_2 is PhaseVerdict.NOT_RUN
-    assert r.result.verdict is IntakeVerdict.INCOMPLETE
+    assert r.result.verdict_phase_1 is PhaseVerdict.PASS
+    assert r.result.verdict_phase_2 is None
+    assert r.result.verdict is IntakeVerdict.NO_NURSE_NOTE
+    assert r.result.explanation is None
 
 
-async def test_nurse_note_of_other_category_is_incomplete(tmp_path: Path) -> None:
+async def test_no_nurse_note_wins_over_phase_1_failure(tmp_path: Path) -> None:
+    _touch(tmp_path / "P" / "dr_note.pdf")
+
+    [r] = await _make(validity=_validity(diagnosis=False)).run_folder(tmp_path)
+
+    assert r.result is not None
+    assert r.result.verdict_phase_1 is PhaseVerdict.FAIL
+    assert r.result.verdict is IntakeVerdict.NO_NURSE_NOTE
+
+
+async def test_nurse_note_of_other_category_is_no_nurse_note(tmp_path: Path) -> None:
     _touch(tmp_path / "P" / "hospital_dr_note.pdf")
     _touch(tmp_path / "P" / "peds_nurse_visit.pdf")
 
     [r] = await _make().run_folder(tmp_path)
 
-    assert r.result is not None and r.result.verdict is IntakeVerdict.INCOMPLETE
+    assert r.result is not None and r.result.verdict is IntakeVerdict.NO_NURSE_NOTE
+
+
+async def test_undecided_pair_needs_review(tmp_path: Path) -> None:
+    _touch(tmp_path / "P" / "dr_note.pdf")
+    _touch(tmp_path / "P" / "nurse_visit.pdf")
+    pair_clf = _pair_clf({None: ClinicalVerdict.UNDECIDED})
+
+    [r] = await _make(pair_clf=pair_clf).run_folder(tmp_path)
+
+    assert r.result is not None
+    assert r.result.verdict_phase_2 is PhaseVerdict.UNDECIDED
+    assert r.result.verdict is IntakeVerdict.NEEDS_REVIEW
+
+
+async def test_folders_without_dr_notes_are_listed_without_review(tmp_path: Path) -> None:
+    nurse = _touch(tmp_path / "ONLY NURSE" / "nurse_visit.pdf")
+    (tmp_path / "EMPTY").mkdir()
+    _touch(tmp_path / "OK" / "dr_note.pdf")
+
+    results = await _make().run_folder(tmp_path)
+
+    assert [r.patient_folder.name for r in results] == ["OK", "EMPTY", "ONLY NURSE"]
+    _, empty, only_nurse = results
+    assert empty.success and empty.result is None and empty.nurse_paths == []
+    assert only_nurse.success and only_nurse.result is None
+    assert only_nurse.dr_paths == [] and only_nurse.nurse_paths == [nurse]
 
 
 async def test_one_mismatching_pair_rejects_patient(tmp_path: Path) -> None:
@@ -199,7 +237,8 @@ async def test_one_mismatching_pair_rejects_patient(tmp_path: Path) -> None:
     assert [p.category for p in r.result.pairs] == ["hospital", "peds"]
     assert r.result.verdict_phase_2 is PhaseVerdict.FAIL
     assert r.result.verdict is IntakeVerdict.REJECT
-    assert "[peds] Patient passed Phase I" in r.result.explanation
+    assert r.result.explanation is not None
+    assert r.result.explanation.startswith("[peds] Notes do not match")
 
 
 async def test_nurse_diagnosis_failure_is_reported(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ import json
 from classifier.output.examples import dr_nurse_match_example, dr_validity_example
 
 _REPORT_KEYS = [
-    "sharepoint_folder", "web_url", "summary", "groups", "category_groups", "all_category_groups",
+    "sharepoint_folder", "web_url", "summary", "all_category_groups",
 ]
 
 

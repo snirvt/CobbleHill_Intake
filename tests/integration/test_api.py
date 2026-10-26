@@ -20,8 +20,6 @@ _REPORT = {
         "total": 1, "valid": 1, "invalid": 0, "unknown_age": 0, "failed": 0,
         "skipped_folders": 1, "errors": 1,
     },
-    "groups": [{"main_diagnosis": "GERD", "count": 1}],
-    "category_groups": [{"main_diagnosis_category": "Reflux / GERD", "count": 1}],
     "patients": [{"patient": "DOE, JANE", "success": True, "verdict": "VALID", "errors": []}],
     "errors": [
         {
@@ -117,8 +115,6 @@ _MATCH_REPORT = {
         "total": 1, "match": 1, "mismatch": 0, "undecided": 0, "failed": 0,
         "skipped_folders": 1, "errors": 1,
     },
-    "groups": [{"main_diagnosis": "GERD", "count": 1}],
-    "category_groups": [{"main_diagnosis_category": "Reflux / GERD", "count": 1}],
     "pairs": [{"patient": "DOE, JANE", "success": True, "overall": "MATCH", "errors": []}],
     "errors": [
         {
@@ -234,8 +230,7 @@ def test_example_routes_return_sample_without_running(
     assert resp.status_code == 200
     body = resp.json()
     assert list(body) == [
-        "sharepoint_folder", "web_url", "summary", "groups", "category_groups",
-        "all_category_groups", items_key, "errors",
+        "sharepoint_folder", "web_url", "summary", "all_category_groups", items_key, "errors",
     ]
     assert "EXAMPLE" in body["sharepoint_folder"]
     service.run.assert_not_awaited()
@@ -423,5 +418,7 @@ def test_intake_review_example_route(review_client: tuple[TestClient, MagicMock]
     assert list(body) == [
         "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
     ]
-    assert {p["verdict"] for p in body["patients"]} == {"ACCEPT", "REJECT", "INCOMPLETE"}
+    assert {p["verdict"] for p in body["patients"]} == {
+        "ACCEPT", "REJECT", "NEEDS_REVIEW", "NO_NURSE_NOTE", None,
+    }
     review.run.assert_not_awaited()

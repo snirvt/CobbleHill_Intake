@@ -6,6 +6,7 @@ from classifier.classifiers.intake_verdict import (
     REASON_NO_DIAGNOSIS,
     REASON_NO_NECESSITY,
     WARNING_UNKNOWN_AGE,
+    comparison,
     explain,
     final_verdict,
     format_diagnosis_names,
@@ -94,7 +95,14 @@ def test_phase_2_passes_only_when_every_pair_matches() -> None:
     match = _pair(ClinicalVerdict.MATCH, [])
     assert phase_2_verdict([match, match]) is PhaseVerdict.PASS
     assert phase_2_verdict([match, _pair(ClinicalVerdict.MISMATCH, [])]) is PhaseVerdict.FAIL
-    assert phase_2_verdict([_pair(ClinicalVerdict.UNDECIDED, [])]) is PhaseVerdict.FAIL
+
+
+def test_phase_2_undecided_when_a_pair_is_undecided_and_none_mismatch() -> None:
+    match = _pair(ClinicalVerdict.MATCH, [])
+    undecided = _pair(ClinicalVerdict.UNDECIDED, [])
+    mismatch = _pair(ClinicalVerdict.MISMATCH, [])
+    assert phase_2_verdict([match, undecided]) is PhaseVerdict.UNDECIDED
+    assert phase_2_verdict([undecided, mismatch]) is PhaseVerdict.FAIL
 
 
 @pytest.mark.parametrize(
@@ -103,13 +111,18 @@ def test_phase_2_passes_only_when_every_pair_matches() -> None:
         (PhaseVerdict.FAIL, PhaseVerdict.NOT_RUN, IntakeVerdict.REJECT),
         (PhaseVerdict.PASS, PhaseVerdict.PASS, IntakeVerdict.ACCEPT),
         (PhaseVerdict.PASS, PhaseVerdict.FAIL, IntakeVerdict.REJECT),
-        (PhaseVerdict.PASS, PhaseVerdict.NOT_RUN, IntakeVerdict.INCOMPLETE),
+        (PhaseVerdict.PASS, PhaseVerdict.UNDECIDED, IntakeVerdict.NEEDS_REVIEW),
     ],
 )
 def test_final_verdict_combines_phases(
     p1: PhaseVerdict, p2: PhaseVerdict, expected: IntakeVerdict
 ) -> None:
-    assert final_verdict(p1, p2) is expected
+    assert final_verdict(p1, p2, has_nurse_pair=True) is expected
+
+
+@pytest.mark.parametrize("p1", [PhaseVerdict.PASS, PhaseVerdict.FAIL])
+def test_final_verdict_no_nurse_note_whatever_phase_1_found(p1: PhaseVerdict) -> None:
+    assert final_verdict(p1, None, has_nurse_pair=False) is IntakeVerdict.NO_NURSE_NOTE
 
 
 # ---------------------------------------------------------------------------
@@ -117,48 +130,80 @@ def test_final_verdict_combines_phases(
 # ---------------------------------------------------------------------------
 
 def test_explain_phase_1_failure_lists_every_reason() -> None:
-    text = explain(PhaseVerdict.FAIL, [REASON_NO_DIAGNOSIS, REASON_NO_NECESSITY], [], [])
-    assert text == (
-        "Patient did not pass Phase I: no valid diagnosis and no statement of medical necessity."
-    )
+    text = explain(PhaseVerdict.FAIL, [REASON_NO_DIAGNOSIS, REASON_NO_NECESSITY], [], [], True)
+    assert text == "Phase I failed: no valid diagnosis and no statement of medical necessity."
 
 
-def test_explain_match_quotes_both_notes() -> None:
-    text = explain(PhaseVerdict.PASS, [], [_GERD], [_pair(ClinicalVerdict.MATCH, [_GERD])])
-    assert text == (
-        "Doctor's note says GERD (K21.9) and nurse confirmed and reported GERD (K21.9). "
-        "The two reports match."
-    )
+def test_explain_match_names_the_diagnoses() -> None:
+    pairs = [_pair(ClinicalVerdict.MATCH, [_GERD])]
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
+    assert text == "Doctor and nurse both report GERD (K21.9)."
 
 
 def test_explain_mismatch_quotes_both_notes() -> None:
-    text = explain(PhaseVerdict.PASS, [], [_GERD], [_pair(ClinicalVerdict.MISMATCH, [_ASTHMA])])
+    pairs = [_pair(ClinicalVerdict.MISMATCH, [_ASTHMA])]
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
+    assert text == "Notes do not match: doctor reports GERD (K21.9), nurse reports Asthma."
+
+
+def test_explain_undecided_says_needs_review() -> None:
+    pairs = [_pair(ClinicalVerdict.UNDECIDED, [_ASTHMA])]
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
     assert text == (
-        "Patient passed Phase I, but doctor said GERD (K21.9) and nurse said Asthma. "
-        "The two reports do NOT match."
+        "Match unclear, needs review: doctor reports GERD (K21.9), nurse reports Asthma."
     )
 
 
 def test_explain_nurse_without_diagnosis() -> None:
-    text = explain(PhaseVerdict.PASS, [], [_GERD], [_pair(ClinicalVerdict.MISMATCH, [])])
-    assert "nurse said no diagnosis" in text
+    pairs = [_pair(ClinicalVerdict.MISMATCH, [])]
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
+    assert text is not None and "nurse reports no diagnosis" in text
 
 
-def test_explain_without_pair_says_phase_2_not_run() -> None:
-    assert "Phase II not run" in explain(PhaseVerdict.PASS, [], [_GERD], [])
+@pytest.mark.parametrize("p1", [PhaseVerdict.PASS, PhaseVerdict.FAIL])
+def test_explain_is_none_without_nurse_note(p1: PhaseVerdict) -> None:
+    assert explain(p1, [REASON_NO_DIAGNOSIS], [_GERD], [], False) is None
 
 
-def test_explain_multiple_pairs_prefixes_each_category() -> None:
+def test_explain_multiple_pairs_lists_only_non_matching_categories() -> None:
     pairs = [
         _pair(ClinicalVerdict.MATCH, [_GERD], "hospital"),
         _pair(ClinicalVerdict.MISMATCH, [_ASTHMA], "peds"),
     ]
-    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs)
-    assert text.startswith("[hospital] Doctor's note says")
-    assert (
-        "[peds] Patient passed Phase I, but doctor said GERD (K21.9) and nurse said Asthma"
-        in text
-    )
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
+    assert text == "[peds] Notes do not match: doctor reports GERD (K21.9), nurse reports Asthma."
+
+
+def test_explain_multiple_matching_pairs_is_one_sentence() -> None:
+    pairs = [
+        _pair(ClinicalVerdict.MATCH, [_GERD], "hospital"),
+        _pair(ClinicalVerdict.MATCH, [_GERD], "peds"),
+    ]
+    text = explain(PhaseVerdict.PASS, [], [_GERD], pairs, True)
+    assert text == "Doctor and nurse both report GERD (K21.9)."
+
+
+# ---------------------------------------------------------------------------
+# comparison
+# ---------------------------------------------------------------------------
+
+def test_comparison_is_none_without_pairs() -> None:
+    assert comparison([]) is None
+
+
+def test_comparison_single_pair_is_its_reasoning() -> None:
+    pair = PairMatch(clinical_verdict=ClinicalVerdict.MATCH, clinical_reasoning="Same story.")
+    assert comparison([pair]) == "Same story."
+
+
+def test_comparison_multiple_pairs_prefixes_each_category() -> None:
+    pairs = [
+        PairMatch(category="hospital", clinical_verdict=ClinicalVerdict.MATCH,
+                  clinical_reasoning="A."),
+        PairMatch(category="peds", clinical_verdict=ClinicalVerdict.MISMATCH,
+                  clinical_reasoning="B."),
+    ]
+    assert comparison(pairs) == "[hospital] A. [peds] B."
 
 
 def test_format_diagnosis_names_adds_icd_when_present() -> None:

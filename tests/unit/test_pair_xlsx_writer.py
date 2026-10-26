@@ -400,8 +400,8 @@ def test_care_columns_present_in_both_modes(tmp_path: Path) -> None:
         out = tmp_path / f"care_{verbose}.xlsx"
         write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
         header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
-        assert "care_check" in header
-        assert "care_reasoning" in header
+        assert "medical_necessity" in header
+        assert "medical_necessity_reasoning" in header
 
 
 def test_care_needed_row_is_clean(tmp_path: Path) -> None:
@@ -413,8 +413,8 @@ def test_care_needed_row_is_clean(tmp_path: Path) -> None:
     write_pair_xlsx([result], out)
     wb = openpyxl.load_workbook(out)
     assert wb["No Issues"].max_row == 2  # header + 1
-    assert _row_value(wb["All"], "care_check") == "NEEDED"
-    assert _row_value(wb["All"], "care_reasoning") == "Home nursing ordered."
+    assert _row_value(wb["All"], "medical_necessity") == "NEEDED"
+    assert _row_value(wb["All"], "medical_necessity_reasoning") == "Home nursing ordered."
 
 
 def test_care_not_needed_row_lands_in_issues_sheet(tmp_path: Path) -> None:
@@ -434,7 +434,7 @@ def test_skipped_care_check_is_not_an_issue(tmp_path: Path) -> None:
     write_pair_xlsx([result], out)
     wb = openpyxl.load_workbook(out)
     assert wb["No Issues"].max_row == 2  # header + 1
-    assert not _row_value(wb["All"], "care_check")
+    assert not _row_value(wb["All"], "medical_necessity")
 
 
 # ---------------------------------------------------------------------------
@@ -489,36 +489,13 @@ def test_relative_file_names_uses_fallback_when_list_empty(tmp_path: Path) -> No
 
 
 # ---------------------------------------------------------------------------
-# Main diagnosis column
+# Main diagnosis (disabled)
 # ---------------------------------------------------------------------------
 
-def test_main_diagnosis_column_present_in_both_modes(tmp_path: Path) -> None:
+def test_no_main_diagnosis_columns_in_either_mode(tmp_path: Path) -> None:
     dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
     for verbose in (False, True):
         out = tmp_path / f"results_{verbose}.xlsx"
         write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
         header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
-        assert header[header.index("overall") + 1] == "main_diagnosis"
-
-
-def test_main_diagnosis_value_written(tmp_path: Path) -> None:
-    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
-    out = tmp_path / "results.xlsx"
-    write_pair_xlsx([_make_pair_result(dr, nurse, main_diagnosis="Pneumonia")], out)
-    assert _row_value(openpyxl.load_workbook(out)["All"], "main_diagnosis") == "Pneumonia"
-
-
-def test_missing_main_diagnosis_is_not_an_issue(tmp_path: Path) -> None:
-    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
-    out = tmp_path / "results.xlsx"
-    write_pair_xlsx([_make_pair_result(dr, nurse, main_diagnosis=None)], out)
-    wb = openpyxl.load_workbook(out)
-    assert wb["No Issues"].max_row == 2  # header + 1
-    assert not _row_value(wb["All"], "main_diagnosis")
-
-
-def test_failed_result_leaves_main_diagnosis_blank(tmp_path: Path) -> None:
-    dr, nurse = tmp_path / "dr_a.pdf", tmp_path / "nurse_a.pdf"
-    out = tmp_path / "results.xlsx"
-    write_pair_xlsx([_make_failure(dr, nurse)], out)
-    assert not _row_value(openpyxl.load_workbook(out)["All"], "main_diagnosis")
+        assert not any(str(c).startswith("main_diagnosis") for c in header)

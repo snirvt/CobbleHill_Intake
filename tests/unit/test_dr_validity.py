@@ -168,6 +168,24 @@ async def test_classify_peds_valid_populates_all_fields() -> None:
     assert result.main_diagnosis_icd == "R10.83"
 
 
+async def test_classify_without_main_diagnosis_extractor_leaves_main_fields_empty() -> None:
+    full, mocks = _make_classifier(age=0.67)
+    clf = DrNoteValidityClassifier(
+        age_extractor=full._age_extractor,
+        diagnosis_extractor=full._diagnosis_extractor,
+        care_extractor=full._care_extractor,
+    )
+
+    result = await clf.classify(_metadata(), _DR_PATHS)
+
+    assert result.verdict is ValidityVerdict.VALID
+    assert [d.name for d in result.diagnoses] == ["Colic"]
+    assert (result.main_diagnosis, result.diagnosis_category, result.main_diagnosis_icd) == (
+        None, None, None,
+    )
+    mocks["main"].assert_not_awaited()
+
+
 async def test_classify_peds_without_necessity_is_invalid() -> None:
     clf, _ = _make_classifier(age=5, necessity=False)
 

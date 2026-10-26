@@ -21,9 +21,7 @@ from classifier.output.csv_writer import (
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "main_diagnosis", "main_diagnosis_category", "main_diagnosis_icd", "diagnosis_check",
-    "diagnoses",
-    "diagnosis_categories", "care_check", "care_reasoning", "errors",
+    "diagnosis_check", "diagnoses", "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
 ]
 
 
@@ -77,7 +75,7 @@ def test_sheets_and_columns(tmp_path: Path) -> None:
     write_dr_validity_xlsx([], out)
     wb = openpyxl.load_workbook(out)
     assert wb.sheetnames == [
-        "All", "Valid", "Needs Review", "Groups", "Categories", "All Categories",
+        "All", "Valid", "Needs Review", "All Categories",
     ]
     header = next(wb["All"].iter_rows(max_row=1, values_only=True))
     assert list(header) == _COLUMNS
@@ -94,12 +92,10 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["verdict"] == "VALID"
     assert row["patient_group"] == "PEDIATRIC"
     assert row["age"] == "6 months"
-    assert row["main_diagnosis"] == "GERD"
-    assert row["main_diagnosis_category"] == "Reflux / GERD"
-    assert row["main_diagnosis_icd"] == "K21.9"
+    assert "main_diagnosis" not in row
     assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD]"
     assert row["diagnosis_categories"] == "Reflux / GERD"
-    assert row["care_check"] == "NEEDED"
+    assert row["medical_necessity"] == "NEEDED"
 
 
 def test_valid_and_needs_review_split(tmp_path: Path) -> None:
@@ -123,21 +119,6 @@ def test_failed_row_shows_error_and_blank_checks(tmp_path: Path) -> None:
     row = _rows(out, "All")[0]
     assert row["errors"] == "OCR failed"
     assert not row["verdict"]
-    assert not row["main_diagnosis"]
-
-
-def test_groups_sheet_counts_patients_by_main_diagnosis(tmp_path: Path) -> None:
-    out = tmp_path / "dr_validity_results.xlsx"
-    results = [
-        _ok(tmp_path, "A", ValidityVerdict.VALID, main="Dementia", group=PatientGroup.ADULT),
-        _ok(tmp_path, "B", ValidityVerdict.VALID, main="GERD"),
-        _ok(tmp_path, "C", ValidityVerdict.INVALID, main="Dementia", group=PatientGroup.ADULT),
-        _failed(tmp_path, "D"),
-    ]
-    write_dr_validity_xlsx(results, out)
-
-    rows = list(openpyxl.load_workbook(out)["Groups"].iter_rows(values_only=True))
-    assert rows == [("main_diagnosis", "count"), ("Dementia", 2), ("GERD", 1), ("Unknown", 1)]
 
 
 def test_all_categories_sheet_counts_patients_by_any_diagnosis(tmp_path: Path) -> None:
@@ -215,25 +196,3 @@ def test_single_patient_download_written_with_sharepoint_name(tmp_path: Path) ->
 )
 def test_format_age_is_human_readable(age_years: float | None, expected: str) -> None:
     assert format_age(age_years) == expected
-
-
-def test_categories_sheet_counts_patients_by_category(tmp_path: Path) -> None:
-    out = tmp_path / "dr_validity_results.xlsx"
-    results = [
-        _ok(tmp_path, "A", ValidityVerdict.VALID, main="GERD"),
-        _ok(tmp_path, "B", ValidityVerdict.VALID, main="Reflux"),
-        _ok(
-            tmp_path, "C", ValidityVerdict.VALID, main="Dementia",
-            category=DiagnosisCategory.DEVELOPMENTAL,
-        ),
-        _failed(tmp_path, "D"),
-    ]
-    write_dr_validity_xlsx(results, out)
-
-    rows = list(openpyxl.load_workbook(out)["Categories"].iter_rows(values_only=True))
-    assert rows == [
-        ("main_diagnosis_category", "count"),
-        ("Reflux / GERD", 2),
-        ("Developmental / Cognitive", 1),
-        ("Unknown", 1),
-    ]

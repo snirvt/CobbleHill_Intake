@@ -47,5 +47,5 @@ def test_cli_dr_validity_one_row_per_patient(tmp_path: Path) -> None:
     xlsx_path = _REPO_ROOT / "output" / "dr_validity_results.xlsx"
     wb = openpyxl.load_workbook(xlsx_path)
     assert wb.sheetnames == [
-        "All", "Valid", "Needs Review", "Groups", "Categories", "All Categories",
+        "All", "Valid", "Needs Review", "All Categories",
     ]
