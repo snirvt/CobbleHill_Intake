@@ -23,6 +23,7 @@ _CASES = [
     ("Postpartum hemorrhage", DiagnosisCategory.WOMENS_HEALTH),
     ("Uterine pain, 30 weeks pregnant", DiagnosisCategory.WOMENS_HEALTH),
     ("Pelvic pain, uterine fibroids", DiagnosisCategory.WOMENS_HEALTH),
+    ("Feeding difficulty in newborn", DiagnosisCategory.FEEDING),
 ]
 
 

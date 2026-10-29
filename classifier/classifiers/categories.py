@@ -12,6 +12,10 @@ CATEGORY_RULES = """\
 not "Neurological".
 - Reflux, heartburn or GERD (including in infants) is "Reflux / GERD", not "Feeding / Growth"; \
 never use "Reflux / GERD" for uterine, pelvic or general abdominal pain.
+- Feeding problems and growth concerns are "Feeding / Growth" even in a newborn or infant \
+(e.g. feeding difficulty, poor feeding, poor weight gain, failure to thrive, slow weight \
+gain); "Newborn / Well Child" is only for routine newborn care or well-child visits with \
+no specific problem.
 - "Infection / Sepsis" only when a systemic infection is the main problem; an infection \
 of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / Urinary").
 - Postpartum depression is "Mental Health"; any other pregnancy, postpartum or \

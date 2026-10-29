@@ -35,6 +35,13 @@ def test_category_rules_route_uterine_pain_to_womens_health() -> None:
     assert "never use" in reflux_rule and "uterine" in reflux_rule
 
 
+def test_category_rules_route_newborn_feeding_to_feeding_growth() -> None:
+    feeding_rule = next(line for line in CATEGORY_RULES.splitlines() if "failure to thrive" in line)
+
+    assert '"Feeding / Growth"' in feeding_rule
+    assert '"Newborn / Well Child"' in feeding_rule
+
+
 def test_unique_categories_dedupes_in_first_appearance_order() -> None:
     diagnoses = [
         Diagnosis(name="Pneumonia", category=DiagnosisCategory.RESPIRATORY),
