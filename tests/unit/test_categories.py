@@ -25,6 +25,16 @@ def test_category_rules_route_venous_wound_and_dementia() -> None:
     assert "Postpartum depression" in CATEGORY_RULES
 
 
+def test_category_rules_route_uterine_pain_to_womens_health() -> None:
+    rules = CATEGORY_RULES.splitlines()
+    womens_health_rule = next(line for line in rules if "Postpartum depression" in line)
+    reflux_rule = next(line for line in rules if "heartburn" in line)
+
+    assert "uterine or pelvic pain" in womens_health_rule
+    assert '"Women\'s Health"' in womens_health_rule
+    assert "never use" in reflux_rule and "uterine" in reflux_rule
+
+
 def test_unique_categories_dedupes_in_first_appearance_order() -> None:
     diagnoses = [
         Diagnosis(name="Pneumonia", category=DiagnosisCategory.RESPIRATORY),

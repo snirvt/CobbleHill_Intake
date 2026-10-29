@@ -10,11 +10,15 @@ CATEGORY_RULES = """\
 - Pick the most specific category: a hip fracture or fall is "Fracture / Fall", not \
 "Musculoskeletal / Spine"; a subdural or subarachnoid bleed is "Brain Bleed / Stroke", \
 not "Neurological".
-- Reflux/GERD (including in infants) is "Reflux / GERD", not "Feeding / Growth".
+- Reflux, heartburn or GERD (including in infants) is "Reflux / GERD", not "Feeding / Growth"; \
+never use "Reflux / GERD" for uterine, pelvic or general abdominal pain.
 - "Infection / Sepsis" only when a systemic infection is the main problem; an infection \
 of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / Urinary").
-- Postpartum depression is "Mental Health"; other postpartum or pregnancy conditions \
-(e.g. postpartum hemorrhage, preeclampsia, postpartum care) are "Pregnancy / Postpartum".
+- Postpartum depression is "Mental Health"; any other pregnancy, postpartum or \
+gynecological condition or symptom (e.g. uterine or pelvic pain, menstrual problems, \
+abnormal vaginal bleeding, fibroids, endometriosis, ovarian cyst, contractions, postpartum \
+hemorrhage, preeclampsia, postpartum care) is "Women's Health", not "Reflux / GERD", \
+"Gastrointestinal" or "Kidney / Urinary".
 - Dementia, Alzheimer's disease and cognitive decline in adults are "Mental Health"; \
 developmental delay or intellectual disability in a child is "Developmental / Cognitive".
 - Venous stasis, venous insufficiency, chronic leg edema and venous stasis ulcers are \

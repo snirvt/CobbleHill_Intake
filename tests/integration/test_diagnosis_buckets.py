@@ -20,7 +20,9 @@ _CASES = [
     ("Contact dermatitis of hands", DiagnosisCategory.SKIN),
     ("Alzheimer's dementia, moderate", DiagnosisCategory.MENTAL_HEALTH),
     ("Postpartum depression", DiagnosisCategory.MENTAL_HEALTH),
-    ("Postpartum hemorrhage", DiagnosisCategory.PREGNANCY),
+    ("Postpartum hemorrhage", DiagnosisCategory.WOMENS_HEALTH),
+    ("Uterine pain, 30 weeks pregnant", DiagnosisCategory.WOMENS_HEALTH),
+    ("Pelvic pain, uterine fibroids", DiagnosisCategory.WOMENS_HEALTH),
 ]
 
 

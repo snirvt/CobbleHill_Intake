@@ -22,7 +22,7 @@ class DiagnosisCategory(StrEnum):
     FEEDING = "Feeding / Growth"
     GASTROINTESTINAL = "Gastrointestinal"
     NEWBORN = "Newborn / Well Child"
-    PREGNANCY = "Pregnancy / Postpartum"
+    WOMENS_HEALTH = "Women's Health"
     MENTAL_HEALTH = "Mental Health"
     DEVELOPMENTAL = "Developmental / Cognitive"
     FRACTURE = "Fracture / Fall"
