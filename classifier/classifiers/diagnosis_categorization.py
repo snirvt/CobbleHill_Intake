@@ -33,6 +33,9 @@ class CategorizedItem(BaseModel):
     """One diagnosis echoed back with its bucket."""
 
     name: str
+    # Required and before category: makes the model reason per item (e.g. weigh the age)
+    # even with thinking off, instead of picking the bucket in one step.
+    reason: str
     category: DiagnosisCategory
 
 
@@ -54,7 +57,8 @@ Category rules:
 {category_rules}
 
 Return exactly one item per diagnosis, in the same order as the numbered list, echoing \
-its name. Give a brief reasoning for any diagnosis whose category is not obvious.
+its name. For each item give a short reason first (one clause), naming the rule you \
+applied and the patient age when that rule depends on age; then the category.
 
 {format_instructions}
 
@@ -63,6 +67,13 @@ Patient age: {patient_age}
 --- DIAGNOSES ---
 {diagnoses}
 --- END ---"""
+
+
+def _join_reasons(output: DiagnosisCategorizationOutput) -> str | None:
+    """Overall reasoning (if any) plus one ``name: reason`` line per item."""
+    lines = [output.reasoning] if output.reasoning else []
+    lines += [f"{item.name}: {item.reason}" for item in output.categories if item.reason]
+    return "\n".join(lines) or None
 
 
 def _format_diagnoses(diagnoses: list[Diagnosis]) -> str:
@@ -116,23 +127,22 @@ class DiagnosisCategorizationClassifier:
             return DiagnosisCategorizationResult(
                 diagnoses=diagnoses, error=f"Category LLM error: {exc}"
             )
-        logger.debug(
-            "Categorized %d diagnoses reasoning=%r", len(output.categories), output.reasoning
-        )
+        reasoning = _join_reasons(output)
+        logger.debug("Categorized %d diagnoses reasoning=%r", len(output.categories), reasoning)
         if len(output.categories) != len(diagnoses):
             error = (
                 f"Category count mismatch: expected {len(diagnoses)}, got {len(output.categories)}"
             )
             logger.error(error)
             return DiagnosisCategorizationResult(
-                diagnoses=diagnoses, reasoning=output.reasoning, error=error
+                diagnoses=diagnoses, reasoning=reasoning, error=error
             )
         return DiagnosisCategorizationResult(
             diagnoses=[
                 d.model_copy(update={"category": item.category})
                 for d, item in zip(diagnoses, output.categories, strict=True)
             ],
-            reasoning=output.reasoning,
+            reasoning=reasoning,
         )
 
 

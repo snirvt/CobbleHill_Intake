@@ -1,6 +1,8 @@
 """Diagnosis-category prompt text shared by every classifier that assigns a bucket."""
 
 from classifier.models import DiagnosisCategory
+from classifier.output.csv_writer import format_age
+from config.settings import settings
 
 # Bucket list shown in the prompt, one per line, derived from the enum.
 CATEGORY_LIST = "\n".join(f"- {c.value}" for c in DiagnosisCategory)
@@ -15,16 +17,18 @@ not "Neurological".
 abdominal pain.
 - Vomiting, emesis or spit-up at any age (e.g. vomiting in infants, persistent vomiting) is \
 "Reflux / GERD / Vomiting", not "Infection / Sepsis" or "Gastrointestinal".
-- In a newborn, infant or child, feeding problems and growth concerns are \
-"Feeding / Growth" (e.g. feeding difficulty, feeding disability, poor feeding, poor weight \
-gain, failure to thrive, slow weight gain, underweight, low weight, short stature, growth \
-delay), not "Obesity / Metabolic", "Gastrointestinal", "Blood / Anemia" or \
+- Feeding problems and growth concerns are "Feeding / Growth" even in a newborn or infant \
+(e.g. feeding difficulty, feeding disability, poor feeding, failure to thrive, short \
+stature, growth delay), not "Gastrointestinal", "Blood / Anemia" or \
 "Developmental / Cognitive"; "Newborn / Well Child" is only for routine newborn care or \
-well-child visits with no specific problem. If the age is unknown, treat the patient as \
-a child for these.
-- In an adult, underweight, low weight, weight loss or malnutrition is \
-"Obesity / Metabolic", which also covers obesity, overweight, diabetes, thyroid disease \
-and high cholesterol at any age.
+well-child visits with no specific problem.
+- Weight problems (underweight, low weight, poor or slow weight gain, weight loss, \
+malnutrition) depend on whether the patient is an infant (shown next to the patient age): \
+infant → "Feeding / Growth"; not an infant → "Obesity / Metabolic", unless the diagnosis \
+itself names a feeding problem (e.g. feeding difficulty, feeding tube dependence) → \
+"Feeding / Growth"; age unknown → "Feeding / Growth".
+- "Obesity / Metabolic" also covers obesity, overweight, diabetes, thyroid disease and \
+high cholesterol.
 - Fussiness, fussy baby, irritability, irritable mood, neonatal agitation, excessive crying \
 and colic are "Fussiness / Irritability", not "Brain Bleed / Stroke", "Neurological", \
 "Mental Health" or "Gastrointestinal".
@@ -43,3 +47,15 @@ developmental delay or intellectual disability in a child is "Developmental / Co
 - Any other wound or ulcer (pressure injury, diabetic foot ulcer, surgical or traumatic \
 wound) is "Wound"; rashes, dermatitis and other skin conditions are "Skin".
 - Use "Other" only when a diagnosis exists but fits no category."""
+
+
+def describe_age(age_years: float | None) -> str | None:
+    """Age text for the bucketing prompt: "3 months (infant)" / "16 years (not an infant)".
+
+    The infant cutoff is settings.infant_age_threshold_years; only the label reaches the
+    model. None when the age is unknown.
+    """
+    if age_years is None or age_years < 0:
+        return None
+    label = "infant" if age_years < settings.infant_age_threshold_years else "not an infant"
+    return f"{format_age(age_years)} ({label})"

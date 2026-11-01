@@ -249,7 +249,7 @@ async def test_classify_buckets_diagnoses_with_age_from_age_step() -> None:
 
     await clf.classify(_metadata(), _DR_PATHS)
 
-    assert mocks["diagnosis"].await_args.args[1] == "6 months"
+    assert mocks["diagnosis"].await_args.args[1] == "6 months (infant)"
     assert order == ["age", "diagnosis"]
 
 

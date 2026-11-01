@@ -17,7 +17,7 @@ _STUB_DIAGNOSIS_RESPONSE = json.dumps(
 STUB_DIAGNOSIS_CATEGORIES_RESPONSE = json.dumps(
     {
         "reasoning": "STUB_REASONING — deterministic stub response, no model invoked.",
-        "categories": [{"name": "STUB_DIAGNOSIS", "category": "Other"}],
+        "categories": [{"name": "STUB_DIAGNOSIS", "reason": "STUB_REASON", "category": "Other"}],
     }
 )
 

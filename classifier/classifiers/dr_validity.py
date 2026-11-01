@@ -2,6 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from classifier.classifiers.categories import describe_age
 from classifier.classifiers.step_errors import raise_on_step_errors
 from classifier.models import (
     CareCheck,
@@ -16,7 +17,6 @@ from classifier.models import (
     ValidityVerdict,
     unique_categories,
 )
-from classifier.output.csv_writer import format_age
 from classifier.protocols import (
     DiagnosisExtractor,
     MainDiagnosisExtractor,
@@ -112,9 +112,7 @@ class DrNoteValidityClassifier:
         age = await step("age", self._age_extractor.extract_age(metadata))
         diagnoses = await step(
             "diagnosis",
-            self._diagnosis_extractor.extract_diagnoses(
-                metadata, format_age(age.age_years) or None
-            ),
+            self._diagnosis_extractor.extract_diagnoses(metadata, describe_age(age.age_years)),
         )
         return age, diagnoses
 

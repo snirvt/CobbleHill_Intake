@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # Dr-validity check: patients younger than this (years) need a diagnosis AND medical
     # necessity; older patients need only a diagnosis.
     pediatric_age_threshold: float = 18
+    # Diagnosis bucketing: patients younger than this (years) are labelled "infant" in the age
+    # shown to the model (weight problems → Feeding / Growth). The model never sees the number.
+    infant_age_threshold_years: float = 3
     ocr_dpi: int = 300  # DPI liteparse renders PDF pages at before OCR; images use easyocr, not this.
     # easyocr (image OCR). Reads images directly, no PDF conversion.
     ocr_languages: list[str] = ["en"]

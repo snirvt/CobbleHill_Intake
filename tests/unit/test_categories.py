@@ -1,7 +1,10 @@
 import re
 
-from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
+import pytest
+
+from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES, describe_age
 from classifier.models import Diagnosis, DiagnosisCategory, unique_categories
+from config.settings import settings
 
 
 def test_category_list_names_every_category() -> None:
@@ -57,18 +60,42 @@ def test_category_rules_route_vomiting_to_reflux() -> None:
 def test_category_rules_route_growth_terms_to_feeding_growth() -> None:
     feeding_rule = _rule("failure to")
 
-    for term in ("short stature", "underweight", "feeding disability", "child"):
+    for term in ("short stature", "feeding disability"):
         assert term in feeding_rule
-    assert '"Obesity / Metabolic"' in feeding_rule
+    assert "underweight" not in feeding_rule
     assert '"Blood / Anemia"' in feeding_rule
     assert '"Developmental / Cognitive"' in feeding_rule
 
 
-def test_category_rules_route_adult_underweight_to_metabolic() -> None:
-    adult_rule = _rule("In an adult")
+def test_category_rules_weight_problems_depend_on_infant_label() -> None:
+    weight_rule = _rule("Weight problems")
 
-    assert "underweight" in adult_rule
-    assert '"Obesity / Metabolic"' in adult_rule
+    assert "underweight" in weight_rule
+    assert 'infant → "Feeding / Growth"' in weight_rule
+    assert 'not an infant → "Obesity / Metabolic"' in weight_rule
+    assert 'age unknown → "Feeding / Growth"' in weight_rule
+    assert "years" not in weight_rule  # the infant cutoff stays hidden from the model
+
+
+@pytest.mark.parametrize(
+    ("age_years", "expected"),
+    [
+        (3 / 12, "3 months (infant)"),
+        (0.0, "0 days (infant)"),
+        (2.9, "2 years (infant)"),
+        (3.0, "3 years (not an infant)"),
+        (16.0, "16 years (not an infant)"),
+        (None, None),
+    ],
+)
+def test_describe_age_labels_infants(age_years: float | None, expected: str | None) -> None:
+    assert describe_age(age_years) == expected
+
+
+def test_describe_age_uses_configurable_infant_cutoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "infant_age_threshold_years", 1)
+
+    assert describe_age(1.5) == "18 months (not an infant)"
 
 
 def test_category_rules_route_agitation_and_colic_to_fussiness() -> None:

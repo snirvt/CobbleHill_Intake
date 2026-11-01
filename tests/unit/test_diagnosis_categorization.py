@@ -59,8 +59,8 @@ def test_format_diagnoses_numbers_lines_and_adds_icd_when_present() -> None:
 async def test_categorize_assigns_categories_by_position() -> None:
     llm = _fake_llm(
         [
-            {"name": "Underweight", "category": "Feeding / Growth"},
-            {"name": "Neonatal agitation", "category": "Fussiness / Irritability"},
+            {"name": "Underweight", "reason": "r", "category": "Feeding / Growth"},
+            {"name": "Neonatal agitation", "reason": "r", "category": "Fussiness / Irritability"},
         ],
         reasoning="R63.6 is a growth concern.",
     )
@@ -76,11 +76,11 @@ async def test_categorize_assigns_categories_by_position() -> None:
         ("Underweight", "R63.6"),
         ("Neonatal agitation", "R68.12"),
     ]
-    assert result.reasoning == "R63.6 is a growth concern."
+    assert result.reasoning == "R63.6 is a growth concern.\nUnderweight: r\nNeonatal agitation: r"
 
 
 async def test_categorize_keeps_input_names_when_model_rewords_them() -> None:
-    llm = _fake_llm([{"name": "Low weight", "category": "Feeding / Growth"}])
+    llm = _fake_llm([{"name": "Low weight", "reason": "r", "category": "Feeding / Growth"}])
 
     result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1])
 
@@ -89,7 +89,7 @@ async def test_categorize_keeps_input_names_when_model_rewords_them() -> None:
 
 
 async def test_categorize_count_mismatch_sets_error_and_leaves_categories_none() -> None:
-    llm = _fake_llm([{"name": "Underweight", "category": "Feeding / Growth"}])
+    llm = _fake_llm([{"name": "Underweight", "reason": "r", "category": "Feeding / Growth"}])
 
     result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
 
@@ -98,8 +98,37 @@ async def test_categorize_count_mismatch_sets_error_and_leaves_categories_none()
     assert all(d.category is None for d in result.diagnoses)
 
 
+async def test_categorize_missing_reason_is_parse_error() -> None:
+    llm = FakeListChatModel(
+        responses=[
+            json.dumps({"categories": [{"name": "Underweight", "category": "Feeding / Growth"}]})
+        ]
+    )
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1])
+
+    assert result.error is not None and result.error.startswith("Category parse error")
+    assert result.diagnoses == _DIAGNOSES[:1]
+
+
+async def test_categorize_reasoning_lists_each_item_reason() -> None:
+    llm = _fake_llm(
+        [
+            {
+                "name": "Underweight",
+                "reason": "3-month-old, weight rule child branch",
+                "category": "Feeding / Growth",
+            }
+        ]
+    )
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1], "3 months")
+
+    assert result.reasoning == "Underweight: 3-month-old, weight rule child branch"
+
+
 async def test_categorize_unknown_category_is_parse_error() -> None:
-    llm = _fake_llm([{"name": "Underweight", "category": "Weight"}])
+    llm = _fake_llm([{"name": "Underweight", "reason": "r", "category": "Weight"}])
 
     result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1])
 
@@ -131,8 +160,8 @@ async def test_categorize_empty_input_skips_llm() -> None:
 async def test_categorize_prompt_lists_diagnoses_categories_and_rules() -> None:
     llm = _fake_llm(
         [
-            {"name": "Underweight", "category": "Feeding / Growth"},
-            {"name": "Neonatal agitation", "category": "Fussiness / Irritability"},
+            {"name": "Underweight", "reason": "r", "category": "Feeding / Growth"},
+            {"name": "Neonatal agitation", "reason": "r", "category": "Fussiness / Irritability"},
         ]
     )
     seen = _spy_prompts(llm)
@@ -147,7 +176,7 @@ async def test_categorize_prompt_lists_diagnoses_categories_and_rules() -> None:
 
 @pytest.mark.parametrize(("age", "shown"), [("3 months", "3 months"), (None, "unknown")])
 async def test_categorize_prompt_shows_patient_age(age: str | None, shown: str) -> None:
-    llm = _fake_llm([{"name": "Underweight", "category": "Feeding / Growth"}])
+    llm = _fake_llm([{"name": "Underweight", "reason": "r", "category": "Feeding / Growth"}])
     seen = _spy_prompts(llm)
 
     await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1], age)

@@ -139,7 +139,7 @@ async def test_nurse_diagnoses_bucketed_with_phase_1_age(tmp_path: Path) -> None
 
     await _make(validity=_validity(age_years=0.5), nurse_dx=nurse_dx).run_folder(tmp_path)
 
-    assert nurse_dx.extract_diagnoses.await_args.args[1] == "6 months"
+    assert nurse_dx.extract_diagnoses.await_args.args[1] == "6 months (infant)"
 
 
 async def test_nurse_diagnoses_get_none_when_phase_1_age_unknown(tmp_path: Path) -> None:

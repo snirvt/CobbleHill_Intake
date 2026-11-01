@@ -3,6 +3,7 @@ import logging
 import time
 from pathlib import Path
 
+from classifier.classifiers.categories import describe_age
 from classifier.classifiers.intake_verdict import (
     explain,
     final_verdict,
@@ -25,7 +26,6 @@ from classifier.models import (
     RunError,
 )
 from classifier.naming import concat_notes, parse_note
-from classifier.output.csv_writer import format_age
 from classifier.pair_pipeline import build_pair_metadata, pairs_in_folder
 from classifier.patient_pipeline import scan_patient_dr_notes
 from classifier.protocols import (
@@ -141,7 +141,7 @@ class IntakeReviewPipeline:
         pairs: list[PairMatch] | None = []
         if verdict_1 is PhaseVerdict.PASS:
             pairs = await self._phase_2(
-                pair_paths, texts, timings, errors, format_age(phase_1.age_years) or None
+                pair_paths, texts, timings, errors, describe_age(phase_1.age_years)
             )
         timings.classify_wall_s = time.perf_counter() - classify_started
         if pairs is None:
