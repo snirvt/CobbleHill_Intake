@@ -229,6 +229,11 @@ source scripts/api_env.sh
   rename a bucket — the output schema, prompt bucket list and validation all derive from it.
   Every extracted diagnosis is tagged (`Diagnosis.category`, plus a deduped
   `diagnosis_categories` list on results). Bucket list + rules shared via `classifiers/categories.py`.
+  Extraction and bucketing are **separate LLM steps**: `DiagnosisExtractionClassifier` (note →
+  names + ICD, no categories) then `DiagnosisCategorizationClassifier` (one batched call per note,
+  name + ICD only, assigned by position; count mismatch → `error`), chained by
+  `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). Tune each prompt with its own
+  integration test: `test_diagnosis_extraction.py` / `test_diagnosis_buckets.py`.
   Reports count patients per bucket of ANY diagnosis (`all_category_groups`, xlsx
   "All Categories"; `csv_writer.count_all_categories`).
 - The main-diagnosis LLM step is **disabled** in every route: `main.py` injects no

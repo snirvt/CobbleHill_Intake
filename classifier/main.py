@@ -6,6 +6,10 @@ from functools import cache
 
 from langchain_core.language_models import BaseChatModel
 
+from classifier.classifiers.diagnosis_categorization import (
+    CategorizedDiagnosisExtractor,
+    DiagnosisCategorizationClassifier,
+)
 from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.classifiers.doctor_visit_needed import DoctorVisitNeededClassifier
 from classifier.classifiers.dr_nurse_match import DrNurseMatchClassifier
@@ -123,9 +127,20 @@ def _make_router() -> DefaultFileRouter:
     )
 
 
-def build_diagnosis_extractor(llm: BaseChatModel | None = None) -> DiagnosisExtractionClassifier:
-    """Wire up the diagnosis-extraction classifier; builds its own LLM if none given."""
-    return DiagnosisExtractionClassifier(llm=llm or _make_llm())
+def build_diagnosis_categorizer(
+    llm: BaseChatModel | None = None,
+) -> DiagnosisCategorizationClassifier:
+    """Wire up the diagnosis bucketing step alone; builds its own LLM if none given."""
+    return DiagnosisCategorizationClassifier(llm=llm or _make_llm())
+
+
+def build_diagnosis_extractor(llm: BaseChatModel | None = None) -> CategorizedDiagnosisExtractor:
+    """Wire up extraction → bucketing on one chat model; builds its own LLM if none given."""
+    llm = llm or _make_llm()
+    return CategorizedDiagnosisExtractor(
+        extractor=DiagnosisExtractionClassifier(llm=llm),
+        categorizer=build_diagnosis_categorizer(llm),
+    )
 
 
 def build_diagnosis_pipeline() -> DrNotePipeline[DiagnosisExtractionResult]:

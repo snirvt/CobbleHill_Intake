@@ -166,6 +166,16 @@ class DiagnosisExtractionResult(BaseModel):
     error: str | None = None
 
 
+class DiagnosisCategorizationResult(BaseModel):
+    """Diagnoses with their buckets assigned by the categorization step."""
+
+    # Same diagnoses, same order as the input; category stays None when the step failed.
+    diagnoses: list[Diagnosis] = []
+    reasoning: str | None = None
+    # Set when the LLM call, parse or count check failed.
+    error: str | None = None
+
+
 class TreatmentRequestResult(BaseModel):
     """Whether anyone indicates the patient should receive treatment, per a dr note."""
 

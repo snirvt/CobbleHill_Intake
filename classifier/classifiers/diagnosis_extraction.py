@@ -6,17 +6,18 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
-from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
 from classifier.classifiers.retry import with_llm_retry
-from classifier.models import (
-    Diagnosis,
-    DiagnosisExtractionResult,
-    DocumentMetadata,
-    unique_categories,
-)
+from classifier.models import Diagnosis, DiagnosisExtractionResult, DocumentMetadata
 from classifier.providers.structured import bind_output_schema
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractedDiagnosis(BaseModel):
+    """One diagnosis found in the note."""
+
+    name: str
+    icd_code: str | None = None
 
 
 class DiagnosisExtractionOutput(BaseModel):
@@ -25,7 +26,7 @@ class DiagnosisExtractionOutput(BaseModel):
     # Declared first so the model reasons before listing diagnoses.
     reasoning: str | None = None
     # Required: JSON without this key is a parse error, not "no diagnoses".
-    diagnoses: list[Diagnosis]
+    diagnoses: list[ExtractedDiagnosis]
 
 
 _PROMPT_TEMPLATE = """\
@@ -53,12 +54,6 @@ described in the HPI or chief complaint.
 - Give a brief reasoning citing the relevant wording and which section each \
 diagnosis came from.
 
-Put each diagnosis into exactly one category from this list (copy the text exactly):
-{categories}
-
-Category rules:
-{category_rules}
-
 {format_instructions}
 
 --- DOCTOR NOTE ---
@@ -67,16 +62,17 @@ Category rules:
 
 
 class DiagnosisExtractionClassifier:
-    """Extracts diagnoses (name, optional ICD code, category) from a dr note's raw text."""
+    """Extracts diagnoses (name, optional ICD code) from a dr note's raw text.
+
+    Categories are left None; ``DiagnosisCategorizationClassifier`` assigns them.
+    """
 
     def __init__(self, llm: BaseChatModel) -> None:
         parser: PydanticOutputParser[DiagnosisExtractionOutput] = PydanticOutputParser(
             pydantic_object=DiagnosisExtractionOutput
         )
         prompt = ChatPromptTemplate.from_template(_PROMPT_TEMPLATE).partial(
-            format_instructions=parser.get_format_instructions(),
-            categories=CATEGORY_LIST,
-            category_rules=CATEGORY_RULES,
+            format_instructions=parser.get_format_instructions()
         )
         self._chain = with_llm_retry(
             prompt | bind_output_schema(llm, DiagnosisExtractionOutput) | parser
@@ -98,8 +94,9 @@ class DiagnosisExtractionClassifier:
             )
             return DiagnosisExtractionResult(
                 file_path=metadata.file_path,
-                diagnoses=output.diagnoses,
-                diagnosis_categories=unique_categories(output.diagnoses),
+                diagnoses=[
+                    Diagnosis(name=d.name, icd_code=d.icd_code) for d in output.diagnoses
+                ],
                 reasoning=output.reasoning,
             )
         except OutputParserException as exc:

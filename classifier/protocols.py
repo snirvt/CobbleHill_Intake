@@ -3,6 +3,8 @@ from typing import Protocol, runtime_checkable
 
 from classifier.models import (
     ClassificationResult,
+    Diagnosis,
+    DiagnosisCategorizationResult,
     DiagnosisExtractionResult,
     DocumentMetadata,
     DrValidityResult,
@@ -76,6 +78,13 @@ class DiagnosisExtractor(Protocol):
     async def extract_diagnoses(
         self, metadata: DocumentMetadata
     ) -> DiagnosisExtractionResult: ...
+
+
+@runtime_checkable
+class DiagnosisCategorizer(Protocol):
+    """Assigns a DiagnosisCategory to each of a note's diagnoses (name + ICD only)."""
+
+    async def categorize(self, diagnoses: list[Diagnosis]) -> DiagnosisCategorizationResult: ...
 
 
 @runtime_checkable
