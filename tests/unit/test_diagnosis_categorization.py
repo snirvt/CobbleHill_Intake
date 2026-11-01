@@ -145,10 +145,8 @@ async def test_categorize_prompt_lists_diagnoses_categories_and_rules() -> None:
     assert "Pick the most specific category" in seen[0]
 
 
-@pytest.mark.parametrize(
-    ("age", "shown"), [(2 / 12, "2 months"), (70.0, "70 years"), (None, "unknown")]
-)
-async def test_categorize_prompt_shows_patient_age(age: float | None, shown: str) -> None:
+@pytest.mark.parametrize(("age", "shown"), [("3 months", "3 months"), (None, "unknown")])
+async def test_categorize_prompt_shows_patient_age(age: str | None, shown: str) -> None:
     llm = _fake_llm([{"name": "Underweight", "category": "Feeding / Growth"}])
     seen = _spy_prompts(llm)
 
@@ -207,9 +205,9 @@ async def test_combined_extractor_merges_categories_and_dedupes() -> None:
     categorizer = _categorizer(categorized)
     combined = CategorizedDiagnosisExtractor(_extractor(extracted), categorizer)
 
-    result = await combined.extract_diagnoses(_metadata(), 0.5)
+    result = await combined.extract_diagnoses(_metadata(), "6 months")
 
-    categorizer.categorize.assert_awaited_once_with(extracted.diagnoses, 0.5)
+    categorizer.categorize.assert_awaited_once_with(extracted.diagnoses, "6 months")
     assert result.file_path == Path("dr_note.pdf")
     assert result.diagnoses == categorized.diagnoses
     assert result.diagnosis_categories == [DiagnosisCategory.FEEDING, DiagnosisCategory.REFLUX]

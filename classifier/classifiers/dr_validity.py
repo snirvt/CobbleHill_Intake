@@ -16,6 +16,7 @@ from classifier.models import (
     ValidityVerdict,
     unique_categories,
 )
+from classifier.output.csv_writer import format_age
 from classifier.protocols import (
     DiagnosisExtractor,
     MainDiagnosisExtractor,
@@ -110,7 +111,10 @@ class DrNoteValidityClassifier:
         """Age first, then diagnoses bucketed with that age (None when the age step failed)."""
         age = await step("age", self._age_extractor.extract_age(metadata))
         diagnoses = await step(
-            "diagnosis", self._diagnosis_extractor.extract_diagnoses(metadata, age.age_years)
+            "diagnosis",
+            self._diagnosis_extractor.extract_diagnoses(
+                metadata, format_age(age.age_years) or None
+            ),
         )
         return age, diagnoses
 

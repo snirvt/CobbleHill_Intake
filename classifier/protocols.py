@@ -75,11 +75,12 @@ class PairClassifier(Protocol):
 class DiagnosisExtractor(Protocol):
     """Extracts diagnoses (name + optional ICD code + category) from a note.
 
-    ``age_years`` comes from the patient-age step when the caller has it; bucketing uses it.
+    ``patient_age`` is the age as a clinician says it (e.g. "3 months"), from the patient-age
+    step when the caller has it; bucketing uses it.
     """
 
     async def extract_diagnoses(
-        self, metadata: DocumentMetadata, age_years: float | None = None
+        self, metadata: DocumentMetadata, patient_age: str | None = None
     ) -> DiagnosisExtractionResult: ...
 
 
@@ -88,7 +89,7 @@ class DiagnosisCategorizer(Protocol):
     """Assigns a DiagnosisCategory to each of a note's diagnoses (name + ICD + patient age)."""
 
     async def categorize(
-        self, diagnoses: list[Diagnosis], age_years: float | None = None
+        self, diagnoses: list[Diagnosis], patient_age: str | None = None
     ) -> DiagnosisCategorizationResult: ...
 
 

@@ -88,7 +88,7 @@ def _pair_clf(verdicts: dict[str | None, ClinicalVerdict] | None = None) -> Magi
 
 def _nurse_dx(error: str | None = None) -> MagicMock:
     async def extract(
-        metadata: DocumentMetadata, age_years: float | None = None
+        metadata: DocumentMetadata, patient_age: str | None = None
     ) -> DiagnosisExtractionResult:
         return DiagnosisExtractionResult(
             file_path=metadata.file_path, diagnoses=[] if error else [_GERD], error=error
@@ -139,7 +139,17 @@ async def test_nurse_diagnoses_bucketed_with_phase_1_age(tmp_path: Path) -> None
 
     await _make(validity=_validity(age_years=0.5), nurse_dx=nurse_dx).run_folder(tmp_path)
 
-    assert nurse_dx.extract_diagnoses.await_args.args[1] == 0.5
+    assert nurse_dx.extract_diagnoses.await_args.args[1] == "6 months"
+
+
+async def test_nurse_diagnoses_get_none_when_phase_1_age_unknown(tmp_path: Path) -> None:
+    _touch(tmp_path / "P" / "dr_note.pdf")
+    _touch(tmp_path / "P" / "nurse_visit.pdf")
+    nurse_dx = _nurse_dx()
+
+    await _make(nurse_dx=nurse_dx).run_folder(tmp_path)
+
+    assert nurse_dx.extract_diagnoses.await_args.args[1] is None
 
 
 async def test_phase_1_failure_skips_phase_2_and_nurse_extraction(tmp_path: Path) -> None:

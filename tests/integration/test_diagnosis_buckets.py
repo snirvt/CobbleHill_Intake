@@ -1,8 +1,8 @@
 """Integration test: diagnosis strings land in the expected DiagnosisCategory bucket.
 
 Exercises only the bucketing step (no note, no extraction), so the categorization prompt
-can be tuned against this list alone. Each case carries the age_years the patient-age
-step would pass, since age decides child-vs-adult buckets. Hits the configured model, so
+can be tuned against this list alone. Each case carries the age text (e.g. "3 months")
+the pipelines pass, since age decides child-vs-adult buckets. Hits the configured model, so
 it needs that service running. Diagnoses are synthetic.
 
 Run with: pytest -m integration tests/integration/test_diagnosis_buckets.py
@@ -13,8 +13,8 @@ import pytest
 from classifier.main import build_diagnosis_categorizer
 from classifier.models import Diagnosis, DiagnosisCategory
 
-_ADULT = 70.0
-_CHILD = 2 / 12
+_ADULT = "70 years"
+_CHILD = "3 months"
 
 _CASES = [
     (
@@ -31,14 +31,14 @@ _CASES = [
     (Diagnosis(name="Diabetic foot ulcer, right foot"), _ADULT, DiagnosisCategory.WOUND),
     (Diagnosis(name="Contact dermatitis of hands"), _ADULT, DiagnosisCategory.SKIN),
     (Diagnosis(name="Alzheimer's dementia, moderate"), _ADULT, DiagnosisCategory.MENTAL_HEALTH),
-    (Diagnosis(name="Postpartum depression"), 30.0, DiagnosisCategory.MENTAL_HEALTH),
-    (Diagnosis(name="Postpartum hemorrhage"), 30.0, DiagnosisCategory.WOMENS_HEALTH),
+    (Diagnosis(name="Postpartum depression"), "30 years", DiagnosisCategory.MENTAL_HEALTH),
+    (Diagnosis(name="Postpartum hemorrhage"), "30 years", DiagnosisCategory.WOMENS_HEALTH),
     (
         Diagnosis(name="Uterine pain, 30 weeks pregnant"),
-        30.0,
+        "30 years",
         DiagnosisCategory.WOMENS_HEALTH,
     ),
-    (Diagnosis(name="Pelvic pain, uterine fibroids"), 45.0, DiagnosisCategory.WOMENS_HEALTH),
+    (Diagnosis(name="Pelvic pain, uterine fibroids"), "45 years", DiagnosisCategory.WOMENS_HEALTH),
     (Diagnosis(name="Underweight", icd_code="R63.6"), _ADULT, DiagnosisCategory.METABOLIC),
     (Diagnosis(name="Obesity, BMI 35"), _ADULT, DiagnosisCategory.METABOLIC),
     (Diagnosis(name="Feeding difficulty in newborn"), _CHILD, DiagnosisCategory.FEEDING),
@@ -67,7 +67,7 @@ def _case_id(value: object) -> str:
 @pytest.mark.integration
 @pytest.mark.parametrize(("diagnosis", "age", "expected"), _CASES, ids=_case_id)
 async def test_diagnosis_lands_in_expected_bucket(
-    diagnosis: Diagnosis, age: float, expected: DiagnosisCategory
+    diagnosis: Diagnosis, age: str, expected: DiagnosisCategory
 ) -> None:
     result = await build_diagnosis_categorizer().categorize([diagnosis], age)
 
@@ -81,7 +81,7 @@ async def test_whole_note_batch_keeps_order_and_count() -> None:
     peds = _CASES[-6:]
     batch = [d for d, _, _ in peds] + [Diagnosis(name="Abdominal bloating", icd_code="R14.0")]
 
-    result = await build_diagnosis_categorizer().categorize(batch, 0.0)
+    result = await build_diagnosis_categorizer().categorize(batch, "0 days")
 
     assert result.error is None, result.error
     assert [d.name for d in result.diagnoses] == [d.name for d in batch]

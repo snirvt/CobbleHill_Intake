@@ -84,6 +84,7 @@ def _metadata(text: str = "--- dr_a.pdf ---\nA\n\n--- dr_b.pdf ---\nB") -> Docum
 # _patient_group
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("age", "group"),
     [
@@ -121,14 +122,20 @@ _PEDS, _ADULT, _UNKNOWN = PatientGroup.PEDIATRIC, PatientGroup.ADULT, PatientGro
         (_PEDS, _EXISTS, _NOT_NEEDED, ValidityVerdict.INVALID, ["no medical necessity"]),
         (_PEDS, _MISSING, _NEEDED, ValidityVerdict.INVALID, ["no diagnosis"]),
         (
-            _PEDS, _MISSING, _NOT_NEEDED, ValidityVerdict.INVALID,
+            _PEDS,
+            _MISSING,
+            _NOT_NEEDED,
+            ValidityVerdict.INVALID,
             ["no diagnosis", "no medical necessity"],
         ),
         (_ADULT, _EXISTS, _NOT_NEEDED, ValidityVerdict.VALID, []),
         (_ADULT, _MISSING, _NEEDED, ValidityVerdict.INVALID, ["no diagnosis"]),
         (_UNKNOWN, _EXISTS, _NEEDED, ValidityVerdict.UNKNOWN_AGE, ["age not found"]),
         (
-            _UNKNOWN, _EXISTS, _NOT_NEEDED, ValidityVerdict.UNKNOWN_AGE,
+            _UNKNOWN,
+            _EXISTS,
+            _NOT_NEEDED,
+            ValidityVerdict.UNKNOWN_AGE,
             ["age not found", "no medical necessity (required if under 18)"],
         ),
         (_UNKNOWN, _MISSING, _NEEDED, ValidityVerdict.INVALID, ["no diagnosis", "age not found"]),
@@ -147,6 +154,7 @@ def test_verdict_rules(
 # ---------------------------------------------------------------------------
 # classify
 # ---------------------------------------------------------------------------
+
 
 async def test_classify_peds_valid_populates_all_fields() -> None:
     clf, _ = _make_classifier(age=0.67)
@@ -181,7 +189,9 @@ async def test_classify_without_main_diagnosis_extractor_leaves_main_fields_empt
     assert result.verdict is ValidityVerdict.VALID
     assert [d.name for d in result.diagnoses] == ["Colic"]
     assert (result.main_diagnosis, result.diagnosis_category, result.main_diagnosis_icd) == (
-        None, None, None,
+        None,
+        None,
+        None,
     )
     mocks["main"].assert_not_awaited()
 
@@ -239,8 +249,16 @@ async def test_classify_buckets_diagnoses_with_age_from_age_step() -> None:
 
     await clf.classify(_metadata(), _DR_PATHS)
 
-    assert mocks["diagnosis"].await_args.args[1] == 0.5
+    assert mocks["diagnosis"].await_args.args[1] == "6 months"
     assert order == ["age", "diagnosis"]
+
+
+async def test_classify_buckets_with_unknown_age_as_none() -> None:
+    clf, mocks = _make_classifier(age=None)
+
+    await clf.classify(_metadata(), _DR_PATHS)
+
+    assert mocks["diagnosis"].await_args.args[1] is None
 
 
 async def test_classify_attributes_llm_calls_to_named_steps() -> None:
@@ -251,8 +269,9 @@ async def test_classify_attributes_llm_calls_to_named_steps() -> None:
         original = mock.side_effect
 
         def recording(m, *args, _orig=original):  # type: ignore[no-untyped-def]
-            record_llm_call(wait_s=0, call_s=0, prompt_tokens=1, completion_tokens=1,
-                            answer_chars=0)
+            record_llm_call(
+                wait_s=0, call_s=0, prompt_tokens=1, completion_tokens=1, answer_chars=0
+            )
             return _orig(m, *args)
 
         mock.side_effect = recording
@@ -265,7 +284,10 @@ async def test_classify_attributes_llm_calls_to_named_steps() -> None:
         current_timings.reset(token)
 
     assert sorted(c.step for c in timings.llm_calls) == [
-        "age", "care", "diagnosis", "main_diagnosis",
+        "age",
+        "care",
+        "diagnosis",
+        "main_diagnosis",
     ]
 
 

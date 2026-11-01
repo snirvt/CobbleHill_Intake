@@ -23,7 +23,6 @@ from classifier.models import (
     DocumentMetadata,
     unique_categories,
 )
-from classifier.output.csv_writer import format_age
 from classifier.protocols import DiagnosisCategorizer
 from classifier.providers.structured import bind_output_schema
 
@@ -91,12 +90,12 @@ class DiagnosisCategorizationClassifier:
         )
 
     async def categorize(
-        self, diagnoses: list[Diagnosis], age_years: float | None = None
+        self, diagnoses: list[Diagnosis], patient_age: str | None = None
     ) -> DiagnosisCategorizationResult:
         """Return the diagnoses with categories set, by position; error set on failure.
 
-        ``age_years`` (from the patient-age step) decides child-vs-adult buckets; it is shown
-        to the model as e.g. "2 months", or "unknown" when None.
+        ``patient_age`` (e.g. "3 months", from the patient-age step) decides child-vs-adult
+        buckets; None is shown to the model as "unknown".
         """
         if not diagnoses:
             return DiagnosisCategorizationResult()
@@ -104,7 +103,7 @@ class DiagnosisCategorizationClassifier:
             output: DiagnosisCategorizationOutput = await self._chain.ainvoke(
                 {
                     "diagnoses": _format_diagnoses(diagnoses),
-                    "patient_age": format_age(age_years) or "unknown",
+                    "patient_age": patient_age or "unknown",
                 }
             )
         except OutputParserException as exc:
@@ -147,16 +146,16 @@ class CategorizedDiagnosisExtractor:
         self._categorizer = categorizer
 
     async def extract_diagnoses(
-        self, metadata: DocumentMetadata, age_years: float | None = None
+        self, metadata: DocumentMetadata, patient_age: str | None = None
     ) -> DiagnosisExtractionResult:
         """Run extraction then categorization; an extraction error skips categorization.
 
-        ``age_years`` (from the patient-age step) only feeds categorization.
+        ``patient_age`` (e.g. "3 months", from the patient-age step) only feeds categorization.
         """
         extracted = await self._extractor.extract_diagnoses(metadata)
         if extracted.error is not None:
             return extracted
-        categorized = await self._categorizer.categorize(extracted.diagnoses, age_years)
+        categorized = await self._categorizer.categorize(extracted.diagnoses, patient_age)
         reasoning = "\n".join(
             f"{label}: {text}"
             for label, text in (
