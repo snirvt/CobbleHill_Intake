@@ -93,8 +93,8 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["patient_group"] == "PEDIATRIC"
     assert row["age"] == "6 months"
     assert "main_diagnosis" not in row
-    assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD]"
-    assert row["diagnosis_categories"] == "Reflux / GERD"
+    assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD / Vomiting]"
+    assert row["diagnosis_categories"] == "Reflux / GERD / Vomiting"
     assert row["medical_necessity"] == "NEEDED"
 
 
@@ -129,7 +129,7 @@ def test_all_categories_sheet_counts_patients_by_any_diagnosis(tmp_path: Path) -
     write_dr_validity_xlsx([multi, _ok(tmp_path, "B", ValidityVerdict.VALID)], out)
 
     rows = list(openpyxl.load_workbook(out)["All Categories"].iter_rows(values_only=True))
-    assert rows == [("diagnosis_category", "count"), ("Reflux / GERD", 2), ("Respiratory", 1)]
+    assert rows == [("diagnosis_category", "count"), ("Reflux / GERD / Vomiting", 2), ("Respiratory", 1)]
 
 
 # ---------------------------------------------------------------------------

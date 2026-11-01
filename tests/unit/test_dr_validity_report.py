@@ -85,8 +85,8 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "age": "6 months",
         "age_years": 0.5,
         "diagnosis_check": "EXISTS",
-        "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD"}],
-        "diagnosis_categories": ["Reflux / GERD"],
+        "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD / Vomiting"}],
+        "diagnosis_categories": ["Reflux / GERD / Vomiting"],
         "medical_necessity": "NEEDED",
         "medical_necessity_reasoning": "needs home services",
     }
@@ -191,7 +191,7 @@ def test_all_category_groups_count_each_patient_once_per_category(tmp_path: Path
     results = [multi, _ok(tmp_path, "B", ValidityVerdict.VALID), _failed(tmp_path, "C")]
 
     assert dr_validity_all_category_groups(results) == [
-        {"diagnosis_category": "Reflux / GERD", "count": 2},
+        {"diagnosis_category": "Reflux / GERD / Vomiting", "count": 2},
         {"diagnosis_category": "Respiratory", "count": 1},
         {"diagnosis_category": "Unknown", "count": 1},
     ]

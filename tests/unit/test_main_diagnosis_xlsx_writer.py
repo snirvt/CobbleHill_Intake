@@ -93,7 +93,7 @@ def test_categories_sheet_counts_by_category(tmp_path: Path) -> None:
 
     assert _rows(out, "Categories") == [
         ("main_diagnosis_category", "count"),
-        ("Reflux / GERD", 2),
+        ("Reflux / GERD / Vomiting", 2),
         ("Fracture / Fall", 1),
         ("Unknown", 1),
     ]

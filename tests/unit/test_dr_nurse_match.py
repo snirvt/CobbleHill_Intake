@@ -354,7 +354,7 @@ async def test_diagnosis_check_collects_proof_from_both_notes() -> None:
 async def test_diagnosis_categories_combine_dr_and_nurse_deduped() -> None:
     extractor = _fake_diagnosis_extractor(
         dr_diagnoses=[
-            Diagnosis(name="Colic", category=DiagnosisCategory.GASTROINTESTINAL),
+            Diagnosis(name="Colic", category=DiagnosisCategory.FUSSINESS),
             Diagnosis(name="Pneumonia", category=DiagnosisCategory.RESPIRATORY),
         ],
         nurse_diagnoses=[
@@ -366,7 +366,7 @@ async def test_diagnosis_categories_combine_dr_and_nurse_deduped() -> None:
     pair = _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
     result = await clf.classify_pair(pair)
     assert result.diagnosis_categories == [
-        DiagnosisCategory.GASTROINTESTINAL,
+        DiagnosisCategory.FUSSINESS,
         DiagnosisCategory.RESPIRATORY,
         DiagnosisCategory.REFLUX,
     ]

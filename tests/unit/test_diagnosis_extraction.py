@@ -99,7 +99,7 @@ async def test_diagnosis_categories_are_deduped_in_order() -> None:
     llm = _fake_llm(
         [
             {"name": "Pneumonia", "icd_code": None, "category": "Respiratory"},
-            {"name": "GERD", "icd_code": None, "category": "Reflux / GERD"},
+            {"name": "GERD", "icd_code": None, "category": "Reflux / GERD / Vomiting"},
             {"name": "Asthma", "icd_code": None, "category": "Respiratory"},
         ]
     )

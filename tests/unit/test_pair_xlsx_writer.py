@@ -105,7 +105,7 @@ def test_all_categories_sheet_counts_dr_diagnoses_per_pair(tmp_path: Path) -> No
 
     rows = _sheet_rows(openpyxl.load_workbook(out)["All Categories"])
     assert rows == [
-        ["diagnosis_category", "count"], ["Reflux / GERD", 1], ["Respiratory", 1], ["Unknown", 1],
+        ["diagnosis_category", "count"], ["Reflux / GERD / Vomiting", 1], ["Respiratory", 1], ["Unknown", 1],
     ]
 
 
@@ -309,7 +309,7 @@ def test_diagnosis_categories_column_joins_categories(tmp_path: Path) -> None:
     out = tmp_path / "results.xlsx"
     write_pair_xlsx([result], out)
     ws = openpyxl.load_workbook(out)["All"]
-    assert _row_value(ws, "diagnosis_categories") == "Respiratory; Reflux / GERD"
+    assert _row_value(ws, "diagnosis_categories") == "Respiratory; Reflux / GERD / Vomiting"
 
 
 def test_format_diagnoses_appends_category() -> None:
@@ -317,7 +317,7 @@ def test_format_diagnoses_appends_category() -> None:
         Diagnosis(name="Pneumonia", icd_code="J18.9", category=DiagnosisCategory.RESPIRATORY),
         Diagnosis(name="Reflux", category=DiagnosisCategory.REFLUX),
     ]
-    assert format_diagnoses(diagnoses) == "Pneumonia (J18.9) [Respiratory]; Reflux [Reflux / GERD]"
+    assert format_diagnoses(diagnoses) == "Pneumonia (J18.9) [Respiratory]; Reflux [Reflux / GERD / Vomiting]"
 
 
 def test_format_categories_empty_list_is_blank() -> None:

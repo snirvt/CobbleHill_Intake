@@ -159,5 +159,5 @@ def test_count_all_categories_counts_each_patient_once_per_category() -> None:
     ])
 
     assert groups == [
-        ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Reflux / GERD", 1),
+        ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Reflux / GERD / Vomiting", 1),
     ]

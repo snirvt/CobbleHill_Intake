@@ -24,6 +24,12 @@ _CASES = [
     ("Uterine pain, 30 weeks pregnant", DiagnosisCategory.WOMENS_HEALTH),
     ("Pelvic pain, uterine fibroids", DiagnosisCategory.WOMENS_HEALTH),
     ("Feeding difficulty in newborn", DiagnosisCategory.FEEDING),
+    ("Feeding disability (R63.30)", DiagnosisCategory.FEEDING),
+    ("Underweight (R63.6)", DiagnosisCategory.FEEDING),
+    ("Short stature", DiagnosisCategory.FEEDING),
+    ("Vomiting in infants AND/OR children (R11.10)", DiagnosisCategory.REFLUX),
+    ("Neonatal agitation (R68.12)", DiagnosisCategory.FUSSINESS),
+    ("Colic", DiagnosisCategory.FUSSINESS),
 ]
 
 
