@@ -52,12 +52,14 @@ def _validity(
     group: PatientGroup = PatientGroup.ADULT,
     diagnosis: bool = True,
     care: CareCheck | None = None,
+    age_years: float | None = None,
 ) -> MagicMock:
     async def classify(metadata: DocumentMetadata, dr_paths: list[Path]) -> DrValidityResult:
         return DrValidityResult(
             patient_folder=metadata.file_path.parent,
             dr_paths=dr_paths,
             patient_group=group,
+            age_years=age_years,
             diagnosis_check=DiagnosisCheck.EXISTS if diagnosis else DiagnosisCheck.MISSING,
             diagnoses=[_GERD] if diagnosis else [],
             care_check=care,
@@ -85,7 +87,9 @@ def _pair_clf(verdicts: dict[str | None, ClinicalVerdict] | None = None) -> Magi
 
 
 def _nurse_dx(error: str | None = None) -> MagicMock:
-    async def extract(metadata: DocumentMetadata) -> DiagnosisExtractionResult:
+    async def extract(
+        metadata: DocumentMetadata, age_years: float | None = None
+    ) -> DiagnosisExtractionResult:
         return DiagnosisExtractionResult(
             file_path=metadata.file_path, diagnoses=[] if error else [_GERD], error=error
         )
@@ -126,6 +130,16 @@ async def test_matching_pair_after_phase_1_pass_is_accepted(tmp_path: Path) -> N
     assert r.result.pairs[0].dr_paths == [dr]
     assert r.result.pairs[0].nurse_diagnoses == [_GERD]
     assert r.result.explanation == "Doctor and nurse both report GERD (K21.9)."
+
+
+async def test_nurse_diagnoses_bucketed_with_phase_1_age(tmp_path: Path) -> None:
+    _touch(tmp_path / "P" / "dr_note.pdf")
+    _touch(tmp_path / "P" / "nurse_visit.pdf")
+    nurse_dx = _nurse_dx()
+
+    await _make(validity=_validity(age_years=0.5), nurse_dx=nurse_dx).run_folder(tmp_path)
+
+    assert nurse_dx.extract_diagnoses.await_args.args[1] == 0.5
 
 
 async def test_phase_1_failure_skips_phase_2_and_nurse_extraction(tmp_path: Path) -> None:
@@ -253,9 +267,7 @@ async def test_nurse_diagnosis_failure_is_reported(tmp_path: Path) -> None:
 
 async def test_classifier_step_error_is_reported(tmp_path: Path) -> None:
     _touch(tmp_path / "P" / "dr_note.pdf")
-    step_error = RunError(
-        stage=ErrorStage.AGE, code=ErrorCode.LLM_FAILED, message="LLM error: x"
-    )
+    step_error = RunError(stage=ErrorStage.AGE, code=ErrorCode.LLM_FAILED, message="LLM error: x")
     validity = MagicMock()
     validity.classify = AsyncMock(side_effect=ClassificationStepError([step_error]))
 

@@ -57,10 +57,18 @@ def test_category_rules_route_vomiting_to_reflux() -> None:
 def test_category_rules_route_growth_terms_to_feeding_growth() -> None:
     feeding_rule = _rule("failure to")
 
-    for term in ("short stature", "underweight", "feeding disability"):
+    for term in ("short stature", "underweight", "feeding disability", "child"):
         assert term in feeding_rule
+    assert '"Obesity / Metabolic"' in feeding_rule
     assert '"Blood / Anemia"' in feeding_rule
     assert '"Developmental / Cognitive"' in feeding_rule
+
+
+def test_category_rules_route_adult_underweight_to_metabolic() -> None:
+    adult_rule = _rule("In an adult")
+
+    assert "underweight" in adult_rule
+    assert '"Obesity / Metabolic"' in adult_rule
 
 
 def test_category_rules_route_agitation_and_colic_to_fussiness() -> None:

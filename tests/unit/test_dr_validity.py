@@ -37,7 +37,7 @@ def _make_classifier(
             side_effect=lambda m: PatientAgeResult(file_path=m.file_path, age_years=age)
         ),
         "diagnosis": AsyncMock(
-            side_effect=lambda m: DiagnosisExtractionResult(
+            side_effect=lambda m, _age=None: DiagnosisExtractionResult(
                 file_path=m.file_path,
                 diagnoses=[
                     Diagnosis(
@@ -227,6 +227,22 @@ async def test_classify_calls_every_extractor_once_with_combined_text() -> None:
         assert mock.await_args.args[0].raw_text == metadata.raw_text
 
 
+async def test_classify_buckets_diagnoses_with_age_from_age_step() -> None:
+    clf, mocks = _make_classifier(age=0.5)
+    order: list[str] = []
+    mocks["age"].side_effect = lambda m, _orig=mocks["age"].side_effect: (
+        order.append("age") or _orig(m)
+    )
+    mocks["diagnosis"].side_effect = lambda m, age, _orig=mocks["diagnosis"].side_effect: (
+        order.append("diagnosis") or _orig(m, age)
+    )
+
+    await clf.classify(_metadata(), _DR_PATHS)
+
+    assert mocks["diagnosis"].await_args.args[1] == 0.5
+    assert order == ["age", "diagnosis"]
+
+
 async def test_classify_attributes_llm_calls_to_named_steps() -> None:
     from classifier.timing import PatientTimings, current_timings, record_llm_call
 
@@ -234,10 +250,10 @@ async def test_classify_attributes_llm_calls_to_named_steps() -> None:
     for name, mock in mocks.items():
         original = mock.side_effect
 
-        def recording(m, _orig=original):  # type: ignore[no-untyped-def]
+        def recording(m, *args, _orig=original):  # type: ignore[no-untyped-def]
             record_llm_call(wait_s=0, call_s=0, prompt_tokens=1, completion_tokens=1,
                             answer_chars=0)
-            return _orig(m)
+            return _orig(m, *args)
 
         mock.side_effect = recording
 
@@ -274,7 +290,7 @@ async def test_classify_raises_step_error_listing_every_failed_step() -> None:
 
 async def test_classify_diagnosis_failure_is_error_not_invalid_verdict() -> None:
     clf, mocks = _make_classifier(age=80)
-    mocks["diagnosis"].side_effect = lambda m: DiagnosisExtractionResult(
+    mocks["diagnosis"].side_effect = lambda m, _age=None: DiagnosisExtractionResult(
         file_path=m.file_path, error="LLM error: connection refused"
     )
 
