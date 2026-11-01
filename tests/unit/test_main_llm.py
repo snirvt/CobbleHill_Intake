@@ -4,10 +4,16 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
 from classifier import main
+from classifier.classifiers.diagnosis_categorization import (
+    CategorizedDiagnosisExtractor,
+    DiagnosisCategorizationClassifier,
+)
+from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.folder_checks import RequiredNotesCheck
 from classifier.providers.ollama import SemaphoreChatModel
 
@@ -210,3 +216,19 @@ def test_pipelines_receive_file_semaphore(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert main.build_dr_validity_pipeline(None, files)._semaphore is files
     assert main.build_pair_pipeline(None, files)._semaphore is files
+
+
+def test_build_diagnosis_extractor_chains_extraction_and_categorization_on_one_llm() -> None:
+    llm = FakeListChatModel(responses=["x"])
+
+    extractor = main.build_diagnosis_extractor(llm)
+
+    assert isinstance(extractor, CategorizedDiagnosisExtractor)
+    assert isinstance(extractor._extractor, DiagnosisExtractionClassifier)
+    assert isinstance(extractor._categorizer, DiagnosisCategorizationClassifier)
+
+
+def test_build_diagnosis_categorizer_returns_categorization_classifier() -> None:
+    categorizer = main.build_diagnosis_categorizer(FakeListChatModel(responses=["x"]))
+
+    assert isinstance(categorizer, DiagnosisCategorizationClassifier)
