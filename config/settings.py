@@ -151,6 +151,7 @@ class Settings(BaseSettings):
         "care": "off",
         "main_diagnosis": "off",
         "clinical_match": "off",
+        "doctor_visit_needed": "off",
     }
     classifier_tasks: list[str] = ["doctor_visit_needed"]
     max_concurrent_llm_calls: int = 8

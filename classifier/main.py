@@ -104,16 +104,22 @@ _LLM_BUILDERS: dict[str, Callable[[asyncio.Semaphore, str], BaseChatModel]] = {
 
 
 def _make_llm(
-    semaphore: asyncio.Semaphore | None = None, thinking: str = "high"
+    semaphore: asyncio.Semaphore | None = None, *, thinking: str
 ) -> BaseChatModel:
     """Build the chat model for the configured backend (settings.llm_backend).
 
     Pass a shared ``semaphore`` so several models honour one max_concurrent_llm_calls
-    budget; ``thinking`` is a key of settings.vllm_thinking_levels.
+    budget; ``thinking`` is a key of settings.vllm_thinking_levels. No default on purpose:
+    use ``_task_llm`` so every caller gets the same level as production.
     """
     if semaphore is None:
         semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
     return _LLM_BUILDERS[settings.llm_backend](semaphore, thinking)
+
+
+def _task_llm(task: str, semaphore: asyncio.Semaphore | None = None) -> BaseChatModel:
+    """Chat model at settings.task_thinking[task] — the level production uses for that task."""
+    return _make_llm(semaphore, thinking=settings.task_thinking[task])
 
 
 def _make_router() -> DefaultFileRouter:
@@ -127,16 +133,18 @@ def _make_router() -> DefaultFileRouter:
     )
 
 
+
+
 def build_diagnosis_categorizer(
     llm: BaseChatModel | None = None,
 ) -> DiagnosisCategorizationClassifier:
     """Wire up the diagnosis bucketing step alone; builds its own LLM if none given."""
-    return DiagnosisCategorizationClassifier(llm=llm or _make_llm())
+    return DiagnosisCategorizationClassifier(llm=llm or _task_llm("diagnosis"))
 
 
 def build_diagnosis_extractor(llm: BaseChatModel | None = None) -> CategorizedDiagnosisExtractor:
     """Wire up extraction → bucketing on one chat model; builds its own LLM if none given."""
-    llm = llm or _make_llm()
+    llm = llm or _task_llm("diagnosis")
     return CategorizedDiagnosisExtractor(
         extractor=DiagnosisExtractionClassifier(llm=llm),
         categorizer=build_diagnosis_categorizer(llm),
@@ -160,7 +168,7 @@ def build_treatment_request_extractor(
     llm: BaseChatModel | None = None,
 ) -> TreatmentRequestClassifier:
     """Wire up the treatment-request classifier; builds its own LLM if none given."""
-    return TreatmentRequestClassifier(llm=llm or _make_llm())
+    return TreatmentRequestClassifier(llm=llm or _task_llm("care"))
 
 
 def build_treatment_request_pipeline() -> DrNotePipeline[TreatmentRequestResult]:
@@ -182,7 +190,7 @@ def build_main_diagnosis_extractor(
     llm: BaseChatModel | None = None,
 ) -> MainDiagnosisClassifier:
     """Wire up the main-diagnosis classifier; builds its own LLM if none given."""
-    return MainDiagnosisClassifier(llm=llm or _make_llm())
+    return MainDiagnosisClassifier(llm=llm or _task_llm("main_diagnosis"))
 
 
 def build_main_diagnosis_pipeline() -> DrNotePipeline[MainDiagnosisResult]:
@@ -200,7 +208,7 @@ def build_main_diagnosis_pipeline() -> DrNotePipeline[MainDiagnosisResult]:
 
 def build_patient_age_extractor(llm: BaseChatModel | None = None) -> PatientAgeClassifier:
     """Wire up the patient-age classifier; builds its own LLM if none given."""
-    return PatientAgeClassifier(llm=llm or _make_llm())
+    return PatientAgeClassifier(llm=llm or _task_llm("age"))
 
 
 def _task_llm_factory(
@@ -213,7 +221,7 @@ def _task_llm_factory(
     shared = semaphore or asyncio.Semaphore(settings.max_concurrent_llm_calls)
 
     def llm(task: str) -> BaseChatModel:
-        return _make_llm(shared, settings.task_thinking[task])
+        return _task_llm(task, shared)
 
     return llm
 
@@ -361,7 +369,7 @@ def build_pipeline() -> Pipeline:
     """Wire up all components and return a ready-to-use Pipeline."""
     _make_env()
     meta_extractor = ProgressNoteExtractor()
-    llm = _make_llm()
+    llm = _task_llm("doctor_visit_needed")
     tasks = [
         _TASK_REGISTRY[name](llm)
         for name in settings.classifier_tasks

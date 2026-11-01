@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
-from classifier.main import _make_llm
+from classifier.main import _task_llm
 from classifier.models import DocumentMetadata, PatientMetadata
 
 
@@ -20,7 +20,9 @@ def _note(text: str) -> DocumentMetadata:
 
 
 async def _names(text: str) -> tuple[list[str], list[str | None]]:
-    result = await DiagnosisExtractionClassifier(llm=_make_llm()).extract_diagnoses(_note(text))
+    result = await DiagnosisExtractionClassifier(llm=_task_llm("diagnosis")).extract_diagnoses(
+        _note(text)
+    )
     assert result.error is None, result.error
     return [d.name.lower() for d in result.diagnoses], [d.icd_code for d in result.diagnoses]
 

@@ -203,6 +203,9 @@ source scripts/api_env.sh
   fallback default (empty list, `False`) pass as a real answer. Classifiers turn step errors into
   `ClassificationStepError` via `classifiers/step_errors.raise_on_step_errors`; pipelines report
   them as `RunError`s (`models.py`) in the output.
+- Thinking level per task lives in `settings.task_thinking`. Standalone builders default to
+  `_task_llm(task)` (`main.py`); `_make_llm` has no thinking default on purpose, so tests, CLI
+  modes and pipelines always run the same level as production.
 - Constrain output to the schema: build chains as
   `prompt | bind_output_schema(llm, OutputModel) | parser` (`providers/structured.py`). Providers opt
   in via `SemaphoreChatModel.schema_kwargs` (vLLM `response_format` json_schema, ollama `format`), so

@@ -20,7 +20,7 @@ from classifier.providers.ollama import SemaphoreChatModel
 
 def test_make_llm_builds_ollama_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "llm_backend", "ollama")
-    llm = main._make_llm()
+    llm = main._make_llm(thinking="off")
     assert isinstance(llm, SemaphoreChatModel)
     assert isinstance(llm.inner, ChatOllama)
 
@@ -34,7 +34,7 @@ def test_make_llm_ollama_ignores_thinking_level(monkeypatch: pytest.MonkeyPatch)
 
 def test_make_llm_builds_vllm_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "llm_backend", "vllm")
-    llm = main._make_llm()
+    llm = main._make_llm(thinking="off")
     assert isinstance(llm, SemaphoreChatModel)
     assert isinstance(llm.inner, ChatOpenAI)
     assert llm.inner.model_name == main.settings.vllm_model
@@ -54,7 +54,7 @@ def test_make_llm_vllm_sends_thinking_level_params(
 def test_make_llm_uses_given_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "llm_backend", "vllm")
     sem = asyncio.Semaphore(2)
-    llm = main._make_llm(sem, "off")
+    llm = main._make_llm(sem, thinking="off")
     assert isinstance(llm, SemaphoreChatModel)
     assert llm.semaphore is sem
 
@@ -104,7 +104,7 @@ def test_make_llm_applies_token_cap_and_timeout(
     monkeypatch.setattr(main.settings, "llm_max_output_tokens", 123)
     monkeypatch.setattr(main.settings, "llm_request_timeout_s", 45.0)
 
-    llm = main._make_llm()
+    llm = main._make_llm(thinking="off")
 
     assert isinstance(llm, SemaphoreChatModel)
     inner = llm.inner
@@ -232,3 +232,60 @@ def test_build_diagnosis_categorizer_returns_categorization_classifier() -> None
     categorizer = main.build_diagnosis_categorizer(FakeListChatModel(responses=["x"]))
 
     assert isinstance(categorizer, DiagnosisCategorizationClassifier)
+
+
+@pytest.mark.parametrize(
+    ("builder", "task"),
+    [
+        ("build_patient_age_extractor", "age"),
+        ("build_diagnosis_extractor", "diagnosis"),
+        ("build_diagnosis_categorizer", "diagnosis"),
+        ("build_treatment_request_extractor", "care"),
+        ("build_main_diagnosis_extractor", "main_diagnosis"),
+    ],
+)
+def test_standalone_builders_use_their_task_thinking_level(
+    monkeypatch: pytest.MonkeyPatch, builder: str, task: str
+) -> None:
+    levels = _fake_vllm_levels(monkeypatch)
+
+    getattr(main, builder)()
+
+    assert levels == [_DISTINCT_LEVELS[task]]
+
+
+def test_build_pipeline_uses_doctor_visit_needed_thinking_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    levels = _fake_vllm_levels(monkeypatch)
+    monkeypatch.setattr(main, "_make_env", lambda: None)
+    monkeypatch.setattr(main, "_make_router", lambda: None)
+
+    main.build_pipeline()
+
+    assert levels == [_DISTINCT_LEVELS["doctor_visit_needed"]]
+
+
+def test_task_thinking_covers_every_registered_task() -> None:
+    assert set(main._TASK_REGISTRY) <= set(main.settings.task_thinking)
+
+
+# A distinct fake level per task (the vLLM builder is faked), so a wrong key is caught.
+_DISTINCT_LEVELS = {
+    task: f"{task}-level"
+    for task in ("age", "diagnosis", "care", "main_diagnosis", "doctor_visit_needed")
+}
+
+
+def _fake_vllm_levels(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Fake the vLLM builder; return the list of thinking levels it gets called with."""
+    monkeypatch.setattr(main.settings, "llm_backend", "vllm")
+    monkeypatch.setattr(main.settings, "task_thinking", _DISTINCT_LEVELS)
+    levels: list[str] = []
+
+    def fake_builder(semaphore: asyncio.Semaphore, thinking: str) -> FakeListChatModel:
+        levels.append(thinking)
+        return FakeListChatModel(responses=["x"])
+
+    monkeypatch.setitem(main._LLM_BUILDERS, "vllm", fake_builder)
+    return levels
