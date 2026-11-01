@@ -6,10 +6,12 @@ from classifier.classifiers.step_errors import raise_on_step_errors
 from classifier.models import (
     CareCheck,
     DiagnosisCheck,
+    DiagnosisExtractionResult,
     DocumentMetadata,
     DrValidityResult,
     ErrorStage,
     MainDiagnosisResult,
+    PatientAgeResult,
     PatientGroup,
     ValidityVerdict,
     unique_categories,
@@ -37,7 +39,7 @@ class DrNoteValidityClassifier:
     Pediatric (under ``settings.pediatric_age_threshold``): needs a diagnosis AND medical
     necessity. Adult: needs a diagnosis. With a main-diagnosis extractor injected, every
     patient also gets a short main-diagnosis label (currently not wired in main.py). The
-    LLM steps run concurrently.
+    LLM steps run concurrently, except diagnosis, which waits for age (bucketing uses it).
     """
 
     def __init__(
@@ -59,9 +61,8 @@ class DrNoteValidityClassifier:
         Raises ClassificationStepError listing every step that failed (after the
         extractors' retries) instead of judging the patient on fallback defaults.
         """
-        age, diagnoses, care, main = await asyncio.gather(
-            step("age", self._age_extractor.extract_age(metadata)),
-            step("diagnosis", self._diagnosis_extractor.extract_diagnoses(metadata)),
+        (age, diagnoses), care, main = await asyncio.gather(
+            self._age_then_diagnoses(metadata),
             step("care", self._care_extractor.extract_treatment_request(metadata)),
             step("main_diagnosis", self._extract_main_diagnosis(metadata)),
         )
@@ -102,6 +103,16 @@ class DrNoteValidityClassifier:
             verdict=verdict,
             reasons=reasons,
         )
+
+    async def _age_then_diagnoses(
+        self, metadata: DocumentMetadata
+    ) -> tuple[PatientAgeResult, DiagnosisExtractionResult]:
+        """Age first, then diagnoses bucketed with that age (None when the age step failed)."""
+        age = await step("age", self._age_extractor.extract_age(metadata))
+        diagnoses = await step(
+            "diagnosis", self._diagnosis_extractor.extract_diagnoses(metadata, age.age_years)
+        )
+        return age, diagnoses
 
     async def _extract_main_diagnosis(
         self, metadata: DocumentMetadata

@@ -15,11 +15,16 @@ not "Neurological".
 abdominal pain.
 - Vomiting, emesis or spit-up at any age (e.g. vomiting in infants, persistent vomiting) is \
 "Reflux / GERD / Vomiting", not "Infection / Sepsis" or "Gastrointestinal".
-- Feeding problems and growth concerns are "Feeding / Growth" even in a newborn or infant \
-(e.g. feeding difficulty, feeding disability, poor feeding, poor weight gain, failure to \
-thrive, slow weight gain, underweight, low weight, short stature, growth delay), not \
-"Gastrointestinal", "Blood / Anemia" or "Developmental / Cognitive"; "Newborn / Well Child" \
-is only for routine newborn care or well-child visits with no specific problem.
+- In a newborn, infant or child, feeding problems and growth concerns are \
+"Feeding / Growth" (e.g. feeding difficulty, feeding disability, poor feeding, poor weight \
+gain, failure to thrive, slow weight gain, underweight, low weight, short stature, growth \
+delay), not "Obesity / Metabolic", "Gastrointestinal", "Blood / Anemia" or \
+"Developmental / Cognitive"; "Newborn / Well Child" is only for routine newborn care or \
+well-child visits with no specific problem. If the age is unknown, treat the patient as \
+a child for these.
+- In an adult, underweight, low weight, weight loss or malnutrition is \
+"Obesity / Metabolic", which also covers obesity, overweight, diabetes, thyroid disease \
+and high cholesterol at any age.
 - Fussiness, fussy baby, irritability, irritable mood, neonatal agitation, excessive crying \
 and colic are "Fussiness / Irritability", not "Brain Bleed / Stroke", "Neurological", \
 "Mental Health" or "Gastrointestinal".

@@ -139,7 +139,7 @@ class IntakeReviewPipeline:
 
         pairs: list[PairMatch] | None = []
         if verdict_1 is PhaseVerdict.PASS:
-            pairs = await self._phase_2(pair_paths, texts, timings, errors)
+            pairs = await self._phase_2(pair_paths, texts, timings, errors, phase_1.age_years)
         timings.classify_wall_s = time.perf_counter() - classify_started
         if pairs is None:
             return self._failed(folder, dr_paths, nurse_paths, errors)
@@ -183,8 +183,11 @@ class IntakeReviewPipeline:
         texts: dict[Path, str],
         timings: PatientTimings,
         errors: list[RunError],
+        age_years: float | None,
     ) -> list[PairMatch] | None:
         """Compare every same-category (dr, nurse) pair; [] when there is none.
+
+        ``age_years`` is Phase I's patient age; it buckets the nurse notes' diagnoses.
 
         Returns None (patient fails) when every nurse note of some pair has no text, since
         that pair cannot be judged.
@@ -196,11 +199,17 @@ class IntakeReviewPipeline:
         if any(all(not texts[p].strip() for p in nurse) for _, nurse in pair_paths):
             return None
         return list(
-            await asyncio.gather(*(self._match_pair(dr, nurse, texts) for dr, nurse in pair_paths))
+            await asyncio.gather(
+                *(self._match_pair(dr, nurse, texts, age_years) for dr, nurse in pair_paths)
+            )
         )
 
     async def _match_pair(
-        self, dr_paths: list[Path], nurse_paths: list[Path], texts: dict[Path, str]
+        self,
+        dr_paths: list[Path],
+        nurse_paths: list[Path],
+        texts: dict[Path, str],
+        age_years: float | None,
     ) -> PairMatch:
         """Clinical match plus the nurse note's diagnoses for one pair."""
         pair = build_pair_metadata(
@@ -216,7 +225,7 @@ class IntakeReviewPipeline:
         )
         match, nurse_diagnoses = await asyncio.gather(
             step("clinical_match", self._pair_clf.classify_pair(pair)),
-            step("nurse_diagnosis", self._nurse_diagnoses.extract_diagnoses(nurse_doc)),
+            step("nurse_diagnosis", self._nurse_diagnoses.extract_diagnoses(nurse_doc, age_years)),
         )
         raise_on_step_errors(
             pair.dr_file_path.parent, {ErrorStage.DIAGNOSIS: nurse_diagnoses.error}

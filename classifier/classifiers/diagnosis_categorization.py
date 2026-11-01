@@ -13,6 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
+from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import (
     Diagnosis,
@@ -22,7 +23,8 @@ from classifier.models import (
     DocumentMetadata,
     unique_categories,
 )
-from classifier.protocols import DiagnosisCategorizer, DiagnosisExtractor
+from classifier.output.csv_writer import format_age
+from classifier.protocols import DiagnosisCategorizer
 from classifier.providers.structured import bind_output_schema
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,8 @@ its name. Give a brief reasoning for any diagnosis whose category is not obvious
 
 {format_instructions}
 
+Patient age: {patient_age}
+
 --- DIAGNOSES ---
 {diagnoses}
 --- END ---"""
@@ -86,13 +90,22 @@ class DiagnosisCategorizationClassifier:
             prompt | bind_output_schema(llm, DiagnosisCategorizationOutput) | parser
         )
 
-    async def categorize(self, diagnoses: list[Diagnosis]) -> DiagnosisCategorizationResult:
-        """Return the diagnoses with categories set, by position; error set on failure."""
+    async def categorize(
+        self, diagnoses: list[Diagnosis], age_years: float | None = None
+    ) -> DiagnosisCategorizationResult:
+        """Return the diagnoses with categories set, by position; error set on failure.
+
+        ``age_years`` (from the patient-age step) decides child-vs-adult buckets; it is shown
+        to the model as e.g. "2 months", or "unknown" when None.
+        """
         if not diagnoses:
             return DiagnosisCategorizationResult()
         try:
             output: DiagnosisCategorizationOutput = await self._chain.ainvoke(
-                {"diagnoses": _format_diagnoses(diagnoses)}
+                {
+                    "diagnoses": _format_diagnoses(diagnoses),
+                    "patient_age": format_age(age_years) or "unknown",
+                }
             )
         except OutputParserException as exc:
             logger.error("Category parse failed: %s", exc)
@@ -127,16 +140,23 @@ class DiagnosisCategorizationClassifier:
 class CategorizedDiagnosisExtractor:
     """Extract diagnoses from a note, then bucket them: the full ``DiagnosisExtractor``."""
 
-    def __init__(self, extractor: DiagnosisExtractor, categorizer: DiagnosisCategorizer) -> None:
+    def __init__(
+        self, extractor: DiagnosisExtractionClassifier, categorizer: DiagnosisCategorizer
+    ) -> None:
         self._extractor = extractor
         self._categorizer = categorizer
 
-    async def extract_diagnoses(self, metadata: DocumentMetadata) -> DiagnosisExtractionResult:
-        """Run extraction then categorization; an extraction error skips categorization."""
+    async def extract_diagnoses(
+        self, metadata: DocumentMetadata, age_years: float | None = None
+    ) -> DiagnosisExtractionResult:
+        """Run extraction then categorization; an extraction error skips categorization.
+
+        ``age_years`` (from the patient-age step) only feeds categorization.
+        """
         extracted = await self._extractor.extract_diagnoses(metadata)
         if extracted.error is not None:
             return extracted
-        categorized = await self._categorizer.categorize(extracted.diagnoses)
+        categorized = await self._categorizer.categorize(extracted.diagnoses, age_years)
         reasoning = "\n".join(
             f"{label}: {text}"
             for label, text in (

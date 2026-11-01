@@ -234,8 +234,10 @@ source scripts/api_env.sh
   `diagnosis_categories` list on results). Bucket list + rules shared via `classifiers/categories.py`.
   Extraction and bucketing are **separate LLM steps**: `DiagnosisExtractionClassifier` (note →
   names + ICD, no categories) then `DiagnosisCategorizationClassifier` (one batched call per note,
-  name + ICD only, assigned by position; count mismatch → `error`), chained by
-  `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). Tune each prompt with its own
+  name + ICD + patient age, assigned by position; count mismatch → `error`), chained by
+  `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). The age is `age_years` from the
+  existing `PatientAgeClassifier`: dr-validity runs age before diagnosis, intake-review passes
+  Phase I's age to the nurse diagnoses, dr-nurse-match has none ("unknown"). Tune each prompt with its own
   integration test: `test_diagnosis_extraction.py` / `test_diagnosis_buckets.py`.
   Reports count patients per bucket of ANY diagnosis (`all_category_groups`, xlsx
   "All Categories"; `csv_writer.count_all_categories`).

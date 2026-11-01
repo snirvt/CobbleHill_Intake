@@ -73,18 +73,23 @@ class PairClassifier(Protocol):
 
 @runtime_checkable
 class DiagnosisExtractor(Protocol):
-    """Extracts diagnoses (name + optional ICD code) from a dr note."""
+    """Extracts diagnoses (name + optional ICD code + category) from a note.
+
+    ``age_years`` comes from the patient-age step when the caller has it; bucketing uses it.
+    """
 
     async def extract_diagnoses(
-        self, metadata: DocumentMetadata
+        self, metadata: DocumentMetadata, age_years: float | None = None
     ) -> DiagnosisExtractionResult: ...
 
 
 @runtime_checkable
 class DiagnosisCategorizer(Protocol):
-    """Assigns a DiagnosisCategory to each of a note's diagnoses (name + ICD only)."""
+    """Assigns a DiagnosisCategory to each of a note's diagnoses (name + ICD + patient age)."""
 
-    async def categorize(self, diagnoses: list[Diagnosis]) -> DiagnosisCategorizationResult: ...
+    async def categorize(
+        self, diagnoses: list[Diagnosis], age_years: float | None = None
+    ) -> DiagnosisCategorizationResult: ...
 
 
 @runtime_checkable
@@ -100,9 +105,7 @@ class TreatmentRequestExtractor(Protocol):
 class MainDiagnosisExtractor(Protocol):
     """Extracts a short primary-diagnosis label from a dr note, for grouping cases."""
 
-    async def extract_main_diagnosis(
-        self, metadata: DocumentMetadata
-    ) -> MainDiagnosisResult: ...
+    async def extract_main_diagnosis(self, metadata: DocumentMetadata) -> MainDiagnosisResult: ...
 
 
 @runtime_checkable
