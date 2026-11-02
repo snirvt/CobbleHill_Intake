@@ -103,7 +103,12 @@ def test_pair_dict_success_has_verdicts_and_relative_files(tmp_path: Path) -> No
     assert (out["success"], out["overall"]) == (True, "MATCH")
     assert "main_diagnosis" not in out
     assert out["dr_diagnoses"] == [
-        {"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD / Vomiting"}
+        {
+            "name": "GERD",
+            "icd_code": "K21.9",
+            "category": "Reflux / GERD / Vomiting",
+            "category_reason": None,
+        }
     ]
     assert out["diagnosis_categories"] == ["Reflux / GERD / Vomiting"]
     assert out["errors"] == []

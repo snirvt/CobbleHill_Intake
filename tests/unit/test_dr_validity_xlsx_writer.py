@@ -21,7 +21,8 @@ from classifier.output.csv_writer import (
 
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "diagnosis_check", "diagnoses", "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
+    "diagnosis_check", "diagnoses", "diagnosis_categories", "diagnosis_category_reasons",
+    "medical_necessity", "medical_necessity_reasoning", "errors",
 ]
 
 
@@ -45,7 +46,14 @@ def _ok(
             age_years=0.5,
             patient_group=group,
             diagnosis_check=DiagnosisCheck.EXISTS,
-            diagnoses=[Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.REFLUX)],
+            diagnoses=[
+                Diagnosis(
+                    name="GERD",
+                    icd_code="K21.9",
+                    category=DiagnosisCategory.REFLUX,
+                    category_reason="reflux rule",
+                )
+            ],
             diagnosis_categories=[DiagnosisCategory.REFLUX],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
@@ -95,6 +103,7 @@ def test_row_content(tmp_path: Path) -> None:
     assert "main_diagnosis" not in row
     assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD / Vomiting]"
     assert row["diagnosis_categories"] == "Reflux / GERD / Vomiting"
+    assert row["diagnosis_category_reasons"] == "GERD: reflux rule"
     assert row["medical_necessity"] == "NEEDED"
 
 

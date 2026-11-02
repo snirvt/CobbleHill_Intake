@@ -56,10 +56,17 @@ _CASES = [
     (Diagnosis(name="Underweight", icd_code="R63.6"), _TEEN, DiagnosisCategory.METABOLIC),
     (Diagnosis(name="Obesity, BMI 35"), _ADULT, DiagnosisCategory.METABOLIC),
     (Diagnosis(name="Feeding difficulty in newborn"), _INFANT, DiagnosisCategory.FEEDING),
+    # Reviewer: short stature kept landing in Gastrointestinal; growth is Feeding at any age.
+    (
+        Diagnosis(name="Short stature", icd_code="R62.52"),
+        "5 years (not an infant)",
+        DiagnosisCategory.FEEDING,
+    ),
+    (Diagnosis(name="Short stature", icd_code="R62.52"), _TEEN, DiagnosisCategory.FEEDING),
     # The screenshot patient (0 days old); also the batch test below.
     (Diagnosis(name="Feeding disability", icd_code="R63.30"), _INFANT, DiagnosisCategory.FEEDING),
     (Diagnosis(name="Underweight", icd_code="R63.6"), _INFANT, DiagnosisCategory.FEEDING),
-    (Diagnosis(name="Short stature"), _INFANT, DiagnosisCategory.FEEDING),
+    (Diagnosis(name="Short stature", icd_code="R62.52"), _INFANT, DiagnosisCategory.FEEDING),
     (
         Diagnosis(name="Vomiting in infants AND/OR children", icd_code="R11.10"),
         _INFANT,
@@ -74,6 +81,11 @@ _CASES = [
 ]
 
 
+def _why(diagnoses: list[Diagnosis]) -> list[str]:
+    """Each diagnosis with the bucket the model picked and its reason, for failure messages."""
+    return [f"{d.name} -> {d.category}: {d.category_reason}" for d in diagnoses]
+
+
 def _case_id(value: object) -> str:
     return value.name if isinstance(value, Diagnosis) else str(value)
 
@@ -86,7 +98,7 @@ async def test_diagnosis_lands_in_expected_bucket(
     result = await build_diagnosis_categorizer().categorize([diagnosis], age)
 
     assert result.error is None, result.error
-    assert result.diagnoses[0].category is expected, (result.diagnoses, result.reasoning)
+    assert result.diagnoses[0].category is expected, _why(result.diagnoses)
 
 
 @pytest.mark.integration
@@ -100,6 +112,5 @@ async def test_whole_note_batch_keeps_order_and_count() -> None:
     assert result.error is None, result.error
     assert [d.name for d in result.diagnoses] == [d.name for d in batch]
     assert [d.category for d in result.diagnoses[:6]] == [e for _, _, e in peds], (
-        result.diagnoses,
-        result.reasoning,
+        _why(result.diagnoses)
     )

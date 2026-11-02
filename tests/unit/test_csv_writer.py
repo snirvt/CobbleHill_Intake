@@ -1,14 +1,17 @@
 from pathlib import Path
 
 import openpyxl
-import pytest
 
 from classifier.models import (
     ClassificationResult,
-    MedicationData,
+    Diagnosis,
     PipelineResult,
 )
-from classifier.output.csv_writer import count_all_categories, write_xlsx
+from classifier.output.csv_writer import (
+    count_all_categories,
+    format_category_reasons,
+    write_xlsx,
+)
 
 
 def _make_success(result: ClassificationResult) -> PipelineResult:
@@ -161,3 +164,19 @@ def test_count_all_categories_counts_each_patient_once_per_category() -> None:
     assert groups == [
         ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Reflux / GERD / Vomiting", 1),
     ]
+
+
+def test_format_category_reasons_joins_name_and_reason_skipping_missing() -> None:
+    diagnoses = [
+        Diagnosis(name="Underweight", category_reason="infant weight rule"),
+        Diagnosis(name="Colic"),
+        Diagnosis(name="Short stature", category_reason="growth rule"),
+    ]
+
+    assert format_category_reasons(diagnoses) == (
+        "Underweight: infant weight rule; Short stature: growth rule"
+    )
+
+
+def test_format_category_reasons_empty_without_reasons() -> None:
+    assert format_category_reasons([Diagnosis(name="Colic")]) == ""

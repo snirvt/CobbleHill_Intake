@@ -85,7 +85,14 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "age": "6 months",
         "age_years": 0.5,
         "diagnosis_check": "EXISTS",
-        "diagnoses": [{"name": "GERD", "icd_code": "K21.9", "category": "Reflux / GERD / Vomiting"}],
+        "diagnoses": [
+            {
+                "name": "GERD",
+                "icd_code": "K21.9",
+                "category": "Reflux / GERD / Vomiting",
+                "category_reason": None,
+            }
+        ],
         "diagnosis_categories": ["Reflux / GERD / Vomiting"],
         "medical_necessity": "NEEDED",
         "medical_necessity_reasoning": "needs home services",

@@ -2,7 +2,12 @@ import re
 
 import pytest
 
-from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES, describe_age
+from classifier.classifiers.categories import (
+    CATEGORY_EXAMPLES,
+    CATEGORY_LIST,
+    CATEGORY_RULES,
+    describe_age,
+)
 from classifier.models import Diagnosis, DiagnosisCategory, unique_categories
 from config.settings import settings
 
@@ -70,11 +75,35 @@ def test_category_rules_route_growth_terms_to_feeding_growth() -> None:
 def test_category_rules_weight_problems_depend_on_infant_label() -> None:
     weight_rule = _rule("Weight problems")
 
-    assert "underweight" in weight_rule
-    assert 'infant → "Feeding / Growth"' in weight_rule
-    assert 'not an infant → "Obesity / Metabolic"' in weight_rule
-    assert 'age unknown → "Feeding / Growth"' in weight_rule
+    assert "underweight" in weight_rule and "R63.6" in weight_rule
+    infant = weight_rule.index('are "Feeding / Growth" when the patient is an infant or the age is')
+    adult = weight_rule.index('labelled not an infant are they "Obesity / Metabolic"')
+    assert infant < adult  # the infant / unknown branch comes first
     assert "years" not in weight_rule  # the infant cutoff stays hidden from the model
+
+
+def test_category_rules_growth_terms_apply_at_any_age_with_icd_hints() -> None:
+    feeding_rule = _rule("failure to")
+
+    assert '"Feeding / Growth" at any age' in feeding_rule
+    assert "short stature (R62.52)" in feeding_rule
+    assert '"Gastrointestinal"' in feeding_rule
+
+
+def test_category_examples_cover_the_reported_misses() -> None:
+    lines = CATEGORY_EXAMPLES.splitlines()
+
+    assert "- Short stature (R62.52), 5 years (not an infant) → Feeding / Growth" in lines
+    assert "- Underweight (R63.6), 0 days (infant) → Feeding / Growth" in lines
+    assert "- Underweight (R63.6), 40 years (not an infant) → Obesity / Metabolic" in lines
+
+
+def test_category_examples_end_in_known_categories() -> None:
+    known = {category.value for category in DiagnosisCategory}
+
+    targets = {line.rsplit(" → ", 1)[1] for line in CATEGORY_EXAMPLES.splitlines()}
+
+    assert targets <= known
 
 
 @pytest.mark.parametrize(

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
+from classifier.classifiers.categories import CATEGORY_EXAMPLES
 from classifier.classifiers.diagnosis_categorization import (
     CategorizedDiagnosisExtractor,
     DiagnosisCategorizationClassifier,
@@ -79,6 +80,23 @@ async def test_categorize_assigns_categories_by_position() -> None:
     assert result.reasoning == "R63.6 is a growth concern.\nUnderweight: r\nNeonatal agitation: r"
 
 
+async def test_categorize_sets_each_category_reason_by_position() -> None:
+    llm = _fake_llm(
+        [
+            {"name": "Underweight", "reason": "infant weight", "category": "Feeding / Growth"},
+            {
+                "name": "Neonatal agitation",
+                "reason": "fussy",
+                "category": "Fussiness / Irritability",
+            },
+        ]
+    )
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert [d.category_reason for d in result.diagnoses] == ["infant weight", "fussy"]
+
+
 async def test_categorize_keeps_input_names_when_model_rewords_them() -> None:
     llm = _fake_llm([{"name": "Low weight", "reason": "r", "category": "Feeding / Growth"}])
 
@@ -96,6 +114,7 @@ async def test_categorize_count_mismatch_sets_error_and_leaves_categories_none()
     assert result.error == "Category count mismatch: expected 2, got 1"
     assert result.diagnoses == _DIAGNOSES
     assert all(d.category is None for d in result.diagnoses)
+    assert all(d.category_reason is None for d in result.diagnoses)
 
 
 async def test_categorize_missing_reason_is_parse_error() -> None:
@@ -172,6 +191,8 @@ async def test_categorize_prompt_lists_diagnoses_categories_and_rules() -> None:
     assert "1. Underweight (R63.6)\n2. Neonatal agitation (R68.12)" in seen[0]
     assert all(f"- {c.value}" in seen[0] for c in DiagnosisCategory)
     assert "Pick the most specific category" in seen[0]
+    assert CATEGORY_EXAMPLES in seen[0]
+    assert "applies to every diagnosis" in seen[0]
 
 
 @pytest.mark.parametrize(("age", "shown"), [("3 months", "3 months"), (None, "unknown")])

@@ -112,9 +112,10 @@ def test_patient_dict_layout() -> None:
     assert accepted["phase_1"] == {
         "diagnosis_categories": ["Other", "Respiratory"],
         "diagnoses": [
-            {"name": "Example Diagnosis", "icd_code": "Z00.00", "category": "Other"},
+            {"name": "Example Diagnosis", "icd_code": "Z00.00", "category": "Other",
+             "category_reason": "EXAMPLE - not real data"},
             {"name": "Example Respiratory Diagnosis", "icd_code": "Z11.11",
-             "category": "Respiratory"},
+             "category": "Respiratory", "category_reason": None},
         ],
         "medical_necessity": True,
         "medical_necessity_reasoning": "EXAMPLE - not real data",
@@ -148,8 +149,8 @@ def test_xlsx_has_a_sheet_per_verdict(tmp_path: Path) -> None:
     assert header == [
         "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
         "final_verdict", "verdict_phase_1", "verdict_phase_2", "final_verdict_explanation",
-        "diagnosis_categories", "diagnoses", "medical_necessity", "medical_necessity_reasoning",
-        "dr_nurse_compare", "warnings", "errors",
+        "diagnosis_categories", "diagnosis_category_reasons", "diagnoses", "medical_necessity",
+        "medical_necessity_reasoning", "dr_nurse_compare", "warnings", "errors",
     ]
     assert wb["All"].max_row == 4
     assert wb["No Nurse Note"].max_row == 2
