@@ -93,7 +93,7 @@ def test_all_categories_sheet_counts_dr_diagnoses_per_pair(tmp_path: Path) -> No
             dr,
             nurse,
             dr_diagnoses=[
-                Diagnosis(name="GERD", category=DiagnosisCategory.REFLUX),
+                Diagnosis(name="GERD", category=DiagnosisCategory.GASTROINTESTINAL),
                 Diagnosis(name="Asthma", category=DiagnosisCategory.RESPIRATORY),
             ],
             nurse_diagnoses=[Diagnosis(name="Fall", category=DiagnosisCategory.FRACTURE)],
@@ -105,7 +105,7 @@ def test_all_categories_sheet_counts_dr_diagnoses_per_pair(tmp_path: Path) -> No
 
     rows = _sheet_rows(openpyxl.load_workbook(out)["All Categories"])
     assert rows == [
-        ["diagnosis_category", "count"], ["Reflux / GERD / Vomiting", 1], ["Respiratory", 1], ["Unknown", 1],
+        ["diagnosis_category", "count"], ["Gastrointestinal / Reflux / GERD / Vomiting", 1], ["Respiratory", 1], ["Unknown", 1],
     ]
 
 
@@ -304,20 +304,20 @@ def test_diagnosis_categories_column_joins_categories(tmp_path: Path) -> None:
     result = _make_pair_result(
         dr,
         nurse,
-        diagnosis_categories=[DiagnosisCategory.RESPIRATORY, DiagnosisCategory.REFLUX],
+        diagnosis_categories=[DiagnosisCategory.RESPIRATORY, DiagnosisCategory.GASTROINTESTINAL],
     )
     out = tmp_path / "results.xlsx"
     write_pair_xlsx([result], out)
     ws = openpyxl.load_workbook(out)["All"]
-    assert _row_value(ws, "diagnosis_categories") == "Respiratory; Reflux / GERD / Vomiting"
+    assert _row_value(ws, "diagnosis_categories") == "Respiratory; Gastrointestinal / Reflux / GERD / Vomiting"
 
 
 def test_format_diagnoses_appends_category() -> None:
     diagnoses = [
         Diagnosis(name="Pneumonia", icd_code="J18.9", category=DiagnosisCategory.RESPIRATORY),
-        Diagnosis(name="Reflux", category=DiagnosisCategory.REFLUX),
+        Diagnosis(name="Reflux", category=DiagnosisCategory.GASTROINTESTINAL),
     ]
-    assert format_diagnoses(diagnoses) == "Pneumonia (J18.9) [Respiratory]; Reflux [Reflux / GERD / Vomiting]"
+    assert format_diagnoses(diagnoses) == "Pneumonia (J18.9) [Respiratory]; Reflux [Gastrointestinal / Reflux / GERD / Vomiting]"
 
 
 def test_format_categories_empty_list_is_blank() -> None:

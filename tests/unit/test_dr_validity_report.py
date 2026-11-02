@@ -27,7 +27,7 @@ def _ok(
     name: str,
     verdict: ValidityVerdict,
     main: str | None = "GERD",
-    category: DiagnosisCategory | None = DiagnosisCategory.REFLUX,
+    category: DiagnosisCategory | None = DiagnosisCategory.GASTROINTESTINAL,
 ) -> DrValidityPipelineResult:
     folder = root / name
     paths = [folder / "dr_a.pdf", folder / "dr_b.pdf"]
@@ -41,8 +41,8 @@ def _ok(
             age_years=0.5,
             patient_group=PatientGroup.PEDIATRIC,
             diagnosis_check=DiagnosisCheck.EXISTS,
-            diagnoses=[Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.REFLUX)],
-            diagnosis_categories=[DiagnosisCategory.REFLUX],
+            diagnoses=[Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.GASTROINTESTINAL)],
+            diagnosis_categories=[DiagnosisCategory.GASTROINTESTINAL],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
             main_diagnosis=main,
@@ -89,11 +89,11 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
             {
                 "name": "GERD",
                 "icd_code": "K21.9",
-                "category": "Reflux / GERD / Vomiting",
+                "category": "Gastrointestinal / Reflux / GERD / Vomiting",
                 "category_reason": None,
             }
         ],
-        "diagnosis_categories": ["Reflux / GERD / Vomiting"],
+        "diagnosis_categories": ["Gastrointestinal / Reflux / GERD / Vomiting"],
         "medical_necessity": "NEEDED",
         "medical_necessity_reasoning": "needs home services",
     }
@@ -194,11 +194,11 @@ def test_errors_lists_folder_errors_then_patient_errors(tmp_path: Path) -> None:
 def test_all_category_groups_count_each_patient_once_per_category(tmp_path: Path) -> None:
     multi = _ok(tmp_path, "A", ValidityVerdict.VALID)
     assert multi.result is not None
-    multi.result.diagnosis_categories = [DiagnosisCategory.REFLUX, DiagnosisCategory.RESPIRATORY]
+    multi.result.diagnosis_categories = [DiagnosisCategory.GASTROINTESTINAL, DiagnosisCategory.RESPIRATORY]
     results = [multi, _ok(tmp_path, "B", ValidityVerdict.VALID), _failed(tmp_path, "C")]
 
     assert dr_validity_all_category_groups(results) == [
-        {"diagnosis_category": "Reflux / GERD / Vomiting", "count": 2},
+        {"diagnosis_category": "Gastrointestinal / Reflux / GERD / Vomiting", "count": 2},
         {"diagnosis_category": "Respiratory", "count": 1},
         {"diagnosis_category": "Unknown", "count": 1},
     ]

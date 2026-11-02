@@ -30,7 +30,7 @@ def _ok(
     name: str,
     overall: ClinicalVerdict = ClinicalVerdict.MATCH,
     main: str | None = "GERD",
-    category: DiagnosisCategory | None = DiagnosisCategory.REFLUX,
+    category: DiagnosisCategory | None = DiagnosisCategory.GASTROINTESTINAL,
     errors: list[RunError] | None = None,
 ) -> PairPipelineResult:
     folder = root / name
@@ -52,9 +52,9 @@ def _ok(
             dr_metadata=DocumentMetadata(file_path=dr, raw_text="t", meta=PatientMetadata()),
             nurse_fields=NurseVisitFields(meta=NursePatientMeta()),
             dr_diagnoses=[
-                Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.REFLUX)
+                Diagnosis(name="GERD", icd_code="K21.9", category=DiagnosisCategory.GASTROINTESTINAL)
             ],
-            diagnosis_categories=[DiagnosisCategory.REFLUX],
+            diagnosis_categories=[DiagnosisCategory.GASTROINTESTINAL],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs care",
             main_diagnosis=main,
@@ -106,11 +106,11 @@ def test_pair_dict_success_has_verdicts_and_relative_files(tmp_path: Path) -> No
         {
             "name": "GERD",
             "icd_code": "K21.9",
-            "category": "Reflux / GERD / Vomiting",
+            "category": "Gastrointestinal / Reflux / GERD / Vomiting",
             "category_reason": None,
         }
     ]
-    assert out["diagnosis_categories"] == ["Reflux / GERD / Vomiting"]
+    assert out["diagnosis_categories"] == ["Gastrointestinal / Reflux / GERD / Vomiting"]
     assert out["errors"] == []
     assert "identity_match" not in out
 
@@ -165,11 +165,11 @@ def test_pair_all_category_groups_count_dr_diagnoses_only(tmp_path: Path) -> Non
     ok.result.dr_diagnoses.append(
         Diagnosis(name="Asthma", category=DiagnosisCategory.RESPIRATORY)
     )
-    ok.result.dr_diagnoses.append(Diagnosis(name="GERD again", category=DiagnosisCategory.REFLUX))
+    ok.result.dr_diagnoses.append(Diagnosis(name="GERD again", category=DiagnosisCategory.GASTROINTESTINAL))
     ok.result.nurse_diagnoses = [Diagnosis(name="Fall", category=DiagnosisCategory.FRACTURE)]
 
     assert pair_all_category_groups([ok, _failed(tmp_path, "D")]) == [
-        {"diagnosis_category": "Reflux / GERD / Vomiting", "count": 1},
+        {"diagnosis_category": "Gastrointestinal / Reflux / GERD / Vomiting", "count": 1},
         {"diagnosis_category": "Respiratory", "count": 1},
         {"diagnosis_category": "Unknown", "count": 1},
     ]

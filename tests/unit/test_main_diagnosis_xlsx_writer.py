@@ -84,8 +84,8 @@ def test_creates_parent_dirs(tmp_path: Path) -> None:
 def test_categories_sheet_counts_by_category(tmp_path: Path) -> None:
     out = tmp_path / "main_diagnosis_results.xlsx"
     results = [
-        _result(1, "GERD", category=DiagnosisCategory.REFLUX),
-        _result(2, "Gastric Reflux", category=DiagnosisCategory.REFLUX),
+        _result(1, "GERD", category=DiagnosisCategory.GASTROINTESTINAL),
+        _result(2, "Gastric Reflux", category=DiagnosisCategory.GASTROINTESTINAL),
         _result(3, "Hip Fracture", category=DiagnosisCategory.FRACTURE),
         _result(4, None),
     ]
@@ -93,7 +93,7 @@ def test_categories_sheet_counts_by_category(tmp_path: Path) -> None:
 
     assert _rows(out, "Categories") == [
         ("main_diagnosis_category", "count"),
-        ("Reflux / GERD / Vomiting", 2),
+        ("Gastrointestinal / Reflux / GERD / Vomiting", 2),
         ("Fracture / Fall", 1),
         ("Unknown", 1),
     ]

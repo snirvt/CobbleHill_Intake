@@ -31,7 +31,7 @@ def _ok(
     name: str,
     verdict: ValidityVerdict,
     main: str | None = "GERD",
-    category: DiagnosisCategory | None = DiagnosisCategory.REFLUX,
+    category: DiagnosisCategory | None = DiagnosisCategory.GASTROINTESTINAL,
     group: PatientGroup = PatientGroup.PEDIATRIC,
 ) -> DrValidityPipelineResult:
     folder = root / name
@@ -50,11 +50,11 @@ def _ok(
                 Diagnosis(
                     name="GERD",
                     icd_code="K21.9",
-                    category=DiagnosisCategory.REFLUX,
+                    category=DiagnosisCategory.GASTROINTESTINAL,
                     category_reason="reflux rule",
                 )
             ],
-            diagnosis_categories=[DiagnosisCategory.REFLUX],
+            diagnosis_categories=[DiagnosisCategory.GASTROINTESTINAL],
             care_check=CareCheck.NEEDED,
             care_reasoning="needs home services",
             main_diagnosis=main,
@@ -101,8 +101,8 @@ def test_row_content(tmp_path: Path) -> None:
     assert row["patient_group"] == "PEDIATRIC"
     assert row["age"] == "6 months"
     assert "main_diagnosis" not in row
-    assert row["diagnoses"] == "GERD (K21.9) [Reflux / GERD / Vomiting]"
-    assert row["diagnosis_categories"] == "Reflux / GERD / Vomiting"
+    assert row["diagnoses"] == "GERD (K21.9) [Gastrointestinal / Reflux / GERD / Vomiting]"
+    assert row["diagnosis_categories"] == "Gastrointestinal / Reflux / GERD / Vomiting"
     assert row["diagnosis_category_reasons"] == "GERD: reflux rule"
     assert row["medical_necessity"] == "NEEDED"
 
@@ -134,11 +134,11 @@ def test_all_categories_sheet_counts_patients_by_any_diagnosis(tmp_path: Path) -
     out = tmp_path / "dr_validity_results.xlsx"
     multi = _ok(tmp_path, "A", ValidityVerdict.VALID)
     assert multi.result is not None
-    multi.result.diagnosis_categories = [DiagnosisCategory.RESPIRATORY, DiagnosisCategory.REFLUX]
+    multi.result.diagnosis_categories = [DiagnosisCategory.RESPIRATORY, DiagnosisCategory.GASTROINTESTINAL]
     write_dr_validity_xlsx([multi, _ok(tmp_path, "B", ValidityVerdict.VALID)], out)
 
     rows = list(openpyxl.load_workbook(out)["All Categories"].iter_rows(values_only=True))
-    assert rows == [("diagnosis_category", "count"), ("Reflux / GERD / Vomiting", 2), ("Respiratory", 1)]
+    assert rows == [("diagnosis_category", "count"), ("Gastrointestinal / Reflux / GERD / Vomiting", 2), ("Respiratory", 1)]
 
 
 # ---------------------------------------------------------------------------

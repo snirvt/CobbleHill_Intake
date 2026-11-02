@@ -74,6 +74,13 @@ _CASES = [
         "4 years (not an infant)",
         DiagnosisCategory.FEEDING,
     ),
+    # One merged digestive bucket: reflux, vomiting and bowel problems.
+    (
+        Diagnosis(name="Gastroesophageal reflux disease", icd_code="K21.9"),
+        _INFANT,
+        DiagnosisCategory.GASTROINTESTINAL,
+    ),
+    (Diagnosis(name="Constipation"), _ADULT, DiagnosisCategory.GASTROINTESTINAL),
     # A 75-year-old's negative finding landed in Newborn / Well Child.
     (
         Diagnosis(name="No respiratory symptoms at this time"),
@@ -102,7 +109,7 @@ _CASES = [
     (
         Diagnosis(name="Vomiting in infants AND/OR children", icd_code="R11.10"),
         _INFANT,
-        DiagnosisCategory.REFLUX,
+        DiagnosisCategory.GASTROINTESTINAL,
     ),
     (
         Diagnosis(name="Neonatal agitation", icd_code="R68.12"),
@@ -155,6 +162,5 @@ async def test_whole_note_batch_keeps_order_and_count() -> None:
 
     assert result.error is None, result.error
     assert [d.name for d in result.diagnoses] == [d.name for d in batch]
-    assert [d.category for d in result.diagnoses[:6]] == [e for _, _, e in peds], _why(
-        result.diagnoses
-    )
+    expected = [e for _, _, e in peds] + [DiagnosisCategory.GASTROINTESTINAL]
+    assert [d.category for d in result.diagnoses] == expected, _why(result.diagnoses)

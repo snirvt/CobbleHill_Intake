@@ -247,7 +247,7 @@ async def test_combined_extractor_merges_categories_and_dedupes() -> None:
     categorized = DiagnosisCategorizationResult(
         diagnoses=[
             Diagnosis(name="A", category=DiagnosisCategory.FEEDING),
-            Diagnosis(name="B", category=DiagnosisCategory.REFLUX),
+            Diagnosis(name="B", category=DiagnosisCategory.GASTROINTESTINAL),
             Diagnosis(name="C", category=DiagnosisCategory.FEEDING),
         ],
         reasoning="growth terms",
@@ -260,7 +260,7 @@ async def test_combined_extractor_merges_categories_and_dedupes() -> None:
     categorizer.categorize.assert_awaited_once_with(extracted.diagnoses, "6 months")
     assert result.file_path == Path("dr_note.pdf")
     assert result.diagnoses == categorized.diagnoses
-    assert result.diagnosis_categories == [DiagnosisCategory.FEEDING, DiagnosisCategory.REFLUX]
+    assert result.diagnosis_categories == [DiagnosisCategory.FEEDING, DiagnosisCategory.GASTROINTESTINAL]
     assert result.reasoning == "extraction: from assessment\ncategories: growth terms"
     assert result.error is None
 

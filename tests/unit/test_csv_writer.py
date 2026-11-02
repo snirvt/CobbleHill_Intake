@@ -154,7 +154,7 @@ def test_count_all_categories_counts_each_patient_once_per_category() -> None:
     from classifier.models import DiagnosisCategory as C
 
     groups = count_all_categories([
-        [C.REFLUX, C.RESPIRATORY, C.REFLUX],
+        [C.GASTROINTESTINAL, C.RESPIRATORY, C.GASTROINTESTINAL],
         [C.RESPIRATORY],
         [C.FRACTURE],
         [],
@@ -162,7 +162,7 @@ def test_count_all_categories_counts_each_patient_once_per_category() -> None:
     ])
 
     assert groups == [
-        ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Reflux / GERD / Vomiting", 1),
+        ("Respiratory", 2), ("Unknown", 2), ("Fracture / Fall", 1), ("Gastrointestinal / Reflux / GERD / Vomiting", 1),
     ]
 
 

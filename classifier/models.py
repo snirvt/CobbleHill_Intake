@@ -18,10 +18,9 @@ class DiagnosisCategory(StrEnum):
     bucket list and validation all derive from it.
     """
 
-    REFLUX = "Reflux / GERD / Vomiting"
+    GASTROINTESTINAL = "Gastrointestinal / Reflux / GERD / Vomiting"
     FEEDING = "Feeding / Growth"
     FUSSINESS = "Fussiness / Irritability"
-    GASTROINTESTINAL = "Gastrointestinal"
     NEWBORN = "Newborn / Well Child"
     WOMENS_HEALTH = "Women's Health"
     MENTAL_HEALTH = "Mental Health"

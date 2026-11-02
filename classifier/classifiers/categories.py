@@ -12,15 +12,16 @@ CATEGORY_RULES = """\
 - Pick the most specific category: a hip fracture or fall is "Fracture / Fall", not \
 "Musculoskeletal / Spine"; a subdural or subarachnoid bleed is "Brain Bleed / Stroke", \
 not "Neurological".
-- Reflux, heartburn or GERD (including in infants) is "Reflux / GERD / Vomiting", not \
-"Feeding / Growth"; never use "Reflux / GERD / Vomiting" for uterine, pelvic or general \
-abdominal pain.
-- Vomiting, emesis or spit-up at any age (e.g. vomiting in infants, persistent vomiting) is \
-"Reflux / GERD / Vomiting", not "Infection / Sepsis" or "Gastrointestinal".
+- Digestive problems are "Gastrointestinal / Reflux / GERD / Vomiting": reflux, heartburn \
+or GERD (including in infants), vomiting, emesis or spit-up at any age (e.g. vomiting in infants, \
+persistent vomiting), abdominal bloating, constipation, diarrhea and other stomach or bowel \
+conditions; not "Infection / Sepsis" or "Feeding / Growth". Never use it for uterine, \
+pelvic or general abdominal pain.
 - Growth and feeding problems are "Feeding / Growth" at any age: short stature (R62.52), \
 growth delay or lack of expected growth (R62.5x), feeding difficulty or feeding disability \
-(R63.3x), poor feeding, failure to thrive (R62.51); never "Gastrointestinal", \
-"Blood / Anemia" or "Developmental / Cognitive".
+(R63.3x), poor feeding, failure to thrive (R62.51); never \
+"Gastrointestinal / Reflux / GERD / Vomiting", "Blood / Anemia" or \
+"Developmental / Cognitive".
 - "Newborn / Well Child" is only for routine newborn care or a well-child visit of an infant \
 or child with no specific problem; never for an adult, and never for a specific problem such \
 as feeding or growth (→ "Feeding / Growth").
@@ -32,18 +33,18 @@ category it mentions.
 unknown (the infant label is shown next to the patient age). Only when the patient is \
 labelled not an infant are they "Obesity / Metabolic", unless the diagnosis itself names \
 a feeding problem (e.g. feeding difficulty, feeding tube dependence) → "Feeding / Growth".
-- "Obes / Metabolic" also covers obesity, overweight, diabetes, thyroid disease and \
+- "Obesity / Metabolic" also covers obesity, overweight, diabetes, thyroid disease and \
 high cholesterol.
 - Fussiness, fussy baby, irritability, irritable mood, neonatal agitation, excessive crying \
 and colic are "Fussiness / Irritability", not "Brain Bleed / Stroke", "Neurological", \
-"Mental Health" or "Gastrointestinal".
+"Mental Health" or "Gastrointestinal / Reflux / GERD / Vomiting".
 - "Infection / Sepsis" only when a systemic infection is the main problem; an infection \
 of one organ goes to that organ (pneumonia → "Respiratory", UTI → "Kidney / Urinary").
 - Postpartum depression is "Mental Health"; any other pregnancy, postpartum or \
 gynecological condition or symptom (e.g. uterine or pelvic pain, menstrual problems, \
 abnormal vaginal bleeding, fibroids, endometriosis, ovarian cyst, contractions, postpartum \
-hemorrhage, preeclampsia, postpartum care) is "Women's Health", not "Reflux / GERD / Vomiting", \
-"Gastrointestinal" or "Kidney / Urinary".
+hemorrhage, preeclampsia, postpartum care) is "Women's Health", not \
+"Gastrointestinal / Reflux / GERD / Vomiting" or "Kidney / Urinary".
 - Dementia, Alzheimer's disease and cognitive decline in adults are "Mental Health"; \
 developmental delay or intellectual disability in a child is "Developmental / Cognitive" \
 (a feeding disability is "Feeding / Growth", not developmental).
@@ -53,15 +54,14 @@ developmental delay or intellectual disability in a child is "Developmental / Co
 wound) is "Wound"; rashes, dermatitis and other skin conditions are "Skin".
 - Use "Other" only when a diagnosis exists but fits no category."""
 
-ity
 # Worked examples for the bucketing prompt (synthetic): "diagnosis, age → category".
 CATEGORY_EXAMPLES = """\
 - Short stature (R62.52), 5 years (not an infant) → Feeding / Growth
 - Underweight (R63.6), 0 days (infant) → Feeding / Growth
 - Underweight (R63.6), 40 years (not an infant) → Obesity / Metabolic
-- Vomiting in infants (R11.10), 2 months (infant) → Reflux / GERD / Vomiting
+- Vomiting in infants (R11.10), 2 months (infant) → Gastrointestinal / Reflux / GERD / Vomiting
 - Neonatal agitation / fussy infant (R68.12), 1 month (infant) → Fussiness / Irritability
-- Abdominal bloating (R14.0), 0 days (infant) → Gastrointestinal
+- Abdominal bloating (R14.0), 0 days (infant) → Gastrointestinal / Reflux / GERD / Vomiting
 - No respiratory symptoms at this time, 75 years (not an infant) → Other"""
 
 

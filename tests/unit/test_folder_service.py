@@ -69,7 +69,7 @@ def _pipeline(patient_errors: list[RunError] | None = None) -> MagicMock:
                         patient_group=PatientGroup.ADULT,
                         diagnosis_check=DiagnosisCheck.EXISTS,
                         main_diagnosis="GERD",
-                        diagnosis_category=DiagnosisCategory.REFLUX,
+                        diagnosis_category=DiagnosisCategory.GASTROINTESTINAL,
                         verdict=ValidityVerdict.VALID,
                     ),
                 )

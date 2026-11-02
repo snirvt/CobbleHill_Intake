@@ -359,7 +359,7 @@ async def test_diagnosis_categories_combine_dr_and_nurse_deduped() -> None:
         ],
         nurse_diagnoses=[
             Diagnosis(name="Bronchiolitis", category=DiagnosisCategory.RESPIRATORY),
-            Diagnosis(name="Reflux", category=DiagnosisCategory.REFLUX),
+            Diagnosis(name="Reflux", category=DiagnosisCategory.GASTROINTESTINAL),
         ],
     )
     clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
@@ -368,7 +368,7 @@ async def test_diagnosis_categories_combine_dr_and_nurse_deduped() -> None:
     assert result.diagnosis_categories == [
         DiagnosisCategory.FUSSINESS,
         DiagnosisCategory.RESPIRATORY,
-        DiagnosisCategory.REFLUX,
+        DiagnosisCategory.GASTROINTESTINAL,
     ]
 
 

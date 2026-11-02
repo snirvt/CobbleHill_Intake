@@ -44,7 +44,7 @@ def test_category_rules_route_uterine_pain_to_womens_health() -> None:
 
     assert "uterine or pelvic pain" in womens_health_rule
     assert '"Women\'s Health"' in womens_health_rule
-    assert "never use" in reflux_rule and "uterine" in reflux_rule
+    assert "Never use it" in reflux_rule and "uterine" in reflux_rule
 
 
 def test_category_rules_route_newborn_feeding_to_feeding_growth() -> None:
@@ -72,8 +72,22 @@ def test_category_rules_route_vomiting_to_reflux() -> None:
     vomiting_rule = _rule("spit-up")
 
     assert "vomiting in infants" in vomiting_rule
-    assert '"Reflux / GERD / Vomiting"' in vomiting_rule
+    assert '"Gastrointestinal / Reflux / GERD / Vomiting"' in vomiting_rule
     assert '"Infection / Sepsis"' in vomiting_rule
+
+
+def test_gastrointestinal_and_reflux_are_one_bucket() -> None:
+    gi = [c for c in DiagnosisCategory if "Gastrointestinal" in c.value or "Reflux" in c.value]
+
+    assert gi == [DiagnosisCategory.GASTROINTESTINAL]
+    assert DiagnosisCategory.GASTROINTESTINAL.value == "Gastrointestinal / Reflux / GERD / Vomiting"
+
+
+def test_category_rules_digestive_bullet_covers_reflux_vomiting_and_bowel() -> None:
+    digestive_rule = _rule("Digestive problems")
+
+    for term in ("GERD", "vomiting", "spit-up", "abdominal bloating", "constipation"):
+        assert term in digestive_rule
 
 
 def test_category_rules_route_growth_terms_to_feeding_growth() -> None:
@@ -101,7 +115,7 @@ def test_category_rules_growth_terms_apply_at_any_age_with_icd_hints() -> None:
 
     assert '"Feeding / Growth" at any age' in feeding_rule
     assert "short stature (R62.52)" in feeding_rule
-    assert '"Gastrointestinal"' in feeding_rule
+    assert '"Gastrointestinal / Reflux / GERD / Vomiting"' in feeding_rule
 
 
 def test_category_examples_cover_the_reported_misses() -> None:
@@ -164,9 +178,12 @@ def test_unique_categories_dedupes_in_first_appearance_order() -> None:
 
 
 def test_unique_categories_skips_missing_category() -> None:
-    diagnoses = [Diagnosis(name="X"), Diagnosis(name="GERD", category=DiagnosisCategory.REFLUX)]
+    diagnoses = [
+        Diagnosis(name="X"),
+        Diagnosis(name="GERD", category=DiagnosisCategory.GASTROINTESTINAL),
+    ]
 
-    assert unique_categories(diagnoses) == [DiagnosisCategory.REFLUX]
+    assert unique_categories(diagnoses) == [DiagnosisCategory.GASTROINTESTINAL]
 
 
 def test_unique_categories_empty_for_no_diagnoses() -> None:

@@ -170,12 +170,12 @@ def test_prompt_asks_for_complete_label_not_cut_off_phrase() -> None:
 # ---------------------------------------------------------------------------
 
 async def test_returns_category_alongside_label() -> None:
-    classifier = MainDiagnosisClassifier(llm=_fake_llm("GERD", category="Reflux / GERD / Vomiting"))
+    classifier = MainDiagnosisClassifier(llm=_fake_llm("GERD", category="Gastrointestinal / Reflux / GERD / Vomiting"))
 
     result = await classifier.extract_main_diagnosis(_make_metadata())
 
     assert result.main_diagnosis == "GERD"
-    assert result.diagnosis_category is DiagnosisCategory.REFLUX
+    assert result.diagnosis_category is DiagnosisCategory.GASTROINTESTINAL
 
 
 async def test_null_category_stays_none() -> None:
@@ -214,7 +214,7 @@ async def test_stub_provider_returns_valid_category() -> None:
 
 
 async def test_rendered_prompt_contains_categories() -> None:
-    llm = _fake_llm("GERD", category="Reflux / GERD / Vomiting")
+    llm = _fake_llm("GERD", category="Gastrointestinal / Reflux / GERD / Vomiting")
     classifier = MainDiagnosisClassifier(llm=llm)
     seen: list[str] = []
     original = llm._call
@@ -263,7 +263,7 @@ def test_normalize_icd_drops_invalid_codes(raw: str | None) -> None:
 
 async def test_icd_code_passed_through() -> None:
     classifier = MainDiagnosisClassifier(
-        llm=_fake_llm("GERD", category="Reflux / GERD / Vomiting", icd_code="k21.9")
+        llm=_fake_llm("GERD", category="Gastrointestinal / Reflux / GERD / Vomiting", icd_code="k21.9")
     )
 
     result = await classifier.extract_main_diagnosis(_make_metadata())
@@ -273,14 +273,14 @@ async def test_icd_code_passed_through() -> None:
 
 async def test_malformed_icd_code_dropped_label_kept() -> None:
     classifier = MainDiagnosisClassifier(
-        llm=_fake_llm("GERD", category="Reflux / GERD / Vomiting", icd_code="see chart")
+        llm=_fake_llm("GERD", category="Gastrointestinal / Reflux / GERD / Vomiting", icd_code="see chart")
     )
 
     result = await classifier.extract_main_diagnosis(_make_metadata())
 
     assert result.icd_code is None
     assert result.main_diagnosis == "GERD"
-    assert result.diagnosis_category is DiagnosisCategory.REFLUX
+    assert result.diagnosis_category is DiagnosisCategory.GASTROINTESTINAL
     assert result.error is None
 
 
