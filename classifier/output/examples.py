@@ -48,7 +48,10 @@ _WEB_URL = "https://sharepoint.example/EXAMPLE/Physician%20Notes/Pending"
 _ROOT_NAME = "Pending"
 _REASONING = "EXAMPLE - not real data"
 _DIAGNOSIS = Diagnosis(
-    name="Example Diagnosis", icd_code="Z00.00", category=DiagnosisCategory.OTHER
+    name="Example Diagnosis",
+    icd_code="Z00.00",
+    category=DiagnosisCategory.OTHER,
+    category_reason=_REASONING,
 )
 
 _OK_FOLDER = _ROOT / "EXAMPLE, PATIENT ONE"

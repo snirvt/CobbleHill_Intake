@@ -12,7 +12,11 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
-from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
+from classifier.classifiers.categories import (
+    CATEGORY_EXAMPLES,
+    CATEGORY_LIST,
+    CATEGORY_RULES,
+)
 from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import (
@@ -56,11 +60,17 @@ from this list (copy the text exactly):
 Category rules:
 {category_rules}
 
+Examples (diagnosis, patient age → category):
+{category_examples}
+
 Return exactly one item per diagnosis, in the same order as the numbered list, echoing \
 its name. For each item give a short reason first (one clause), naming the rule you \
 applied and the patient age when that rule depends on age; then the category.
 
 {format_instructions}
+
+Check each diagnosis against the rules and examples above before choosing; the patient age \
+label (infant / not an infant) applies to every diagnosis.
 
 Patient age: {patient_age}
 
@@ -95,6 +105,7 @@ class DiagnosisCategorizationClassifier:
             format_instructions=parser.get_format_instructions(),
             categories=CATEGORY_LIST,
             category_rules=CATEGORY_RULES,
+            category_examples=CATEGORY_EXAMPLES,
         )
         self._chain = with_llm_retry(
             prompt | bind_output_schema(llm, DiagnosisCategorizationOutput) | parser
@@ -139,7 +150,7 @@ class DiagnosisCategorizationClassifier:
             )
         return DiagnosisCategorizationResult(
             diagnoses=[
-                d.model_copy(update={"category": item.category})
+                d.model_copy(update={"category": item.category, "category_reason": item.reason})
                 for d, item in zip(diagnoses, output.categories, strict=True)
             ],
             reasoning=reasoning,

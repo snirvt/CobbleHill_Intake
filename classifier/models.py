@@ -147,6 +147,8 @@ class Diagnosis(BaseModel):
     icd_code: str | None = None
     # Fixed bucket for this diagnosis; None only for results built without one.
     category: DiagnosisCategory | None = None
+    # Why the bucketing model picked ``category`` (its per-item reason); None when unset.
+    category_reason: str | None = None
 
 
 def unique_categories(diagnoses: Iterable[Diagnosis]) -> list[DiagnosisCategory]:

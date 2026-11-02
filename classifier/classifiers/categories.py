@@ -17,16 +17,16 @@ not "Neurological".
 abdominal pain.
 - Vomiting, emesis or spit-up at any age (e.g. vomiting in infants, persistent vomiting) is \
 "Reflux / GERD / Vomiting", not "Infection / Sepsis" or "Gastrointestinal".
-- Feeding problems and growth concerns are "Feeding / Growth" even in a newborn or infant \
-(e.g. feeding difficulty, feeding disability, poor feeding, failure to thrive, short \
-stature, growth delay), not "Gastrointestinal", "Blood / Anemia" or \
-"Developmental / Cognitive"; "Newborn / Well Child" is only for routine newborn care or \
-well-child visits with no specific problem.
-- Weight problems (underweight, low weight, poor or slow weight gain, weight loss, \
-malnutrition) depend on whether the patient is an infant (shown next to the patient age): \
-infant → "Feeding / Growth"; not an infant → "Obesity / Metabolic", unless the diagnosis \
-itself names a feeding problem (e.g. feeding difficulty, feeding tube dependence) → \
-"Feeding / Growth"; age unknown → "Feeding / Growth".
+- Growth and feeding problems are "Feeding / Growth" at any age: short stature (R62.52), \
+growth delay or lack of expected growth (R62.5x), feeding difficulty or feeding disability \
+(R63.3x), poor feeding, failure to thrive (R62.51); never "Gastrointestinal", \
+"Blood / Anemia" or "Developmental / Cognitive". "Newborn / Well Child" is only for routine \
+newborn care or well-child visits with no specific problem.
+- Weight problems (underweight or low weight (R63.6), poor or slow weight gain, weight loss \
+(R63.4), malnutrition) are "Feeding / Growth" when the patient is an infant or the age is \
+unknown (the infant label is shown next to the patient age). Only when the patient is \
+labelled not an infant are they "Obesity / Metabolic", unless the diagnosis itself names \
+a feeding problem (e.g. feeding difficulty, feeding tube dependence) → "Feeding / Growth".
 - "Obesity / Metabolic" also covers obesity, overweight, diabetes, thyroid disease and \
 high cholesterol.
 - Fussiness, fussy baby, irritability, irritable mood, neonatal agitation, excessive crying \
@@ -47,6 +47,16 @@ developmental delay or intellectual disability in a child is "Developmental / Co
 - Any other wound or ulcer (pressure injury, diabetic foot ulcer, surgical or traumatic \
 wound) is "Wound"; rashes, dermatitis and other skin conditions are "Skin".
 - Use "Other" only when a diagnosis exists but fits no category."""
+
+
+# Worked examples for the bucketing prompt (synthetic): "diagnosis, age → category".
+CATEGORY_EXAMPLES = """\
+- Short stature (R62.52), 5 years (not an infant) → Feeding / Growth
+- Underweight (R63.6), 0 days (infant) → Feeding / Growth
+- Underweight (R63.6), 40 years (not an infant) → Obesity / Metabolic
+- Vomiting in infants (R11.10), 2 months (infant) → Reflux / GERD / Vomiting
+- Neonatal agitation / fussy infant (R68.12), 1 month (infant) → Fussiness / Irritability
+- Abdominal bloating (R14.0), 0 days (infant) → Gastrointestinal"""
 
 
 def describe_age(age_years: float | None) -> str | None:

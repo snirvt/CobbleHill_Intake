@@ -56,13 +56,14 @@ _META_COLUMNS = [
 _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
+    "diagnosis_categories", "diagnosis_category_reasons", "medical_necessity",
+    "medical_necessity_reasoning", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
-    "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning",
-    "identity_match", "dr_fields", "nurse_fields",
+    "diagnosis_categories", "diagnosis_category_reasons", "medical_necessity",
+    "medical_necessity_reasoning", "identity_match", "dr_fields", "nurse_fields",
     "errors",
 ]
 
@@ -75,6 +76,11 @@ def format_diagnoses(diagnoses: list[Diagnosis]) -> str:
 def _format_diagnosis(d: Diagnosis) -> str:
     text = f"{d.name} ({d.icd_code})" if d.icd_code else d.name
     return f"{text} [{d.category}]" if d.category else text
+
+
+def format_category_reasons(diagnoses: list[Diagnosis]) -> str:
+    """Render why each diagnosis got its bucket: 'name: reason; ...' (no reason: skipped)."""
+    return "; ".join(f"{d.name}: {d.category_reason}" for d in diagnoses if d.category_reason)
 
 
 def format_categories(categories: list[DiagnosisCategory]) -> str:
@@ -205,6 +211,7 @@ def _pair_result_to_row(
             "overall": "",
             "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "", "diagnosis_categories": "",
+            "diagnosis_category_reasons": "",
             "medical_necessity": "", "medical_necessity_reasoning": "",
         })
         if verbose:
@@ -219,6 +226,9 @@ def _pair_result_to_row(
         "diagnosis_check": r.diagnosis_check or "",
         "diagnoses": format_pair_diagnoses(r.dr_diagnoses, r.nurse_diagnoses),
         "diagnosis_categories": format_categories(r.diagnosis_categories),
+        "diagnosis_category_reasons": format_category_reasons(
+            [*r.dr_diagnoses, *r.nurse_diagnoses]
+        ),
         "medical_necessity": r.care_check or "",
         "medical_necessity_reasoning": r.care_reasoning,
     })
@@ -412,7 +422,8 @@ def _write_counts_sheet(ws: Worksheet, header: str, groups: list[tuple[str, int]
 
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
-    "diagnosis_check", "diagnoses", "diagnosis_categories", "medical_necessity", "medical_necessity_reasoning", "errors",
+    "diagnosis_check", "diagnoses", "diagnosis_categories", "diagnosis_category_reasons",
+    "medical_necessity", "medical_necessity_reasoning", "errors",
 ]
 
 
@@ -463,8 +474,8 @@ def write_dr_validity_xlsx(
 _INTAKE_REVIEW_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "age", "patient_group",
     "final_verdict", "verdict_phase_1", "verdict_phase_2", "final_verdict_explanation",
-    "diagnosis_categories", "diagnoses", "medical_necessity", "medical_necessity_reasoning",
-    "dr_nurse_compare", "warnings", "errors",
+    "diagnosis_categories", "diagnosis_category_reasons", "diagnoses", "medical_necessity",
+    "medical_necessity_reasoning", "dr_nurse_compare", "warnings", "errors",
 ]
 
 _INTAKE_VERDICT_SHEETS = {
@@ -551,6 +562,7 @@ def _intake_review_row(
         "verdict_phase_2": r.verdict_phase_2 or "",
         "final_verdict_explanation": r.explanation or "",
         "diagnosis_categories": format_categories(p1.diagnosis_categories),
+        "diagnosis_category_reasons": format_category_reasons(p1.diagnoses),
         "diagnoses": format_diagnoses(p1.diagnoses),
         "medical_necessity": "" if care is None else care,
         "medical_necessity_reasoning": (
@@ -628,6 +640,7 @@ def _dr_validity_row(
         "diagnosis_check": r.diagnosis_check,
         "diagnoses": format_diagnoses(r.diagnoses),
         "diagnosis_categories": format_categories(r.diagnosis_categories),
+        "diagnosis_category_reasons": format_category_reasons(r.diagnoses),
         "medical_necessity": r.care_check or "",
         "medical_necessity_reasoning": r.care_reasoning,
     })

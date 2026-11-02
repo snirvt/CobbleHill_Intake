@@ -235,7 +235,7 @@ source scripts/api_env.sh
   Extraction and bucketing are **separate LLM steps**: `DiagnosisExtractionClassifier` (note →
   names + ICD, no categories) then `DiagnosisCategorizationClassifier` (one batched call per note,
   name + ICD + patient age, assigned by position; count mismatch → `error`; each item has a
-  required `reason` before `category` so the model reasons per item with thinking off), chained by
+  required `reason` before `category` so the model reasons per item with thinking off; the reason is kept as `Diagnosis.category_reason` and shown in reports, xlsx column `diagnosis_category_reasons`; prompt has rules `CATEGORY_RULES` + worked examples `CATEGORY_EXAMPLES`), chained by
   `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). The age is text from
   `categories.describe_age(age_years)` ("3 months (infant)" / "16 years (not an infant)"; the
   cutoff is `settings.infant_age_threshold_years` and never shown to the model), age from the
