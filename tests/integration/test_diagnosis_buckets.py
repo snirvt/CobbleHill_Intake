@@ -74,6 +74,18 @@ _CASES = [
         "4 years (not an infant)",
         DiagnosisCategory.FEEDING,
     ),
+    # A 75-year-old's negative finding landed in Newborn / Well Child.
+    (
+        Diagnosis(name="No respiratory symptoms at this time"),
+        "75 years (not an infant)",
+        DiagnosisCategory.OTHER,
+    ),
+    (
+        Diagnosis(name="Routine well-child visit"),
+        "4 years (not an infant)",
+        DiagnosisCategory.NEWBORN,
+    ),
+    (Diagnosis(name="Routine newborn care"), "2 days (infant)", DiagnosisCategory.NEWBORN),
     # Underweight infant kept landing in Obesity / Metabolic.
     (
         Diagnosis(name="Underweight", icd_code="R63.6"),
@@ -121,6 +133,16 @@ async def test_diagnosis_lands_in_expected_bucket(
 
     assert result.error is None, result.error
     assert result.diagnoses[0].category is expected, _why(result.diagnoses)
+
+
+@pytest.mark.integration
+async def test_adult_never_lands_in_newborn_well_child() -> None:
+    diagnosis = Diagnosis(name="Encounter for general adult medical examination")
+
+    result = await build_diagnosis_categorizer().categorize([diagnosis], _ADULT)
+
+    assert result.error is None, result.error
+    assert result.diagnoses[0].category is not DiagnosisCategory.NEWBORN, _why(result.diagnoses)
 
 
 @pytest.mark.integration

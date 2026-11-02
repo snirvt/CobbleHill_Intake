@@ -138,6 +138,12 @@ async def test_missing_diagnoses_key_sets_parse_error() -> None:
     assert result.error is not None and result.error.startswith("Parse error")
 
 
+def test_prompt_skips_negative_findings_and_status_remarks() -> None:
+    assert "Skip negative findings and ruled-out conditions" in _PROMPT_TEMPLATE
+    assert "no evidence of latent tuberculosis infection" in _PROMPT_TEMPLATE
+    assert "incision healing" in _PROMPT_TEMPLATE
+
+
 def test_prompt_prioritizes_assessment_and_falls_back_to_hpi() -> None:
     assert "Assessment" in _PROMPT_TEMPLATE
     assert "HPI or chief complaint" in _PROMPT_TEMPLATE

@@ -49,6 +49,11 @@ Rules:
 other qualifiers), without surrounding punctuation.
 - Include the ICD-10 code only if it is explicitly present in the note; otherwise null.
 - Do not duplicate the same diagnosis, and do not invent diagnoses or ICD codes.
+- List only problems the patient has. Skip negative findings and ruled-out conditions \
+(e.g. "no respiratory symptoms", "no evidence of latent tuberculosis infection", "denies \
+chest pain", "negative for ...") and plain normal or status remarks (e.g. "incision healing \
+well", "stable", "doing well"). A condition still being treated or followed counts (e.g. \
+"post-operative pain improving" → "Post-operative pain").
 - Return an empty list only if the note has no clinician diagnosis and no condition \
 described in the HPI or chief complaint.
 - Give a brief reasoning citing the relevant wording and which section each \

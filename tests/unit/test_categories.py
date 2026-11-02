@@ -51,7 +51,21 @@ def test_category_rules_route_newborn_feeding_to_feeding_growth() -> None:
     feeding_rule = _rule("failure to")
 
     assert '"Feeding / Growth"' in feeding_rule
-    assert '"Newborn / Well Child"' in feeding_rule
+
+
+def test_category_rules_newborn_well_child_never_for_adults() -> None:
+    newborn_rule = _rule('"Newborn / Well Child" is only')
+
+    assert "infant or child" in newborn_rule
+    assert "never for an adult" in newborn_rule
+    assert '(→ "Feeding / Growth")' in newborn_rule
+
+
+def test_category_rules_send_negative_findings_to_other() -> None:
+    negative_rule = _rule("negative finding")
+
+    assert "no respiratory symptoms" in negative_rule
+    assert 'is "Other"' in negative_rule
 
 
 def test_category_rules_route_vomiting_to_reflux() -> None:
@@ -96,6 +110,7 @@ def test_category_examples_cover_the_reported_misses() -> None:
     assert "- Short stature (R62.52), 5 years (not an infant) → Feeding / Growth" in lines
     assert "- Underweight (R63.6), 0 days (infant) → Feeding / Growth" in lines
     assert "- Underweight (R63.6), 40 years (not an infant) → Obesity / Metabolic" in lines
+    assert "- No respiratory symptoms at this time, 75 years (not an infant) → Other" in lines
 
 
 def test_category_examples_end_in_known_categories() -> None:
