@@ -64,6 +64,14 @@ def test_llm_backend_env_selects_vllm(on_machine, monkeypatch: pytest.MonkeyPatc
     assert s.vllm_model == "nemotron-3.5-lightning"
 
 
+def test_vllm_sampling_defaults_to_greedy(on_machine, monkeypatch: pytest.MonkeyPatch) -> None:
+    on_machine("aarch64")
+    for var in ("COBBLEHILL_VLLM_TEMPERATURE", "COBBLEHILL_VLLM_TOP_P"):
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert (s.vllm_temperature, s.vllm_top_p) == (0.0, 1.0)
+
+
 def test_llm_backend_rejects_unknown_value(on_machine) -> None:
     on_machine("x86_64")
     with pytest.raises(ValidationError):

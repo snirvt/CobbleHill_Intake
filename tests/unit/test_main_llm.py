@@ -51,6 +51,16 @@ def test_make_llm_vllm_sends_thinking_level_params(
     assert llm.inner.extra_body == main.settings.vllm_thinking_levels[level]
 
 
+def test_make_llm_vllm_sends_settings_sampling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main.settings, "llm_backend", "vllm")
+    monkeypatch.setattr(main.settings, "vllm_temperature", 0.3)
+    monkeypatch.setattr(main.settings, "vllm_top_p", 0.8)
+    llm = main._make_llm(thinking="off")
+    assert isinstance(llm, SemaphoreChatModel)
+    assert isinstance(llm.inner, ChatOpenAI)
+    assert (llm.inner.temperature, llm.inner.top_p) == (0.3, 0.8)
+
+
 def test_make_llm_uses_given_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "llm_backend", "vllm")
     sem = asyncio.Semaphore(2)

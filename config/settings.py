@@ -131,9 +131,11 @@ class Settings(BaseSettings):
     # on-prem (loopback / private address) — the provider refuses public hosts.
     vllm_base_url: str = "http://localhost:8001"
     vllm_model: str = "nemotron-3.5-lightning"  # the server's --served-model-name
-    # Sampling per the Nemotron model card.
-    vllm_temperature: float = 0.6
-    vllm_top_p: float = 0.95
+    # Greedy decoding: repeatable answers (thinking is off for every task). Sent per request,
+    # so other apps on the same vLLM server keep their own sampling. Override with
+    # COBBLEHILL_VLLM_TEMPERATURE / COBBLEHILL_VLLM_TOP_P.
+    vllm_temperature: float = 0.0
+    vllm_top_p: float = 1.0
     # Extra request params sent to vLLM per thinking level. Levels are data: tune or add
     # one here, no code change. "thinking_token_budget" needs vLLM support for it; an
     # unsupported key is ignored by the server (check out_tok in the timing logs).
