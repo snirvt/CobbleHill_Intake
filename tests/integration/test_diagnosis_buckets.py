@@ -63,6 +63,26 @@ _CASES = [
         DiagnosisCategory.FEEDING,
     ),
     (Diagnosis(name="Short stature", icd_code="R62.52"), _TEEN, DiagnosisCategory.FEEDING),
+    (Diagnosis(name="Short stature"), "8 years (not an infant)", DiagnosisCategory.FEEDING),
+    (
+        Diagnosis(name="Short stature", icd_code="R62.52"),
+        "0 days (infant)",
+        DiagnosisCategory.FEEDING,
+    ),
+    (
+        Diagnosis(name="Lack of expected normal physiological development", icd_code="R62.50"),
+        "4 years (not an infant)",
+        DiagnosisCategory.FEEDING,
+    ),
+    # Underweight infant kept landing in Obesity / Metabolic.
+    (
+        Diagnosis(name="Underweight", icd_code="R63.6"),
+        "0 days (infant)",
+        DiagnosisCategory.FEEDING,
+    ),
+    (Diagnosis(name="Underweight"), "1 year (infant)", DiagnosisCategory.FEEDING),
+    (Diagnosis(name="Poor weight gain"), "6 months (infant)", DiagnosisCategory.FEEDING),
+    (Diagnosis(name="Underweight", icd_code="R63.6"), None, DiagnosisCategory.FEEDING),
     # The screenshot patient (0 days old); also the batch test below.
     (Diagnosis(name="Feeding disability", icd_code="R63.30"), _INFANT, DiagnosisCategory.FEEDING),
     (Diagnosis(name="Underweight", icd_code="R63.6"), _INFANT, DiagnosisCategory.FEEDING),
@@ -87,13 +107,15 @@ def _why(diagnoses: list[Diagnosis]) -> list[str]:
 
 
 def _case_id(value: object) -> str:
-    return value.name if isinstance(value, Diagnosis) else str(value)
+    if isinstance(value, Diagnosis):
+        return f"{value.name} ({value.icd_code})" if value.icd_code else value.name
+    return "unknown age" if value is None else str(value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(("diagnosis", "age", "expected"), _CASES, ids=_case_id)
 async def test_diagnosis_lands_in_expected_bucket(
-    diagnosis: Diagnosis, age: str, expected: DiagnosisCategory
+    diagnosis: Diagnosis, age: str | None, expected: DiagnosisCategory
 ) -> None:
     result = await build_diagnosis_categorizer().categorize([diagnosis], age)
 
@@ -111,6 +133,6 @@ async def test_whole_note_batch_keeps_order_and_count() -> None:
 
     assert result.error is None, result.error
     assert [d.name for d in result.diagnoses] == [d.name for d in batch]
-    assert [d.category for d in result.diagnoses[:6]] == [e for _, _, e in peds], (
-        _why(result.diagnoses)
+    assert [d.category for d in result.diagnoses[:6]] == [e for _, _, e in peds], _why(
+        result.diagnoses
     )
