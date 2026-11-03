@@ -143,13 +143,16 @@ async def test_diagnosis_lands_in_expected_bucket(
 
 
 @pytest.mark.integration
-async def test_adult_never_lands_in_newborn_well_child() -> None:
-    diagnosis = Diagnosis(name="Encounter for general adult medical examination")
-
-    result = await build_diagnosis_categorizer().categorize([diagnosis], _ADULT)
+@pytest.mark.parametrize(
+    "name",
+    ["Encounter for general adult medical examination", "Routine physical examination"],
+)
+async def test_adult_routine_exam_lands_in_other(name: str) -> None:
+    """An adult's routine exam is never "Newborn / Well Child"; it has no bucket → Other."""
+    result = await build_diagnosis_categorizer().categorize([Diagnosis(name=name)], _ADULT)
 
     assert result.error is None, result.error
-    assert result.diagnoses[0].category is not DiagnosisCategory.NEWBORN, _why(result.diagnoses)
+    assert result.diagnoses[0].category is DiagnosisCategory.OTHER, _why(result.diagnoses)
 
 
 @pytest.mark.integration

@@ -22,9 +22,10 @@ growth delay or lack of expected growth (R62.5x), feeding difficulty or feeding 
 (R63.3x), poor feeding, failure to thrive (R62.51); never \
 "Gastrointestinal / Reflux / GERD / Vomiting", "Blood / Anemia" or \
 "Developmental / Cognitive".
-- "Newborn / Well Child" is only for routine newborn care or a well-child visit of an infant \
-or child with no specific problem; never for an adult, and never for a specific problem such \
-as feeding or growth (→ "Feeding / Growth").
+- "Newborn / Well Child" requires an infant or child patient: only routine newborn care or a \
+well-child visit with no specific problem. A routine exam, check-up, physical or wellness \
+visit of an adult (not a child) is "Other", never "Newborn / Well Child"; a specific problem \
+such as feeding or growth is "Feeding / Growth".
 - A negative finding, ruled-out condition or normal status (e.g. no respiratory symptoms, \
 no evidence of tuberculosis, incision healing well) is "Other", not the organ or infection \
 category it mentions.
@@ -62,7 +63,8 @@ CATEGORY_EXAMPLES = """\
 - Vomiting in infants (R11.10), 2 months (infant) → Gastrointestinal / Reflux / GERD / Vomiting
 - Neonatal agitation / fussy infant (R68.12), 1 month (infant) → Fussiness / Irritability
 - Abdominal bloating (R14.0), 0 days (infant) → Gastrointestinal / Reflux / GERD / Vomiting
-- No respiratory symptoms at this time, 75 years (not an infant) → Other"""
+- No respiratory symptoms at this time, 75 years (not an infant) → Other
+- Annual wellness visit (Z00.00), 55 years (not an infant) → Other"""
 
 
 def describe_age(age_years: float | None) -> str | None:

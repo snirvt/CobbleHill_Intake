@@ -54,11 +54,16 @@ def test_category_rules_route_newborn_feeding_to_feeding_growth() -> None:
 
 
 def test_category_rules_newborn_well_child_never_for_adults() -> None:
-    newborn_rule = _rule('"Newborn / Well Child" is only')
+    newborn_rule = _rule('"Newborn / Well Child" requires')
 
-    assert "infant or child" in newborn_rule
-    assert "never for an adult" in newborn_rule
-    assert '(→ "Feeding / Growth")' in newborn_rule
+    assert "infant or child patient" in newborn_rule
+    assert 'visit of an adult (not a child) is "Other"' in newborn_rule
+    assert 'never "Newborn / Well Child"' in newborn_rule
+    assert 'is "Feeding / Growth"' in newborn_rule
+
+
+def test_category_examples_send_adult_wellness_visit_to_other() -> None:
+    assert "Annual wellness visit (Z00.00), 55 years (not an infant) → Other" in CATEGORY_EXAMPLES
 
 
 def test_category_rules_send_negative_findings_to_other() -> None:
