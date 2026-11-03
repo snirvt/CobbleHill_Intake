@@ -57,14 +57,14 @@ _PAIR_COLUMNS_BASE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "diagnosis_categories", "diagnosis_category_reasons", "medical_necessity",
-    "medical_necessity_reasoning", "errors",
+    "medical_necessity_reasoning", "warnings", "errors",
 ]
 _PAIR_COLUMNS_VERBOSE = [
     "folder", "patient_name", "dr_file_path", "nurse_file_path", "success", "overall",
     "clinical_verdict", "clinical_reasoning", "diagnosis_check", "diagnoses",
     "diagnosis_categories", "diagnosis_category_reasons", "medical_necessity",
     "medical_necessity_reasoning", "identity_match", "dr_fields", "nurse_fields",
-    "errors",
+    "warnings", "errors",
 ]
 
 
@@ -212,7 +212,7 @@ def _pair_result_to_row(
             "clinical_verdict": "", "clinical_reasoning": "",
             "diagnosis_check": "", "diagnoses": "", "diagnosis_categories": "",
             "diagnosis_category_reasons": "",
-            "medical_necessity": "", "medical_necessity_reasoning": "",
+            "medical_necessity": "", "medical_necessity_reasoning": "", "warnings": "",
         })
         if verbose:
             base.update({"identity_match": "", "dr_fields": "", "nurse_fields": ""})
@@ -231,6 +231,7 @@ def _pair_result_to_row(
         ),
         "medical_necessity": r.care_check or "",
         "medical_necessity_reasoning": r.care_reasoning,
+        "warnings": "; ".join(r.warnings),
     })
     if verbose:
         base.update({
@@ -423,7 +424,7 @@ def _write_counts_sheet(ws: Worksheet, header: str, groups: list[tuple[str, int]
 _DR_VALIDITY_COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
     "diagnosis_check", "diagnoses", "diagnosis_categories", "diagnosis_category_reasons",
-    "medical_necessity", "medical_necessity_reasoning", "errors",
+    "medical_necessity", "medical_necessity_reasoning", "warnings", "errors",
 ]
 
 
@@ -643,6 +644,7 @@ def _dr_validity_row(
         "diagnosis_category_reasons": format_category_reasons(r.diagnoses),
         "medical_necessity": r.care_check or "",
         "medical_necessity_reasoning": r.care_reasoning,
+        "warnings": "; ".join(r.warnings),
     })
     return row
 

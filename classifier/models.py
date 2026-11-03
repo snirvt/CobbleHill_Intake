@@ -165,16 +165,21 @@ class DiagnosisExtractionResult(BaseModel):
     reasoning: str | None = None
     # Set when the LLM call or parse failed; diagnoses is then empty, not "none found".
     error: str | None = None
+    # Non-fatal issues, e.g. a category count mismatch that left some diagnoses unbucketed.
+    warnings: list[str] = []
 
 
 class DiagnosisCategorizationResult(BaseModel):
     """Diagnoses with their buckets assigned by the categorization step."""
 
-    # Same diagnoses, same order as the input; category stays None when the step failed.
+    # Same diagnoses, same order as the input; category stays None when the step failed
+    # or (on a count mismatch) when no returned item matched the diagnosis by name.
     diagnoses: list[Diagnosis] = []
     reasoning: str | None = None
-    # Set when the LLM call, parse or count check failed.
+    # Set when the LLM call or parse failed.
     error: str | None = None
+    # Non-fatal issues, e.g. the model returned a different number of items than asked.
+    warnings: list[str] = []
 
 
 class TreatmentRequestResult(BaseModel):
@@ -282,6 +287,8 @@ class PairClassificationResult(BaseModel):
     main_diagnosis: str | None = None
     diagnosis_category: DiagnosisCategory | None = None
     main_diagnosis_icd: str | None = None
+    # Non-fatal issues from the steps, e.g. a diagnosis category count mismatch.
+    warnings: list[str] = []
 
 
 class PairPipelineResult(BaseModel):
@@ -344,6 +351,8 @@ class DrValidityResult(BaseModel):
     main_diagnosis_icd: str | None = None
     verdict: ValidityVerdict
     reasons: list[str] = []
+    # Non-fatal issues from the steps, e.g. a diagnosis category count mismatch.
+    warnings: list[str] = []
 
 
 class ErrorStage(StrEnum):
@@ -439,6 +448,8 @@ class PairMatch(BaseModel):
     clinical_reasoning: str = ""
     # Diagnoses read from the nurse note(s), shown in the verdict explanation.
     nurse_diagnoses: list[Diagnosis] = []
+    # Non-fatal issues from the pair's steps, e.g. a category count mismatch.
+    warnings: list[str] = []
 
 
 class IntakeReviewResult(BaseModel):

@@ -5,6 +5,7 @@ strings, without a note. ``CategorizedDiagnosisExtractor`` chains the two steps.
 """
 
 import logging
+import re
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -29,6 +30,7 @@ from classifier.models import (
 )
 from classifier.protocols import DiagnosisCategorizer
 from classifier.providers.structured import bind_output_schema
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,49 @@ def _format_diagnoses(diagnoses: list[Diagnosis]) -> str:
     )
 
 
+_ICD_SUFFIX = re.compile(r"\s*\([^()]*\)\s*$")
+_NON_WORD = re.compile(r"[^\w]+")
+
+
+def _normalize_name(name: str) -> str:
+    """Comparison key for an echoed diagnosis name: no trailing ``(ICD)``, case or punctuation."""
+    return _NON_WORD.sub(" ", _ICD_SUFFIX.sub("", name)).strip().casefold()
+
+
+def count_mismatch_warning(expected: int, got: int, uncategorized: int, attempts: int) -> str:
+    """Report text for a categorization still returning the wrong item count after retries."""
+    return (
+        f"Category count mismatch after {attempts} attempts: expected {expected}, got {got}; "
+        f"{uncategorized} diagnoses left uncategorized"
+    )
+
+
+def _match_by_name(
+    diagnoses: list[Diagnosis], items: list[CategorizedItem]
+) -> list[CategorizedItem | None]:
+    """Pair each diagnosis with the first unused item of the same normalized name.
+
+    Used when the model returned a different number of items than diagnoses, so position
+    can't be trusted. Duplicate names consume items in order; unmatched diagnoses get None
+    and extra items are ignored.
+    """
+    pool: dict[str, list[CategorizedItem]] = {}
+    for item in items:
+        pool.setdefault(_normalize_name(item.name), []).append(item)
+    matched: list[CategorizedItem | None] = []
+    for diagnosis in diagnoses:
+        candidates = pool.get(_normalize_name(diagnosis.name))
+        matched.append(candidates.pop(0) if candidates else None)
+    return matched
+
+
+def _apply(diagnosis: Diagnosis, item: CategorizedItem | None) -> Diagnosis:
+    """The diagnosis with the item's category and reason; unchanged when item is None."""
+    if item is None:
+        return diagnosis
+    return diagnosis.model_copy(update={"category": item.category, "category_reason": item.reason})
+
+
 class DiagnosisCategorizationClassifier:
     """Assigns a DiagnosisCategory to every diagnosis of a note in one LLM call."""
 
@@ -116,45 +161,67 @@ class DiagnosisCategorizationClassifier:
     ) -> DiagnosisCategorizationResult:
         """Return the diagnoses with categories set, by position; error set on failure.
 
+        A reply with the wrong number of items is retried, up to
+        ``settings.category_mismatch_max_attempts`` calls in total; after the last one the
+        items are matched by name and the result carries a warning instead of an error.
+
         ``patient_age`` (e.g. "3 months", from the patient-age step) decides child-vs-adult
         buckets; None is shown to the model as "unknown".
         """
         if not diagnoses:
             return DiagnosisCategorizationResult()
-        try:
-            output: DiagnosisCategorizationOutput = await self._chain.ainvoke(
-                {
-                    "diagnoses": _format_diagnoses(diagnoses),
-                    "patient_age": patient_age or "unknown",
-                }
+        attempts = max(1, settings.category_mismatch_max_attempts)
+        for attempt in range(1, attempts + 1):
+            try:
+                output = await self._call_once(diagnoses, patient_age)
+            except OutputParserException as exc:
+                logger.error("Category parse failed: %s", exc)
+                return DiagnosisCategorizationResult(
+                    diagnoses=diagnoses, error=f"Category parse error: {exc}"
+                )
+            except Exception as exc:
+                logger.error("Category LLM call failed: %s", exc)
+                return DiagnosisCategorizationResult(
+                    diagnoses=diagnoses, error=f"Category LLM error: {exc}"
+                )
+            if len(output.categories) == len(diagnoses):
+                return DiagnosisCategorizationResult(
+                    diagnoses=[
+                        _apply(d, item)
+                        for d, item in zip(diagnoses, output.categories, strict=True)
+                    ],
+                    reasoning=_join_reasons(output),
+                )
+            logger.warning(
+                "Category count mismatch on attempt %d/%d: expected %d, got %d",
+                attempt,
+                attempts,
+                len(diagnoses),
+                len(output.categories),
             )
-        except OutputParserException as exc:
-            logger.error("Category parse failed: %s", exc)
-            return DiagnosisCategorizationResult(
-                diagnoses=diagnoses, error=f"Category parse error: {exc}"
-            )
-        except Exception as exc:
-            logger.error("Category LLM call failed: %s", exc)
-            return DiagnosisCategorizationResult(
-                diagnoses=diagnoses, error=f"Category LLM error: {exc}"
-            )
-        reasoning = _join_reasons(output)
-        logger.debug("Categorized %d diagnoses reasoning=%r", len(output.categories), reasoning)
-        if len(output.categories) != len(diagnoses):
-            error = (
-                f"Category count mismatch: expected {len(diagnoses)}, got {len(output.categories)}"
-            )
-            logger.error(error)
-            return DiagnosisCategorizationResult(
-                diagnoses=diagnoses, reasoning=reasoning, error=error
-            )
-        return DiagnosisCategorizationResult(
-            diagnoses=[
-                d.model_copy(update={"category": item.category, "category_reason": item.reason})
-                for d, item in zip(diagnoses, output.categories, strict=True)
-            ],
-            reasoning=reasoning,
+        matched = _match_by_name(diagnoses, output.categories)
+        uncategorized = sum(item is None for item in matched)
+        warning = count_mismatch_warning(
+            len(diagnoses), len(output.categories), uncategorized, attempts
         )
+        logger.warning(warning)
+        return DiagnosisCategorizationResult(
+            diagnoses=[_apply(d, item) for d, item in zip(diagnoses, matched, strict=True)],
+            reasoning=_join_reasons(output),
+            warnings=[warning],
+        )
+
+    async def _call_once(
+        self, diagnoses: list[Diagnosis], patient_age: str | None
+    ) -> DiagnosisCategorizationOutput:
+        """One categorization call (with the chain's own transport/parse retries)."""
+        output: DiagnosisCategorizationOutput = await self._chain.ainvoke(
+            {"diagnoses": _format_diagnoses(diagnoses), "patient_age": patient_age or "unknown"}
+        )
+        logger.debug(
+            "Categorized %d diagnoses reasoning=%r", len(output.categories), _join_reasons(output)
+        )
+        return output
 
 
 class CategorizedDiagnosisExtractor:
@@ -191,5 +258,6 @@ class CategorizedDiagnosisExtractor:
                 "diagnosis_categories": unique_categories(categorized.diagnoses),
                 "reasoning": reasoning or None,
                 "error": categorized.error,
+                "warnings": [*extracted.warnings, *categorized.warnings],
             }
         )

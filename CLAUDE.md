@@ -234,7 +234,7 @@ source scripts/api_env.sh
   `diagnosis_categories` list on results). Bucket list + rules shared via `classifiers/categories.py`.
   Extraction and bucketing are **separate LLM steps**: `DiagnosisExtractionClassifier` (note →
   names + ICD, no categories) then `DiagnosisCategorizationClassifier` (one batched call per note,
-  name + ICD + patient age, assigned by position; count mismatch → `error`; each item has a
+  name + ICD + patient age, assigned by position; a count mismatch is retried (`settings.category_mismatch_max_attempts` calls in total), then items are matched by echoed name instead, unmatched diagnoses stay uncategorized and a `warnings` entry is set — shown in every report's `warnings` field/column, never an error; each item has a
   required `reason` before `category` so the model reasons per item with thinking off; the reason is kept as `Diagnosis.category_reason` and shown in reports, xlsx column `diagnosis_category_reasons`; prompt has rules `CATEGORY_RULES` + worked examples `CATEGORY_EXAMPLES`), chained by
   `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). The age is text from
   `categories.describe_age(age_years)` ("3 months (infant)" / "16 years (not an infant)"; the

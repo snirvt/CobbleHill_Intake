@@ -92,7 +92,7 @@ class DrNurseMatchClassifier:
         identity = self._compare_identity(pair)
         (
             (clinical_verdict, clinical_reasoning, clinical_error),
-            (diagnosis_check, dr_diagnoses, nurse_diagnoses, diagnosis_error),
+            (diagnosis_check, dr_diagnoses, nurse_diagnoses, diagnosis_warnings, diagnosis_error),
             (care_check, care_reasoning, care_error),
             main,
         ) = await asyncio.gather(
@@ -134,6 +134,7 @@ class DrNurseMatchClassifier:
             main_diagnosis=main.main_diagnosis if main else None,
             diagnosis_category=main.diagnosis_category if main else None,
             main_diagnosis_icd=main.icd_code if main else None,
+            warnings=diagnosis_warnings,
         )
 
     async def _check_care_needed(
@@ -190,17 +191,18 @@ class DrNurseMatchClassifier:
 
     async def _check_diagnoses(
         self, pair: PairDocumentMetadata
-    ) -> tuple[DiagnosisCheck | None, list[Diagnosis], list[Diagnosis], str | None]:
+    ) -> tuple[DiagnosisCheck | None, list[Diagnosis], list[Diagnosis], list[str], str | None]:
         """Extract diagnoses from both notes; MISSING when neither has any.
 
-        Returns (check, dr list, nurse list, error). (None, [], [], None) when the pair's
+        Returns (check, dr list, nurse list, warnings, error); warnings are prefixed with the
+        note they came from. (None, [], [], [], None) when the pair's
         category is out of scope for the check or no diagnosis extractor was injected —
         the check is then skipped entirely. A failed extraction on either note sets error.
         """
         if self._diagnosis_extractor is None:
-            return None, [], [], None
+            return None, [], [], [], None
         if pair.category not in settings.diagnosis_check_categories:
-            return None, [], [], None
+            return None, [], [], [], None
 
         nurse_doc = DocumentMetadata(
             file_path=pair.nurse_file_path,
@@ -213,7 +215,7 @@ class DrNurseMatchClassifier:
         )
         failed = [r.error for r in (dr_result, nurse_result) if r.error]
         if failed:
-            return None, [], [], "; ".join(failed)
+            return None, [], [], [], "; ".join(failed)
         has_diagnosis = bool(dr_result.diagnoses or nurse_result.diagnoses)
         check = DiagnosisCheck.EXISTS if has_diagnosis else DiagnosisCheck.MISSING
         if check is DiagnosisCheck.MISSING:
@@ -223,7 +225,10 @@ class DrNurseMatchClassifier:
                 pair.dr_file_path,
                 pair.nurse_file_path,
             )
-        return check, dr_result.diagnoses, nurse_result.diagnoses, None
+        warnings = [f"dr note: {w}" for w in dr_result.warnings] + [
+            f"nurse note: {w}" for w in nurse_result.warnings
+        ]
+        return check, dr_result.diagnoses, nurse_result.diagnoses, warnings, None
 
     def _compare_identity(self, pair: PairDocumentMetadata) -> IdentityMatchResult:
         dr = pair.dr.meta

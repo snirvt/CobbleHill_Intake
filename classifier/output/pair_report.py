@@ -52,6 +52,7 @@ def pair_dict(
         "diagnosis_categories": res.diagnosis_categories,
         "medical_necessity": res.care_check or "",
         "medical_necessity_reasoning": res.care_reasoning,
+        "warnings": res.warnings,
     })
     if verbose:
         dr = res.dr_metadata

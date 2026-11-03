@@ -40,6 +40,7 @@ def dr_validity_patient_dict(
         "diagnosis_categories": res.diagnosis_categories,
         "medical_necessity": res.care_check,
         "medical_necessity_reasoning": res.care_reasoning,
+        "warnings": res.warnings,
     })
     return out
 

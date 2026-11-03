@@ -103,6 +103,7 @@ class DrNoteValidityClassifier:
             main_diagnosis_icd=main.icd_code if main else None,
             verdict=verdict,
             reasons=reasons,
+            warnings=diagnoses.warnings,
         )
 
     async def _age_then_diagnoses(

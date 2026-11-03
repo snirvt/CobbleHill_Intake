@@ -162,7 +162,11 @@ class IntakeReviewPipeline:
             verdict_phase_2=verdict_2,
             verdict=final_verdict(verdict_1, verdict_2, has_pair),
             explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs, has_pair),
-            warnings=warnings,
+            warnings=list(
+                dict.fromkeys(
+                    [*warnings, *phase_1.warnings, *(w for p in pairs for w in p.warnings)]
+                )
+            ),
         )
         logger.debug(
             "Intake review %s for %s (phase 1=%s, phase 2=%s)",
@@ -243,6 +247,7 @@ class IntakeReviewPipeline:
             clinical_verdict=match.clinical_verdict,
             clinical_reasoning=match.clinical_reasoning,
             nurse_diagnoses=nurse_diagnoses.diagnoses,
+            warnings=[f"nurse note: {w}" for w in nurse_diagnoses.warnings],
         )
 
     async def _extract_texts(self, paths: list[Path], timings: PatientTimings) -> dict[Path, str]:

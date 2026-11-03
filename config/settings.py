@@ -162,6 +162,9 @@ class Settings(BaseSettings):
     max_concurrent_llm_calls: int = 8
     # Attempts per LLM step (call + parse) before the step is reported as failed.
     llm_max_attempts: int = 3
+    # Attempts of the diagnosis-categorization call while it returns the wrong number of items.
+    # After the last one, items are matched by name and the result carries a warning.
+    category_mismatch_max_attempts: int = 3
     # Initial backoff (seconds) between LLM attempts; doubles each retry. 0 = no wait.
     llm_retry_wait_s: float = 1.0
     # Hard cap on tokens generated per LLM call (thinking + answer). Stops a model stuck in a
