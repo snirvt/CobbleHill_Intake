@@ -6,6 +6,7 @@ shape of a real response. Nothing here touches SharePoint, an LLM or patient dat
 
 from pathlib import Path
 
+from classifier.classifiers.diagnosis_categorization import count_mismatch_warning
 from classifier.classifiers.intake_verdict import (
     explain,
     final_verdict,
@@ -41,6 +42,7 @@ from classifier.models import (
 from classifier.output.dr_validity_report import dr_validity_report
 from classifier.output.intake_review_report import intake_review_report
 from classifier.output.pair_report import pair_report
+from config.settings import settings
 
 _ROOT = Path("/example")
 _SHAREPOINT_FOLDER = "EXAMPLE/Physician Notes/Pending"
@@ -53,6 +55,11 @@ _DIAGNOSIS = Diagnosis(
     category=DiagnosisCategory.OTHER,
     category_reason=_REASONING,
 )
+# What a diagnosis looks like when categorization returned the wrong item count and no
+# returned item matched it by name: no category, plus the warning below on the result.
+_UNCATEGORIZED = Diagnosis(name="Example Uncategorized Diagnosis", icd_code="Z00.00")
+_MISMATCH_WARNING = count_mismatch_warning(2, 1, 1, settings.category_mismatch_max_attempts)
+_NURSE_MISMATCH_WARNING = f"nurse note: {_MISMATCH_WARNING}"
 
 _OK_FOLDER = _ROOT / "EXAMPLE, PATIENT ONE"
 _FAILED_FOLDER = _ROOT / "EXAMPLE, PATIENT TWO"
@@ -85,7 +92,10 @@ def _wrap(report: dict[str, object]) -> dict[str, object]:
 
 
 def dr_validity_example() -> dict[str, object]:
-    """A /dr-validity response: one valid patient, one failed patient, one skipped folder."""
+    """A /dr-validity response: one valid patient, one failed patient, one skipped folder.
+
+    The valid patient also shows a category-count-mismatch warning and its uncategorized diagnosis.
+    """
     ok_paths = [_OK_FOLDER / "peds_dr_example.pdf"]
     failed_paths = [_FAILED_FOLDER / "dr_example.pdf"]
     results = [
@@ -99,12 +109,13 @@ def dr_validity_example() -> dict[str, object]:
                 age_years=0.5,
                 patient_group=PatientGroup.PEDIATRIC,
                 diagnosis_check=DiagnosisCheck.EXISTS,
-                diagnoses=[_DIAGNOSIS],
+                diagnoses=[_DIAGNOSIS, _UNCATEGORIZED],
                 diagnosis_categories=[DiagnosisCategory.OTHER],
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,
                 verdict=ValidityVerdict.VALID,
                 reasons=[],
+                warnings=[_MISMATCH_WARNING],
             ),
         ),
         DrValidityPipelineResult(
@@ -120,7 +131,10 @@ def dr_validity_example() -> dict[str, object]:
 
 
 def dr_nurse_match_example() -> dict[str, object]:
-    """A /dr-nurse-match response: one matching pair, one failed pair, one skipped folder."""
+    """A /dr-nurse-match response: one matching pair, one failed pair, one skipped folder.
+
+    The matching pair also shows a nurse-note category-count-mismatch warning.
+    """
     ok_dr = _OK_FOLDER / "peds_dr_example.pdf"
     ok_nurse = _OK_FOLDER / "peds_nurse_example.pdf"
     failed_dr = _FAILED_FOLDER / "dr_example.pdf"
@@ -146,11 +160,12 @@ def dr_nurse_match_example() -> dict[str, object]:
                 ),
                 nurse_fields=NurseVisitFields(meta=NursePatientMeta()),
                 dr_diagnoses=[_DIAGNOSIS],
-                nurse_diagnoses=[_DIAGNOSIS],
+                nurse_diagnoses=[_DIAGNOSIS, _UNCATEGORIZED],
                 diagnosis_categories=[DiagnosisCategory.OTHER],
                 diagnosis_check=DiagnosisCheck.EXISTS,
                 care_check=CareCheck.NEEDED,
                 care_reasoning=_REASONING,
+                warnings=[_NURSE_MISMATCH_WARNING],
             ),
         ),
         PairPipelineResult(
@@ -183,10 +198,12 @@ def _review(
     care: CareCheck | None,
     nurse: tuple[ClinicalVerdict, Diagnosis] | None,
     extra: list[Diagnosis] | None = None,
+    nurse_warnings: list[str] | None = None,
 ) -> IntakeReviewPipelineResult:
     """One fake reviewed patient; the verdicts go through the real intake rules.
 
-    ``extra`` adds secondary diagnoses after the main one.
+    ``extra`` adds secondary diagnoses after the main one; ``nurse_warnings`` are set on the
+    pair and merged into the patient's warnings, as the pipeline does.
     """
     folder = _ROOT / name
     diagnoses = [_DIAGNOSIS, *(extra or [])] if diagnosis else []
@@ -214,6 +231,7 @@ def _review(
                 clinical_verdict=nurse[0],
                 clinical_reasoning=_REASONING,
                 nurse_diagnoses=[nurse[1]],
+                warnings=nurse_warnings or [],
             )
         ]
         if nurse and verdict_1 is PhaseVerdict.PASS
@@ -239,7 +257,7 @@ def _review(
             verdict_phase_2=verdict_2,
             verdict=final_verdict(verdict_1, verdict_2, has_pair),
             explanation=explain(verdict_1, reasons, phase_1.diagnoses, pairs, has_pair),
-            warnings=warnings,
+            warnings=list(dict.fromkeys([*warnings, *(w for p in pairs for w in p.warnings)])),
         ),
     )
 
@@ -250,7 +268,8 @@ def intake_review_example() -> dict[str, object]:
     Accept; Phase I reject (adult, no diagnosis); Phase I reject (age not found, so
     pediatric rules, no medical necessity); Phase II reject (notes do not match); needs
     review (match undecided); no nurse note (Phase I passed, and Phase I failed); the
-    nurse-only folder is listed with no review and reported under ``errors``.
+    nurse-only folder is listed with no review and reported under ``errors``. The accepted
+    patient also shows a nurse-note category-count-mismatch warning.
     """
     match = (ClinicalVerdict.MATCH, _DIAGNOSIS)
     results = [
@@ -262,6 +281,7 @@ def intake_review_example() -> dict[str, object]:
             CareCheck.NEEDED,
             match,
             extra=[_SECOND_DIAGNOSIS],
+            nurse_warnings=[_NURSE_MISMATCH_WARNING],
         ),
         _review("EXAMPLE, NO DIAGNOSIS", 40.0, PatientGroup.ADULT, False, None, match),
         _review(
