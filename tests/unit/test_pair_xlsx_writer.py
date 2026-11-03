@@ -499,3 +499,15 @@ def test_no_main_diagnosis_columns_in_either_mode(tmp_path: Path) -> None:
         write_pair_xlsx([_make_pair_result(dr, nurse)], out, verbose=verbose)
         header = list(openpyxl.load_workbook(out)["All"].iter_rows(max_row=1, values_only=True))[0]
         assert not any(str(c).startswith("main_diagnosis") for c in header)
+
+
+def test_warnings_column_joins_result_warnings_and_is_not_an_issue(tmp_path: Path) -> None:
+    dr, nurse = tmp_path / "peds_dr_a.pdf", tmp_path / "peds_nurse_a.pdf"
+    result = _make_pair_result(dr, nurse)
+    assert result.result is not None
+    result.result.warnings = ["dr note: w1", "nurse note: w2"]
+    out = tmp_path / "results.xlsx"
+    write_pair_xlsx([result], out)
+    wb = openpyxl.load_workbook(out)
+    assert _row_value(wb["All"], "warnings") == "dr note: w1; nurse note: w2"
+    assert wb["No Issues"].max_row == 2  # header + 1: a warning alone is not an issue

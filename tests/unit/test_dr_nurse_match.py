@@ -566,3 +566,32 @@ async def test_main_diagnosis_reads_dr_note_only() -> None:
     text = extractor.extract_main_diagnosis.await_args.args[0].raw_text
     assert "asthma exacerbation" in text
     assert "Nurse text here" not in text
+
+
+async def test_diagnosis_warnings_are_prefixed_with_their_note() -> None:
+    extractor = MagicMock()
+    extractor.extract_diagnoses = AsyncMock(
+        side_effect=lambda meta: DiagnosisExtractionResult(
+            file_path=meta.file_path,
+            diagnoses=[Diagnosis(name="Colic")],
+            warnings=[f"w-{meta.file_path.stem}"],
+        )
+    )
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"), diagnosis_extractor=extractor)
+
+    result = await clf.classify_pair(
+        _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
+    )
+
+    assert result.warnings == ["dr note: w-dr_note", "nurse note: w-nurse_note"]
+    assert result.overall == "MATCH"
+
+
+async def test_no_warnings_when_diagnosis_check_skipped() -> None:
+    clf = DrNurseMatchClassifier(llm=_fake_llm("MATCH"))
+
+    result = await clf.classify_pair(
+        _make_pair(_make_dr_meta(), _make_nurse_fields(), category="hospital")
+    )
+
+    assert result.warnings == []

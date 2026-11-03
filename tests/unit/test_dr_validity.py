@@ -320,3 +320,22 @@ async def test_classify_diagnosis_failure_is_error_not_invalid_verdict() -> None
         await clf.classify(_metadata(), _DR_PATHS)
 
     assert [e.stage for e in info.value.errors] == [ErrorStage.DIAGNOSIS]
+
+
+async def test_classify_copies_diagnosis_warnings() -> None:
+    clf, mocks = _make_classifier(age=0.67)
+    mocks["diagnosis"].side_effect = lambda m, _age=None: DiagnosisExtractionResult(
+        file_path=m.file_path, diagnoses=[Diagnosis(name="Colic")], warnings=["mismatch"]
+    )
+
+    result = await clf.classify(_metadata(), _DR_PATHS)
+
+    assert result.warnings == ["mismatch"]
+
+
+async def test_classify_has_no_warnings_by_default() -> None:
+    clf, _ = _make_classifier(age=0.67)
+
+    result = await clf.classify(_metadata(), _DR_PATHS)
+
+    assert result.warnings == []

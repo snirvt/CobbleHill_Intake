@@ -22,7 +22,7 @@ from classifier.output.csv_writer import (
 _COLUMNS = [
     "folder", "patient_name", "dr_file_path", "verdict", "reasons", "patient_group", "age",
     "diagnosis_check", "diagnoses", "diagnosis_categories", "diagnosis_category_reasons",
-    "medical_necessity", "medical_necessity_reasoning", "errors",
+    "medical_necessity", "medical_necessity_reasoning", "warnings", "errors",
 ]
 
 
@@ -205,3 +205,13 @@ def test_single_patient_download_written_with_sharepoint_name(tmp_path: Path) ->
 )
 def test_format_age_is_human_readable(age_years: float | None, expected: str) -> None:
     assert format_age(age_years) == expected
+
+
+def test_warnings_column_joins_result_warnings(tmp_path: Path) -> None:
+    out = tmp_path / "dr_validity_results.xlsx"
+    ok = _ok(tmp_path, "DOE, JANE", ValidityVerdict.VALID)
+    assert ok.result is not None
+    ok.result.warnings = ["w1", "w2"]
+    write_dr_validity_xlsx([ok], out, local_root=tmp_path)
+
+    assert _rows(out, "All")[0]["warnings"] == "w1; w2"

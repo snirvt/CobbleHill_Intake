@@ -53,6 +53,7 @@ def _validity(
     diagnosis: bool = True,
     care: CareCheck | None = None,
     age_years: float | None = None,
+    warnings: list[str] | None = None,
 ) -> MagicMock:
     async def classify(metadata: DocumentMetadata, dr_paths: list[Path]) -> DrValidityResult:
         return DrValidityResult(
@@ -64,6 +65,7 @@ def _validity(
             diagnoses=[_GERD] if diagnosis else [],
             care_check=care,
             verdict=ValidityVerdict.VALID,
+            warnings=warnings or [],
         )
 
     clf = MagicMock()
@@ -86,12 +88,15 @@ def _pair_clf(verdicts: dict[str | None, ClinicalVerdict] | None = None) -> Magi
     return clf
 
 
-def _nurse_dx(error: str | None = None) -> MagicMock:
+def _nurse_dx(error: str | None = None, warnings: list[str] | None = None) -> MagicMock:
     async def extract(
         metadata: DocumentMetadata, patient_age: str | None = None
     ) -> DiagnosisExtractionResult:
         return DiagnosisExtractionResult(
-            file_path=metadata.file_path, diagnoses=[] if error else [_GERD], error=error
+            file_path=metadata.file_path,
+            diagnoses=[] if error else [_GERD],
+            error=error,
+            warnings=warnings or [],
         )
 
     dx = MagicMock()
@@ -335,3 +340,21 @@ def test_folder_errors_report_folders_without_dr_notes(tmp_path: Path) -> None:
 
     assert [e.folder.name for e in errors if e.folder] == ["ONLY NURSE"]
     assert errors[0].code is ErrorCode.MISSING_REQUIRED_NOTES
+
+
+async def test_diagnosis_warnings_from_both_phases_reach_the_result(tmp_path: Path) -> None:
+    _touch(tmp_path / "P" / "dr_note.pdf")
+    _touch(tmp_path / "P" / "nurse_visit.pdf")
+    validity = _validity(PatientGroup.UNKNOWN, care=CareCheck.NEEDED, warnings=["dr mismatch"])
+
+    nurse_dx = _nurse_dx(warnings=["nurse mismatch"])
+
+    [r] = await _make(validity=validity, nurse_dx=nurse_dx).run_folder(tmp_path)
+
+    assert r.result is not None and r.result.verdict is IntakeVerdict.ACCEPT
+    assert r.result.pairs[0].warnings == ["nurse note: nurse mismatch"]
+    assert r.result.warnings == [
+        "age not found — pediatric rules applied",
+        "dr mismatch",
+        "nurse note: nurse mismatch",
+    ]

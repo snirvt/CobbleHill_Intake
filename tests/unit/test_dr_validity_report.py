@@ -96,6 +96,7 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "diagnosis_categories": ["Gastrointestinal / Reflux / GERD / Vomiting"],
         "medical_necessity": "NEEDED",
         "medical_necessity_reasoning": "needs home services",
+        "warnings": [],
     }
 
 

@@ -8,8 +8,12 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from classifier.classifiers.categories import CATEGORY_EXAMPLES
 from classifier.classifiers.diagnosis_categorization import (
     CategorizedDiagnosisExtractor,
+    CategorizedItem,
     DiagnosisCategorizationClassifier,
     _format_diagnoses,
+    _match_by_name,
+    _normalize_name,
+    count_mismatch_warning,
 )
 from classifier.models import (
     Diagnosis,
@@ -20,6 +24,7 @@ from classifier.models import (
     PatientMetadata,
 )
 from classifier.providers.stub import STUB_DIAGNOSIS_CATEGORIES_RESPONSE, create_stub_chat_model
+from config.settings import settings
 
 _DIAGNOSES = [
     Diagnosis(name="Underweight", icd_code="R63.6"),
@@ -106,15 +111,156 @@ async def test_categorize_keeps_input_names_when_model_rewords_them() -> None:
     assert result.diagnoses[0].category is DiagnosisCategory.FEEDING
 
 
-async def test_categorize_count_mismatch_sets_error_and_leaves_categories_none() -> None:
-    llm = _fake_llm([{"name": "Underweight", "reason": "r", "category": "Feeding / Growth"}])
+async def test_categorize_count_mismatch_warns_and_matches_by_name() -> None:
+    llm = _fake_llm([{"name": "Neonatal agitation", "reason": "r", "category": "Feeding / Growth"}])
 
     result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
 
-    assert result.error == "Category count mismatch: expected 2, got 1"
-    assert result.diagnoses == _DIAGNOSES
-    assert all(d.category is None for d in result.diagnoses)
-    assert all(d.category_reason is None for d in result.diagnoses)
+    assert result.error is None
+    assert result.warnings == [count_mismatch_warning(2, 1, 1, 3)]
+    assert [d.name for d in result.diagnoses] == ["Underweight", "Neonatal agitation"]
+    assert result.diagnoses[0].category is None
+    assert result.diagnoses[0].category_reason is None
+    assert result.diagnoses[1].category is DiagnosisCategory.FEEDING
+    assert result.diagnoses[1].category_reason == "r"
+
+
+async def test_categorize_extra_item_is_ignored_with_warning() -> None:
+    llm = _fake_llm(
+        [
+            {"name": "Underweight", "reason": "r1", "category": "Feeding / Growth"},
+            {"name": "Invented", "reason": "r2", "category": "Feeding / Growth"},
+            {"name": "Neonatal agitation", "reason": "r3", "category": "Feeding / Growth"},
+        ]
+    )
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert result.error is None
+    assert result.warnings == [count_mismatch_warning(2, 3, 0, 3)]
+    assert [d.category_reason for d in result.diagnoses] == ["r1", "r3"]
+
+
+async def test_categorize_equal_counts_has_no_warning() -> None:
+    llm = _fake_llm(
+        [
+            {"name": "x", "reason": "r1", "category": "Feeding / Growth"},
+            {"name": "y", "reason": "r2", "category": "Feeding / Growth"},
+        ]
+    )
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert result.warnings == []
+
+
+def test_count_mismatch_warning_text() -> None:
+    assert count_mismatch_warning(5, 4, 1, 3) == (
+        "Category count mismatch after 3 attempts: expected 5, got 4; "
+        "1 diagnoses left uncategorized"
+    )
+
+
+_SHORT = {"reasoning": None, "categories": [
+    {"name": "Underweight", "reason": "short", "category": "Feeding / Growth"},
+]}
+_FULL = {"reasoning": None, "categories": [
+    {"name": "Underweight", "reason": "full1", "category": "Feeding / Growth"},
+    {"name": "Neonatal agitation", "reason": "full2", "category": "Feeding / Growth"},
+]}
+
+
+def _sequence_llm(*outputs: dict) -> FakeListChatModel:
+    """FakeListChatModel returning each output in turn."""
+    return FakeListChatModel(responses=[json.dumps(o) for o in outputs])
+
+
+async def test_categorize_retries_mismatch_until_count_is_right() -> None:
+    llm = _sequence_llm(_SHORT, _FULL)
+    prompts = _spy_prompts(llm)
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert len(prompts) == 2
+    assert result.warnings == []
+    assert [d.category_reason for d in result.diagnoses] == ["full1", "full2"]
+
+
+async def test_categorize_warns_after_max_attempts_using_last_reply() -> None:
+    llm = _sequence_llm(_SHORT, _SHORT, _SHORT, _FULL)
+    prompts = _spy_prompts(llm)
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert len(prompts) == 3
+    assert result.error is None
+    assert result.warnings == [count_mismatch_warning(2, 1, 1, 3)]
+    assert [d.category_reason for d in result.diagnoses] == ["short", None]
+
+
+async def test_categorize_right_count_first_time_calls_once() -> None:
+    llm = _sequence_llm(_FULL, _SHORT)
+    prompts = _spy_prompts(llm)
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert len(prompts) == 1
+    assert result.warnings == []
+
+
+async def test_categorize_mismatch_attempts_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "category_mismatch_max_attempts", 1)
+    llm = _sequence_llm(_SHORT, _FULL)
+    prompts = _spy_prompts(llm)
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES)
+
+    assert len(prompts) == 1
+    assert result.warnings == [count_mismatch_warning(2, 1, 1, 1)]
+
+
+@pytest.mark.parametrize(
+    ("raw", "key"),
+    [
+        ("Underweight", "underweight"),
+        ("  UNDERWEIGHT  ", "underweight"),
+        ("Underweight (R63.6)", "underweight"),
+        ("Gastro-esophageal   reflux.", "gastro esophageal reflux"),
+    ],
+)
+def test_normalize_name_ignores_case_icd_and_punctuation(raw: str, key: str) -> None:
+    assert _normalize_name(raw) == key
+
+
+def _item(name: str, reason: str = "r") -> CategorizedItem:
+    return CategorizedItem(name=name, reason=reason, category=DiagnosisCategory.FEEDING)
+
+
+def test_match_by_name_dropped_item_leaves_only_that_one_none() -> None:
+    names = ["A", "B", "C", "D", "E"]
+    diagnoses = [Diagnosis(name=n) for n in names]
+    items = [_item(n, reason=n) for n in ["A", "B", "D", "E"]]
+
+    matched = _match_by_name(diagnoses, items)
+
+    assert [m.reason if m else None for m in matched] == ["A", "B", None, "D", "E"]
+
+
+def test_match_by_name_duplicate_names_consume_items_in_order() -> None:
+    diagnoses = [Diagnosis(name="Cough"), Diagnosis(name="Cough")]
+    items = [_item("cough", "first"), _item("Cough", "second"), _item("Cough", "third")]
+
+    matched = _match_by_name(diagnoses, items)
+
+    assert [m.reason if m else None for m in matched] == ["first", "second"]
+
+
+def test_match_by_name_matches_echoed_icd_and_case() -> None:
+    diagnoses = [Diagnosis(name="Underweight", icd_code="R63.6")]
+
+    matched = _match_by_name(diagnoses, [_item("underweight (R63.6)")])
+
+    assert matched[0] is not None
 
 
 async def test_categorize_missing_reason_is_parse_error() -> None:
@@ -289,6 +435,18 @@ async def test_combined_extractor_keeps_diagnoses_when_categorizer_fails() -> No
     assert result.diagnoses == diagnoses
     assert result.diagnosis_categories == []
     assert result.error == "Category LLM error: boom"
+
+
+async def test_combined_extractor_passes_categorizer_warnings_through() -> None:
+    diagnoses = [Diagnosis(name="A")]
+    extracted = DiagnosisExtractionResult(file_path=Path("dr_note.pdf"), diagnoses=diagnoses)
+    categorized = DiagnosisCategorizationResult(diagnoses=diagnoses, warnings=["mismatch"])
+    combined = CategorizedDiagnosisExtractor(_extractor(extracted), _categorizer(categorized))
+
+    result = await combined.extract_diagnoses(_metadata())
+
+    assert result.error is None
+    assert result.warnings == ["mismatch"]
 
 
 @pytest.mark.parametrize("reasoning", [None, ""])

@@ -1,6 +1,10 @@
 import json
 
-from classifier.output.examples import dr_nurse_match_example, dr_validity_example
+from classifier.output.examples import (
+    dr_nurse_match_example,
+    dr_validity_example,
+    intake_review_example,
+)
 
 _REPORT_KEYS = [
     "sharepoint_folder", "web_url", "summary", "all_category_groups",
@@ -42,3 +46,29 @@ def test_examples_are_obviously_fake_and_json_serialisable() -> None:
         text = json.dumps(example)
         assert "EXAMPLE" in text
         assert "/tmp" not in text and "cobblehill_api_" not in text
+
+
+def test_dr_validity_example_shows_mismatch_warning_and_uncategorized_diagnosis() -> None:
+    patient = dr_validity_example()["patients"][0]  # type: ignore[index]
+
+    assert len(patient["warnings"]) == 1
+    assert patient["warnings"][0].startswith("Category count mismatch after ")
+    assert [d["category"] for d in patient["diagnoses"]] == ["Other", None]
+
+
+def test_dr_nurse_match_example_shows_nurse_note_mismatch_warning() -> None:
+    pair = dr_nurse_match_example()["pairs"][0]  # type: ignore[index]
+
+    assert len(pair["warnings"]) == 1
+    assert pair["warnings"][0].startswith("nurse note: Category count mismatch after ")
+    assert pair["nurse_diagnoses"][-1]["category"] is None
+
+
+def test_intake_review_example_accepted_patient_shows_nurse_warning() -> None:
+    patients = intake_review_example()["patients"]
+    accepted = patients[0]  # type: ignore[index]
+
+    assert accepted["final_verdict"] == "ACCEPT"
+    assert [w.split(":")[0] for w in accepted["warnings"]] == ["nurse note"]
+    others = [p["warnings"] for p in patients[1:] if "warnings" in p]  # type: ignore[index]
+    assert not any(w.startswith("nurse note:") for ws in others for w in (ws or []))
