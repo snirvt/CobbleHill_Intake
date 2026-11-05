@@ -210,6 +210,10 @@ source scripts/api_env.sh
   `prompt | bind_output_schema(llm, OutputModel) | parser` (`providers/structured.py`). Providers opt
   in via `SemaphoreChatModel.schema_kwargs` (vLLM `response_format` json_schema, ollama `format`), so
   the server can only emit matching JSON; models without it (test stubs) pass through unchanged.
+- Free-text reasoning fields on LLM output models use `ReasoningText`
+  (`classifiers/reasoning_guard.py`): a validator that rejects over-long, looping or
+  instruction-echo text (thresholds + leak markers in settings `reasoning_*`), so a
+  degenerate answer is a parse error → retried → step error, never a report value.
 - Folder problems (empty, missing required notes) are reported via an injected `FolderCheck`
   (`folder_checks.RequiredNotesCheck(roles=...)`), not skipped silently. Each pipeline picks its roles;
   pair pipelines add `same_category=True` (notes only pair within one category).

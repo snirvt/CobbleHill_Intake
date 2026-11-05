@@ -19,6 +19,7 @@ from classifier.classifiers.categories import (
     CATEGORY_RULES,
 )
 from classifier.classifiers.diagnosis_extraction import DiagnosisExtractionClassifier
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import (
     Diagnosis,
@@ -41,7 +42,7 @@ class CategorizedItem(BaseModel):
     name: str
     # Required and before category: makes the model reason per item (e.g. weigh the age)
     # even with thinking off, instead of picking the bucket in one step.
-    reason: str
+    reason: ReasoningText
     category: DiagnosisCategory
 
 
@@ -49,7 +50,7 @@ class DiagnosisCategorizationOutput(BaseModel):
     """Structured LLM output for the categorization task."""
 
     # Declared first so the model reasons before picking buckets.
-    reasoning: str | None = None
+    reasoning: ReasoningText | None = None
     # Required: one item per input diagnosis, same order.
     categories: list[CategorizedItem]
 

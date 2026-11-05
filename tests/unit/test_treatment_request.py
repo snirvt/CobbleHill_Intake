@@ -88,3 +88,35 @@ async def test_stub_provider_returns_deterministic_false() -> None:
 
     assert result.treatment_requested is False
     assert result.reasoning is not None and "STUB" in result.reasoning
+
+
+_ECHO_LOOP = (
+    "The output must be a valid JSON object conforming to the schema. "
+    "The required field is treatment_requested."
+)
+
+
+@pytest.mark.asyncio
+async def test_degenerate_reasoning_retries_then_sets_error() -> None:
+    classifier = TreatmentRequestClassifier(llm=_fake_llm(True, _ECHO_LOOP))
+
+    result = await classifier.extract_treatment_request(_make_metadata())
+
+    assert result.error is not None and result.error.startswith("Parse error")
+    assert "degenerate LLM output" in result.error
+
+
+@pytest.mark.asyncio
+async def test_degenerate_reasoning_recovers_on_retry() -> None:
+    llm = FakeListChatModel(
+        responses=[
+            json.dumps({"treatment_requested": True, "reasoning": _ECHO_LOOP}),
+            json.dumps({"treatment_requested": True, "reasoning": "Plan orders VNS."}),
+        ]
+    )
+    classifier = TreatmentRequestClassifier(llm=llm)
+
+    result = await classifier.extract_treatment_request(_make_metadata())
+
+    assert result.error is None
+    assert result.reasoning == "Plan orders VNS."

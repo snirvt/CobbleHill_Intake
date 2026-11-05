@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-from typing import Optional
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -9,6 +8,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.classifiers.step_errors import raise_on_step_errors
 from classifier.models import (
@@ -41,7 +41,7 @@ class ClinicalMatchOutput(BaseModel):
     """Structured LLM output for the clinical-match classification task."""
 
     verdict: ClinicalVerdict
-    reasoning: Optional[str] = None
+    reasoning: ReasoningText | None = None
 
 
 _PROMPT_TEMPLATE = """\

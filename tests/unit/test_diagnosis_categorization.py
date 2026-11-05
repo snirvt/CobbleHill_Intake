@@ -461,3 +461,13 @@ async def test_combined_extractor_reasoning_none_when_both_steps_silent(
     result = await combined.extract_diagnoses(_metadata())
 
     assert result.reasoning is None
+
+
+async def test_categorize_degenerate_item_reason_is_parse_error() -> None:
+    looping = " ".join(["Underweight belongs to the feeding and growth bucket here."] * 3)
+    llm = _fake_llm([{"name": "Underweight", "reason": looping, "category": "Other"}])
+
+    result = await DiagnosisCategorizationClassifier(llm=llm).categorize(_DIAGNOSES[:1])
+
+    assert result.error is not None and "degenerate LLM output" in result.error
+    assert result.diagnoses == _DIAGNOSES[:1]

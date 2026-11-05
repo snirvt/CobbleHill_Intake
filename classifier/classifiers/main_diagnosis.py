@@ -8,6 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from classifier.classifiers.categories import CATEGORY_LIST, CATEGORY_RULES
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DiagnosisCategory, DocumentMetadata, MainDiagnosisResult
 from classifier.providers.structured import bind_output_schema
@@ -22,7 +23,7 @@ class MainDiagnosisOutput(BaseModel):
     main_diagnosis: str | None = None
     diagnosis_category: DiagnosisCategory | None = None
     icd_code: str | None = None
-    reasoning: str | None = None
+    reasoning: ReasoningText | None = None
 
 
 _PROMPT_TEMPLATE = """\

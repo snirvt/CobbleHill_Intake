@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DocumentMetadata, PatientAgeResult
 from classifier.providers.structured import bind_output_schema
@@ -20,7 +21,7 @@ class PatientAgeOutput(BaseModel):
     age_years: float | None = None
     dob: str | None = None
     date_of_service: str | None = None
-    reasoning: str | None = None
+    reasoning: ReasoningText | None = None
 
 
 _PROMPT_TEMPLATE = """\

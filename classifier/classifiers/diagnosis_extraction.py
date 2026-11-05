@@ -6,6 +6,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import Diagnosis, DiagnosisExtractionResult, DocumentMetadata
 from classifier.providers.structured import bind_output_schema
@@ -24,7 +25,7 @@ class DiagnosisExtractionOutput(BaseModel):
     """Structured LLM output for the diagnosis-extraction task."""
 
     # Declared first so the model reasons before listing diagnoses.
-    reasoning: str | None = None
+    reasoning: ReasoningText | None = None
     # Required: JSON without this key is a parse error, not "no diagnoses".
     diagnoses: list[ExtractedDiagnosis]
 

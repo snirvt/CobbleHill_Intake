@@ -170,6 +170,27 @@ class Settings(BaseSettings):
     # Hard cap on tokens generated per LLM call (thinking + answer). Stops a model stuck in a
     # repetition loop from generating until the context window is full (seen: 260k tokens, 80 min).
     llm_max_output_tokens: int = 8192
+    # Guard on every free-text LLM reasoning field (classifiers/reasoning_guard.py). A model
+    # stuck in a loop can keep the JSON valid while filling the string with repeated text or
+    # the prompt's own output instructions. A tripped check is a parse error: the call is
+    # retried, then the step reports an error.
+    reasoning_max_chars: int = 2000
+    # Any one sentence appearing this many times = looping.
+    reasoning_max_sentence_repeats: int = 3
+    # Below this share of distinct word 4-grams (checked once the text has
+    # reasoning_ngram_min_words words) the text is mostly repetition.
+    reasoning_min_distinct_ngram_ratio: float = 0.5
+    reasoning_ngram_min_words: int = 60
+    # Case-insensitive phrases that only appear when the model echoes output instructions.
+    reasoning_leak_markers: list[str] = [
+        "json",
+        "schema",
+        "anyof",
+        "the output must",
+        "the output should",
+        "format instructions",
+        "required field",
+    ]
     # Wall-clock limit per LLM call; a timed-out call fails and is retried like any other error.
     llm_request_timeout_s: float = 300
     # SharePoint files downloaded at once. The API shares one limit across all concurrent

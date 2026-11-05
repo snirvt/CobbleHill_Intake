@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -7,6 +6,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from classifier.classifiers.reasoning_guard import ReasoningText
 from classifier.classifiers.retry import with_llm_retry
 from classifier.models import DocumentMetadata, TreatmentRequestResult
 from classifier.providers.structured import bind_output_schema
@@ -18,7 +18,7 @@ class TreatmentRequestOutput(BaseModel):
     """Structured LLM output for the treatment-request task."""
 
     treatment_requested: bool
-    reasoning: Optional[str] = None
+    reasoning: ReasoningText | None = None
 
 
 _PROMPT_TEMPLATE = """\
