@@ -7,7 +7,7 @@ from classifier.output.examples import (
 )
 
 _REPORT_KEYS = [
-    "sharepoint_folder", "web_url", "summary", "all_category_groups",
+    "sharepoint_folder", "web_url", "summary", "retryable", "all_category_groups",
 ]
 
 
@@ -72,3 +72,13 @@ def test_intake_review_example_accepted_patient_shows_nurse_warning() -> None:
     assert [w.split(":")[0] for w in accepted["warnings"]] == ["nurse note"]
     others = [p["warnings"] for p in patients[1:] if "warnings" in p]  # type: ignore[index]
     assert not any(w.startswith("nurse note:") for ws in others for w in (ws or []))
+
+
+def test_examples_show_retryable_flags() -> None:
+    for example in (dr_validity_example(), dr_nurse_match_example(), intake_review_example()):
+        assert example["retryable"] is True
+        errors = example["errors"]
+        assert isinstance(errors, list)
+        for error in errors:
+            assert error["retryable"] is (error["code"] in ("llm_failed", "parse_failed"))
+        assert {e["retryable"] for e in errors} == {True, False}

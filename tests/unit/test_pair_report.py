@@ -189,8 +189,15 @@ def test_pair_report_combines_all_sections(tmp_path: Path) -> None:
     report = pair_report(results, [], tmp_path, "root", "https://sp/P")
 
     assert list(report) == [
-        "summary", "all_category_groups", "pairs", "errors",
+        "summary", "retryable", "all_category_groups", "pairs", "errors",
     ]
     pairs = report["pairs"]
     assert isinstance(pairs, list)
     assert pairs[0]["folder"] == "https://sp/P/A"
+
+
+def test_pair_report_retryable_flag(tmp_path: Path) -> None:
+    folder_error = _folder_error(tmp_path, "SKIPPED")
+
+    assert pair_report([_failed(tmp_path, "X")], [folder_error], tmp_path)["retryable"] is True
+    assert pair_report([], [folder_error], tmp_path)["retryable"] is False

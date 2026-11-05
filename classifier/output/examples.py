@@ -76,6 +76,9 @@ def _llm_error(folder: Path) -> RunError:
     )
 
 
+_CARE_PARSE_ERROR = "Parse error: EXAMPLE degenerate LLM output: reasoning repeats a sentence"
+
+
 def _folder_error(message: str) -> RunError:
     """A folder that could not be processed at all."""
     return RunError(
@@ -268,8 +271,9 @@ def intake_review_example() -> dict[str, object]:
     Accept; Phase I reject (adult, no diagnosis); Phase I reject (age not found, so
     pediatric rules, no medical necessity); Phase II reject (notes do not match); needs
     review (match undecided); no nurse note (Phase I passed, and Phase I failed); the
-    nurse-only folder is listed with no review and reported under ``errors``. The accepted
-    patient also shows a nurse-note category-count-mismatch warning.
+    nurse-only folder is listed with no review and reported under ``errors``; a patient
+    whose medical-necessity step failed is a retryable error (top-level ``retryable`` true).
+    The accepted patient also shows a nurse-note category-count-mismatch warning.
     """
     match = (ClinicalVerdict.MATCH, _DIAGNOSIS)
     results = [
@@ -311,6 +315,21 @@ def intake_review_example() -> dict[str, object]:
             patient_folder=_SKIPPED_FOLDER,
             nurse_paths=[_SKIPPED_FOLDER / "peds_nurse_example.pdf"],
             success=True,
+        ),
+        IntakeReviewPipelineResult(
+            patient_folder=_FAILED_FOLDER,
+            dr_paths=[_FAILED_FOLDER / "peds_dr_example.pdf"],
+            nurse_paths=[_FAILED_FOLDER / "peds_nurse_example.pdf"],
+            success=False,
+            error=f"care: {_CARE_PARSE_ERROR}",
+            errors=[
+                RunError(
+                    stage=ErrorStage.CARE,
+                    code=ErrorCode.PARSE_FAILED,
+                    message=_CARE_PARSE_ERROR,
+                    folder=_FAILED_FOLDER,
+                )
+            ],
         ),
     ]
     folder_errors = [_folder_error("Folder has no dr notes")]

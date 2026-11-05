@@ -74,7 +74,7 @@ def test_report_lists_folder_errors_first() -> None:
         stage=ErrorStage.FOLDER, code=ErrorCode.EMPTY_FOLDER, message="e", folder=_ROOT / "E"
     )
     report = intake_review_report([_failed()], [folder_error], _ROOT)
-    assert list(report) == ["summary", "all_category_groups", "patients", "errors"]
+    assert list(report) == ["summary", "retryable", "all_category_groups", "patients", "errors"]
     assert [e["stage"] for e in report["errors"]] == ["folder", "age"]
 
 
@@ -82,18 +82,18 @@ def test_example_covers_every_outcome() -> None:
     example = intake_review_example()
 
     assert list(example) == [
-        "sharepoint_folder", "web_url", "summary", "all_category_groups", "patients", "errors",
+        "sharepoint_folder", "web_url", "summary", "retryable", "all_category_groups", "patients", "errors",
     ]
     patients = example["patients"]
     assert [p["final_verdict"] for p in patients] == [
         "ACCEPT", "REJECT", "REJECT", "REJECT", "NEEDS_REVIEW", "NO_NURSE_NOTE",
-        "NO_NURSE_NOTE", None,
+        "NO_NURSE_NOTE", None, None,
     ]
     assert [p["verdict_phase_1"] for p in patients] == [
-        "PASS", "FAIL", "FAIL", "PASS", "PASS", "PASS", "FAIL", None,
+        "PASS", "FAIL", "FAIL", "PASS", "PASS", "PASS", "FAIL", None, None,
     ]
     assert [p["verdict_phase_2"] for p in patients] == [
-        "PASS", "NOT_RUN", "NOT_RUN", "FAIL", "UNDECIDED", None, None, None,
+        "PASS", "NOT_RUN", "NOT_RUN", "FAIL", "UNDECIDED", None, None, None, None,
     ]
     assert patients[2]["warnings"] == ["age not found — pediatric rules applied"]
     assert patients[0]["phase_2"] == {"dr_nurse_compare": "EXAMPLE - not real data"}
@@ -188,9 +188,14 @@ def test_all_category_groups_use_phase_1_diagnoses() -> None:
     example = intake_review_example()
     assert example["all_category_groups"] == [
         {"diagnosis_category": "Other", "count": 5},
-        {"diagnosis_category": "Unknown", "count": 2},
+        {"diagnosis_category": "Unknown", "count": 3},
         {"diagnosis_category": "Respiratory", "count": 1},
     ]
     assert intake_review_all_category_groups([_failed(), _no_dr_note()]) == [
         {"diagnosis_category": "Unknown", "count": 1},
     ]
+
+
+def test_report_retryable_flag() -> None:
+    assert intake_review_report([_failed()], [], _ROOT)["retryable"] is True
+    assert intake_review_report([_no_dr_note()], [], _ROOT)["retryable"] is False

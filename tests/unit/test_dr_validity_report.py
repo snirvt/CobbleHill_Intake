@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from classifier.models import (
     CareCheck,
     Diagnosis,
@@ -14,9 +16,11 @@ from classifier.models import (
     ValidityVerdict,
 )
 from classifier.output.dr_validity_report import (
+    any_retryable,
     dr_validity_all_category_groups,
     dr_validity_errors,
     dr_validity_patient_dict,
+    dr_validity_report,
     dr_validity_summary,
     run_error_dict,
 )
@@ -113,6 +117,7 @@ def test_patient_dict_failure_has_error_only(tmp_path: Path) -> None:
                 "stage": "care",
                 "code": "llm_failed",
                 "message": "LLM error: down",
+                "retryable": True,
             }
         ],
         "error": "OCR failed",
@@ -167,6 +172,7 @@ def test_run_error_dict_shows_patient_name_and_relative_file(tmp_path: Path) -> 
         "stage": "extract",
         "code": "empty_text",
         "message": "No text extracted from note",
+        "retryable": False,
     }
 
 
@@ -213,7 +219,45 @@ def test_dr_validity_report_combines_all_sections(tmp_path: Path) -> None:
     report = dr_validity_report(results, [], tmp_path, "root", "https://sp/x")
 
     assert list(report) == [
-        "summary", "all_category_groups", "patients", "errors",
+        "summary", "retryable", "all_category_groups", "patients", "errors",
     ]
     assert report["summary"] == dr_validity_summary(results, [])
     assert report["patients"] == [dr_validity_patient_dict(results[0], tmp_path, "root")]
+
+
+@pytest.mark.parametrize(
+    ("code", "retryable"),
+    [
+        (ErrorCode.LLM_FAILED, True),
+        (ErrorCode.PARSE_FAILED, True),
+        (ErrorCode.EMPTY_TEXT, False),
+        (ErrorCode.EMPTY_FOLDER, False),
+        (ErrorCode.MISSING_REQUIRED_NOTES, False),
+        (ErrorCode.UNEXPECTED, False),
+    ],
+)
+def test_run_error_retryable_only_for_llm_failures(code: ErrorCode, retryable: bool) -> None:
+    error = RunError(stage=ErrorStage.CARE, code=code, message="m")
+
+    assert error.retryable is retryable
+    assert run_error_dict(error)["retryable"] is retryable
+
+
+def test_any_retryable_true_when_one_error_is() -> None:
+    errors = [
+        RunError(stage=ErrorStage.FOLDER, code=ErrorCode.EMPTY_FOLDER, message="m"),
+        RunError(stage=ErrorStage.CARE, code=ErrorCode.PARSE_FAILED, message="m"),
+    ]
+
+    assert any_retryable(errors) is True
+    assert any_retryable(errors[:1]) is False
+    assert any_retryable([]) is False
+
+
+def test_dr_validity_report_retryable_flag(tmp_path: Path) -> None:
+    folder_error = RunError(
+        stage=ErrorStage.FOLDER, code=ErrorCode.EMPTY_FOLDER, message="m", folder=tmp_path / "E"
+    )
+
+    assert dr_validity_report([_failed(tmp_path, "X")], [folder_error], tmp_path)["retryable"]
+    assert dr_validity_report([], [folder_error], tmp_path)["retryable"] is False

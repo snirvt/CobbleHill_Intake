@@ -31,7 +31,10 @@ Clients then send it on every request except GET /health::
 The response lists every problem met along the way under ``errors`` (top level) and per
 patient/pair under ``patients[].errors`` / ``pairs[].errors``: empty folders, folders
 without the required notes, notes with no extractable text, and LLM steps that failed
-after retries. SharePoint failures still return HTTP 404/502.
+after retries. Each error has ``retryable`` (true for ``llm_failed`` / ``parse_failed``),
+and the top-level ``retryable`` is true when any error is: the response is still HTTP 200,
+but re-sending the request may fix those patients. SharePoint failures still return
+HTTP 404/502.
 """
 
 import argparse

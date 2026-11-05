@@ -159,6 +159,7 @@ async def test_empty_folder_returns_no_patients() -> None:
             "stage": "folder",
             "code": "empty_folder",
             "message": "Folder has no files",
+            "retryable": False,
         }
     ]
 
@@ -238,6 +239,7 @@ async def test_run_reports_folder_and_patient_errors() -> None:
             "stage": "folder",
             "code": "empty_folder",
             "message": "Folder has no files",
+            "retryable": False,
         },
         {
             "patient": "NURSE, ONLY",
@@ -245,6 +247,7 @@ async def test_run_reports_folder_and_patient_errors() -> None:
             "stage": "folder",
             "code": "missing_required_notes",
             "message": "Folder has no dr notes",
+            "retryable": False,
         },
         {
             "patient": None,
@@ -252,6 +255,7 @@ async def test_run_reports_folder_and_patient_errors() -> None:
             "stage": "extract",
             "code": "empty_text",
             "message": "No text extracted from note",
+            "retryable": False,
         },
     ]
     summary = report["summary"]

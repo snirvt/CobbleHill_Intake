@@ -17,7 +17,7 @@ from classifier.output.csv_writer import (
     patient_display_name,
     relative_file_names,
 )
-from classifier.output.dr_validity_report import run_error_dict
+from classifier.output.dr_validity_report import any_retryable, run_error_dict
 
 # Review fields of a patient that was not reviewed (no dr note, or the run failed).
 _EMPTY_REVIEW: dict[str, object] = {
@@ -131,13 +131,14 @@ def intake_review_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, all_category_groups, patients, errors}.
+    """Full report body: {summary, retryable, all_category_groups, patients, errors}.
 
     ``web_url`` is accepted for the shared report-builder signature and not used.
     """
     errors = [*folder_errors, *(e for r in results for e in r.errors)]
     return {
         "summary": intake_review_summary(results, folder_errors),
+        "retryable": any_retryable(errors),
         "all_category_groups": intake_review_all_category_groups(results),
         "patients": [intake_review_patient_dict(r, local_root, root_name) for r in results],
         "errors": [run_error_dict(e, local_root, root_name) for e in errors],

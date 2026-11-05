@@ -1,5 +1,6 @@
 """JSON-ready dr-validity report, shared by the CLI (``--dr-validity``) and the API."""
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from classifier.models import DrValidityPipelineResult, RunError, ValidityVerdict
@@ -55,7 +56,13 @@ def run_error_dict(
         "stage": e.stage,
         "code": e.code,
         "message": e.message,
+        "retryable": e.retryable,
     }
+
+
+def any_retryable(errors: Iterable[RunError]) -> bool:
+    """Report-level ``retryable``: True when any error may be fixed by re-sending the request."""
+    return any(e.retryable for e in errors)
 
 
 def dr_validity_errors(
@@ -108,12 +115,13 @@ def dr_validity_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, all_category_groups, patients, errors}.
+    """Full report body: {summary, retryable, all_category_groups, patients, errors}.
 
     ``web_url`` is accepted for the shared report-builder signature and not used.
     """
     return {
         "summary": dr_validity_summary(results, folder_errors),
+        "retryable": any_retryable([*folder_errors, *(e for r in results for e in r.errors)]),
         "all_category_groups": dr_validity_all_category_groups(results),
         "patients": [dr_validity_patient_dict(r, local_root, root_name) for r in results],
         "errors": dr_validity_errors(results, folder_errors, local_root, root_name),

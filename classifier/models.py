@@ -379,6 +379,10 @@ class ErrorCode(StrEnum):
     UNEXPECTED = "unexpected"
 
 
+# LLM failures can pass on a second request; missing notes, empty text and code bugs won't.
+RETRYABLE_ERROR_CODES = frozenset({ErrorCode.LLM_FAILED, ErrorCode.PARSE_FAILED})
+
+
 class RunError(BaseModel):
     """One problem found during a run, reported to the caller instead of being swallowed."""
 
@@ -387,6 +391,11 @@ class RunError(BaseModel):
     message: str
     folder: Path | None = None  # the patient/leaf folder concerned, if any
     file: Path | None = None  # the note concerned, if any
+
+    @property
+    def retryable(self) -> bool:
+        """True when re-sending the request may fix this error (an LLM step failed)."""
+        return self.code in RETRYABLE_ERROR_CODES
 
 
 class ClassificationStepError(Exception):

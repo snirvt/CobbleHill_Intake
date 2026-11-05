@@ -10,7 +10,7 @@ from classifier.output.csv_writer import (
     relative_file_names,
     resolve_folder,
 )
-from classifier.output.dr_validity_report import run_error_dict
+from classifier.output.dr_validity_report import any_retryable, run_error_dict
 
 
 def pair_dict(
@@ -122,13 +122,14 @@ def pair_report(
     root_name: str | None = None,
     web_url: str | None = None,
 ) -> dict[str, object]:
-    """Full report body: {summary, all_category_groups, pairs, errors}.
+    """Full report body: {summary, retryable, all_category_groups, pairs, errors}.
 
     Pass ``web_url`` (the SharePoint folder link) so each pair's ``folder`` is a link
     rather than a path inside the temporary download dir.
     """
     return {
         "summary": pair_summary(results, folder_errors),
+        "retryable": any_retryable([*folder_errors, *(e for r in results for e in r.errors)]),
         "all_category_groups": pair_all_category_groups(results),
         "pairs": [
             pair_dict(r, local_root=local_root, sp_web_url=web_url, root_name=root_name)
