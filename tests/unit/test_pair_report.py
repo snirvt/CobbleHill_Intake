@@ -201,3 +201,9 @@ def test_pair_report_retryable_flag(tmp_path: Path) -> None:
 
     assert pair_report([_failed(tmp_path, "X")], [folder_error], tmp_path)["retryable"] is True
     assert pair_report([], [folder_error], tmp_path)["retryable"] is False
+
+
+def test_pair_dict_retryable_only_for_llm_failures(tmp_path: Path) -> None:
+    assert pair_dict(_failed(tmp_path, "X"), local_root=tmp_path)["retryable"] is True
+    ok = pair_dict(_ok(tmp_path, "Y", ClinicalVerdict.MATCH), local_root=tmp_path)
+    assert ok["retryable"] is False

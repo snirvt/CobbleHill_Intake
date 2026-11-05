@@ -82,6 +82,7 @@ def test_patient_dict_success_has_all_fields(tmp_path: Path) -> None:
         "patient": "DOE, JANE",
         "dr_files": ["DOE, JANE/dr_a.pdf", "DOE, JANE/dr_b.pdf"],
         "success": True,
+        "retryable": False,
         "errors": [],
         "verdict": "VALID",
         "reasons": [],
@@ -110,6 +111,7 @@ def test_patient_dict_failure_has_error_only(tmp_path: Path) -> None:
         "patient": "X",
         "dr_files": ["X/dr_a.pdf"],
         "success": False,
+        "retryable": True,
         "errors": [
             {
                 "patient": "X",
@@ -261,3 +263,25 @@ def test_dr_validity_report_retryable_flag(tmp_path: Path) -> None:
 
     assert dr_validity_report([_failed(tmp_path, "X")], [folder_error], tmp_path)["retryable"]
     assert dr_validity_report([], [folder_error], tmp_path)["retryable"] is False
+
+
+def test_patient_dict_retryable_false_for_non_llm_failure(tmp_path: Path) -> None:
+    folder = tmp_path / "X"
+    result = DrValidityPipelineResult(
+        patient_folder=folder,
+        dr_paths=[folder / "dr.pdf"],
+        success=False,
+        error="extract: No text extracted from note",
+        errors=[
+            RunError(
+                stage=ErrorStage.EXTRACT,
+                code=ErrorCode.EMPTY_TEXT,
+                message="No text extracted from note",
+                folder=folder,
+            )
+        ],
+    )
+
+    out = dr_validity_patient_dict(result, tmp_path)
+
+    assert out["success"] is False and out["retryable"] is False

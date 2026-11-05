@@ -36,6 +36,7 @@ def pair_dict(
         "dr_file": relative_file_names(r.dr_paths, r.dr_file_path, local_root),
         "nurse_file": relative_file_names(r.nurse_paths, r.nurse_file_path, local_root),
         "success": r.success,
+        "retryable": any_retryable(r.errors),
         "errors": [run_error_dict(e, local_root, root_name) for e in r.errors],
     }
     if not r.success or r.result is None:

@@ -221,7 +221,8 @@ source scripts/api_env.sh
   (`folder_service.py`). New route = pipeline with `run_folder` + `folder_errors`, a report builder
   in `output/`, a `build_*_service` in `main.py`. All services share one LLM semaphore.
   Every error dict carries `retryable` (`RunError.retryable`: code in
-  `RETRYABLE_ERROR_CODES`, i.e. llm_failed / parse_failed); every report has a top-level
+  `RETRYABLE_ERROR_CODES`, i.e. llm_failed / parse_failed); each patient/pair dict has
+  `retryable` = any of its errors is (`any_retryable(r.errors)`); every report has a top-level
   `retryable` (`any_retryable`) so the caller knows a re-send may help. HTTP stays 200.
 - `/intake-review` composes existing pieces instead of new prompts: Phase I = the dr-validity
   classifier, Phase II = `DrNurseMatchClassifier` (clinical match only) per same-category pair.

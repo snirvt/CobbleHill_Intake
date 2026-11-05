@@ -32,8 +32,10 @@ The response lists every problem met along the way under ``errors`` (top level) 
 patient/pair under ``patients[].errors`` / ``pairs[].errors``: empty folders, folders
 without the required notes, notes with no extractable text, and LLM steps that failed
 after retries. Each error has ``retryable`` (true for ``llm_failed`` / ``parse_failed``),
-and the top-level ``retryable`` is true when any error is: the response is still HTTP 200,
-but re-sending the request may fix those patients. SharePoint failures still return
+each patient (pair in /dr-nurse-match) has ``retryable`` true when any of its errors is,
+and the top-level ``retryable`` is true when any error is. The response is still HTTP 200;
+re-sending the request may fix the retryable patients. ``success: false`` alone is not a
+retry signal (e.g. a note with no extractable text fails the same way again). SharePoint failures still return
 HTTP 404/502.
 """
 

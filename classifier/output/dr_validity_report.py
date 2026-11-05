@@ -24,6 +24,7 @@ def dr_validity_patient_dict(
         "patient": patient_display_name(r.patient_folder, local_root, root_name),
         "dr_files": relative_file_names(r.dr_paths, r.patient_folder, local_root),
         "success": r.success,
+        "retryable": any_retryable(r.errors),
         "errors": [run_error_dict(e, local_root, root_name) for e in r.errors],
     }
     if not r.success or r.result is None:

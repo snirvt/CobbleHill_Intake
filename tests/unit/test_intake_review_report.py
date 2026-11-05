@@ -106,7 +106,7 @@ def test_example_covers_every_outcome() -> None:
 def test_patient_dict_layout() -> None:
     accepted = intake_review_example()["patients"][0]
     assert list(accepted) == [
-        "patient", "dr_files", "nurse_files", "success", "errors", *_REVIEW_FIELDS, "warnings",
+        "patient", "dr_files", "nurse_files", "success", "retryable", "errors", *_REVIEW_FIELDS, "warnings",
     ]
     assert (accepted["age"], accepted["patient_group"]) == ("6 months", "PEDIATRIC")
     assert accepted["phase_1"] == {
@@ -199,3 +199,11 @@ def test_all_category_groups_use_phase_1_diagnoses() -> None:
 def test_report_retryable_flag() -> None:
     assert intake_review_report([_failed()], [], _ROOT)["retryable"] is True
     assert intake_review_report([_no_dr_note()], [], _ROOT)["retryable"] is False
+
+
+def test_patient_dict_retryable_only_for_llm_failures() -> None:
+    assert intake_review_patient_dict(_failed(), _ROOT)["retryable"] is True
+    assert intake_review_patient_dict(_no_dr_note(), _ROOT)["retryable"] is False
+    example = intake_review_example()["patients"]
+    assert isinstance(example, list)
+    assert [p["patient"] for p in example if p["retryable"]] == ["EXAMPLE, PATIENT TWO"]

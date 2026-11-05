@@ -53,6 +53,7 @@ def intake_review_patient_dict(
             else []
         ),
         "success": r.success,
+        "retryable": any_retryable(r.errors),
         "errors": [run_error_dict(e, local_root, root_name) for e in r.errors],
         **_EMPTY_REVIEW,
     }
