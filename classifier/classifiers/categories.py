@@ -24,7 +24,9 @@ growth delay or lack of expected growth (R62.5x), feeding difficulty or feeding 
 "Developmental / Cognitive".
 - "Newborn / Well Child" requires an infant or child patient: only routine newborn care or a \
 well-child visit with no specific problem, or a pregnancy, delivery or birth-history item \
-listed for an infant (see the infant birth-history rule). A routine exam, check-up, \
+listed for an infant (see the infant birth-history rule). A child labelled not an infant \
+(e.g. a toddler or school-age child) is still a child: a routine well-child visit or child \
+check-up is "Newborn / Well Child". A routine exam, check-up, \
 physical or wellness visit of an adult (not a child) is "Other", never \
 "Newborn / Well Child"; a specific problem such as feeding or growth is "Feeding / Growth".
 - A negative finding, ruled-out condition or normal status (e.g. no respiratory symptoms, \
@@ -74,6 +76,7 @@ CATEGORY_EXAMPLES = """\
 → Newborn / Well Child
 - Breech presentation (O32.1XX0), 30 years (not an infant) → Women's Health
 - No respiratory symptoms at this time, 75 years (not an infant) → Other
+- Well-child check-up (Z00.129), 6 years (not an infant) → Newborn / Well Child
 - Annual wellness visit (Z00.00), 55 years (not an infant) → Other"""
 
 

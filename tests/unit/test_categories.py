@@ -60,6 +60,13 @@ def test_category_rules_newborn_well_child_never_for_adults() -> None:
     assert 'visit of an adult (not a child) is "Other"' in newborn_rule
     assert 'never "Newborn / Well Child"' in newborn_rule
     assert 'is "Feeding / Growth"' in newborn_rule
+    assert "labelled not an infant" in newborn_rule and "is still a child" in newborn_rule
+
+
+def test_category_examples_send_child_well_visit_to_newborn() -> None:
+    assert (
+        "- Well-child check-up (Z00.129), 6 years (not an infant) → Newborn / Well Child"
+    ) in CATEGORY_EXAMPLES
 
 
 def test_category_rules_womens_health_excludes_infants() -> None:
