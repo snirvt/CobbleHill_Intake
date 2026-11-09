@@ -51,7 +51,7 @@ hemorrhage, preeclampsia, postpartum care) is "Women's Health", not \
 pregnancy, delivery or birth condition (e.g. breech presentation, multiple gestation, \
 prematurity of the pregnancy, any maternal O-chapter ICD code) is the infant birth history, not \
 the baby's own illness: it is "Newborn / Well Child", never "Women's Health". This applies \
-only to infants; a patient labelled not an infant (or of unknown age) follows the rule above.
+only to infants; for any other patient the rule above applies.
 - Dementia, Alzheimer's disease and cognitive decline in adults are "Mental Health"; \
 developmental delay or intellectual disability in a child is "Developmental / Cognitive" \
 (a feeding disability is "Feeding / Growth", not developmental).
@@ -65,6 +65,7 @@ wound) is "Wound"; rashes, dermatitis and other skin conditions are "Skin".
 CATEGORY_EXAMPLES = """\
 - Short stature (R62.52), 5 years (not an infant) → Feeding / Growth
 - Underweight (R63.6), 0 days (infant) → Feeding / Growth
+- Underweight (R63.6), unknown age → Feeding / Growth
 - Underweight (R63.6), 40 years (not an infant) → Obesity / Metabolic
 - Vomiting in infants (R11.10), 2 months (infant) → Gastrointestinal / Reflux / GERD / Vomiting
 - Neonatal agitation / fussy infant (R68.12), 1 month (infant) → Fussiness / Irritability

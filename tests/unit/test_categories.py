@@ -69,6 +69,7 @@ def test_category_rules_womens_health_excludes_infants() -> None:
     assert "maternal O-chapter ICD code" in infant_rule
     assert 'it is "Newborn / Well Child", never "Women\'s Health"' in infant_rule
     assert "only to infants" in infant_rule
+    assert "unknown age" not in infant_rule  # unknown age must not read as "not an infant"
     assert "years" not in infant_rule  # the infant cutoff stays hidden from the model
 
 
@@ -87,6 +88,10 @@ def test_category_examples_send_infant_breech_to_newborn_and_adult_to_womens_hea
     assert (
         "- Breech presentation (O32.1XX0), 30 years (not an infant) → Women's Health"
     ) in CATEGORY_EXAMPLES
+
+
+def test_category_examples_send_unknown_age_underweight_to_feeding() -> None:
+    assert "- Underweight (R63.6), unknown age → Feeding / Growth" in CATEGORY_EXAMPLES
 
 
 def test_category_examples_send_adult_wellness_visit_to_other() -> None:
