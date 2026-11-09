@@ -62,6 +62,33 @@ def test_category_rules_newborn_well_child_never_for_adults() -> None:
     assert 'is "Feeding / Growth"' in newborn_rule
 
 
+def test_category_rules_womens_health_excludes_infants() -> None:
+    infant_rule = _rule('"Women\'s Health" is never for a patient labelled an infant')
+
+    assert "breech presentation" in infant_rule
+    assert "maternal O-chapter ICD code" in infant_rule
+    assert 'it is "Newborn / Well Child", never "Women\'s Health"' in infant_rule
+    assert "only to infants" in infant_rule
+    assert "years" not in infant_rule  # the infant cutoff stays hidden from the model
+
+
+def test_category_rules_newborn_well_child_allows_infant_birth_history() -> None:
+    newborn_rule = _rule('"Newborn / Well Child" requires')
+
+    assert "birth-history item" in newborn_rule
+    assert "listed for an infant" in newborn_rule
+
+
+def test_category_examples_send_infant_breech_to_newborn_and_adult_to_womens_health() -> None:
+    assert (
+        "- Breech presentation, fetus 2 of multiple gestation (O32.1XX2), 7 days (infant) "
+        "→ Newborn / Well Child"
+    ) in CATEGORY_EXAMPLES
+    assert (
+        "- Breech presentation (O32.1XX0), 30 years (not an infant) → Women's Health"
+    ) in CATEGORY_EXAMPLES
+
+
 def test_category_examples_send_adult_wellness_visit_to_other() -> None:
     assert "Annual wellness visit (Z00.00), 55 years (not an infant) → Other" in CATEGORY_EXAMPLES
 

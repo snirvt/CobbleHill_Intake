@@ -23,9 +23,10 @@ growth delay or lack of expected growth (R62.5x), feeding difficulty or feeding 
 "Gastrointestinal / Reflux / GERD / Vomiting", "Blood / Anemia" or \
 "Developmental / Cognitive".
 - "Newborn / Well Child" requires an infant or child patient: only routine newborn care or a \
-well-child visit with no specific problem. A routine exam, check-up, physical or wellness \
-visit of an adult (not a child) is "Other", never "Newborn / Well Child"; a specific problem \
-such as feeding or growth is "Feeding / Growth".
+well-child visit with no specific problem, or a pregnancy, delivery or birth-history item \
+listed for an infant (see the infant birth-history rule). A routine exam, check-up, \
+physical or wellness visit of an adult (not a child) is "Other", never \
+"Newborn / Well Child"; a specific problem such as feeding or growth is "Feeding / Growth".
 - A negative finding, ruled-out condition or normal status (e.g. no respiratory symptoms, \
 no evidence of tuberculosis, incision healing well) is "Other", not the organ or infection \
 category it mentions.
@@ -46,6 +47,11 @@ gynecological condition or symptom (e.g. uterine or pelvic pain, menstrual probl
 abnormal vaginal bleeding, fibroids, endometriosis, ovarian cyst, contractions, postpartum \
 hemorrhage, preeclampsia, postpartum care) is "Women's Health", not \
 "Gastrointestinal / Reflux / GERD / Vomiting" or "Kidney / Urinary".
+- "Women's Health" is never for a patient labelled an infant. On an infant's note, a \
+pregnancy, delivery or birth condition (e.g. breech presentation, multiple gestation, \
+prematurity of the pregnancy, any maternal O-chapter ICD code) is the infant birth history, not \
+the baby's own illness: it is "Newborn / Well Child", never "Women's Health". This applies \
+only to infants; a patient labelled not an infant (or of unknown age) follows the rule above.
 - Dementia, Alzheimer's disease and cognitive decline in adults are "Mental Health"; \
 developmental delay or intellectual disability in a child is "Developmental / Cognitive" \
 (a feeding disability is "Feeding / Growth", not developmental).
@@ -63,6 +69,9 @@ CATEGORY_EXAMPLES = """\
 - Vomiting in infants (R11.10), 2 months (infant) → Gastrointestinal / Reflux / GERD / Vomiting
 - Neonatal agitation / fussy infant (R68.12), 1 month (infant) → Fussiness / Irritability
 - Abdominal bloating (R14.0), 0 days (infant) → Gastrointestinal / Reflux / GERD / Vomiting
+- Breech presentation, fetus 2 of multiple gestation (O32.1XX2), 7 days (infant) \
+→ Newborn / Well Child
+- Breech presentation (O32.1XX0), 30 years (not an infant) → Women's Health
 - No respiratory symptoms at this time, 75 years (not an infant) → Other
 - Annual wellness visit (Z00.00), 55 years (not an infant) → Other"""
 

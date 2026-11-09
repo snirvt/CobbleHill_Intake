@@ -246,7 +246,9 @@ source scripts/api_env.sh
   required `reason` before `category` so the model reasons per item with thinking off; the reason is kept as `Diagnosis.category_reason` and shown in reports, xlsx column `diagnosis_category_reasons`; prompt has rules `CATEGORY_RULES` + worked examples `CATEGORY_EXAMPLES`), chained by
   `CategorizedDiagnosisExtractor` (`build_diagnosis_extractor`). The age is text from
   `categories.describe_age(age_years)` ("3 months (infant)" / "16 years (not an infant)"; the
-  cutoff is `settings.infant_age_threshold_years` and never shown to the model), age from the
+  cutoff is `settings.infant_age_threshold_years` and never shown to the model; an infant's
+  pregnancy/birth-history codes (breech, maternal O-codes) go to "Newborn / Well Child", never
+  "Women's Health" — a prompt rule only, no code guard), age from the
   existing `PatientAgeClassifier`: dr-validity runs age before diagnosis, intake-review passes
   Phase I's age to the nurse diagnoses, dr-nurse-match has none ("unknown"). Tune each prompt with its own
   integration test: `test_diagnosis_extraction.py` / `test_diagnosis_buckets.py`.

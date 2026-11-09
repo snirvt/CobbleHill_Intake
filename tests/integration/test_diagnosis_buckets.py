@@ -102,6 +102,18 @@ _CASES = [
     (Diagnosis(name="Underweight"), "1 year (infant)", DiagnosisCategory.FEEDING),
     (Diagnosis(name="Poor weight gain"), "6 months (infant)", DiagnosisCategory.FEEDING),
     (Diagnosis(name="Underweight", icd_code="R63.6"), None, DiagnosisCategory.FEEDING),
+    # Production: a 7-day-old's birth-history maternal code landed in Women's Health.
+    (
+        Diagnosis(name="Breech presentation, fetus 2 of multiple gestation", icd_code="O32.1XX2"),
+        "7 days (infant)",
+        DiagnosisCategory.NEWBORN,
+    ),
+    (
+        Diagnosis(name="Breech presentation", icd_code="O32.1XX0"),
+        "30 years (not an infant)",
+        DiagnosisCategory.WOMENS_HEALTH,
+    ),
+    (Diagnosis(name="Uterine pain, 16 weeks pregnant"), _TEEN, DiagnosisCategory.WOMENS_HEALTH),
     # The screenshot patient (0 days old); also the batch test below.
     (Diagnosis(name="Feeding disability", icd_code="R63.30"), _INFANT, DiagnosisCategory.FEEDING),
     (Diagnosis(name="Underweight", icd_code="R63.6"), _INFANT, DiagnosisCategory.FEEDING),
@@ -167,3 +179,25 @@ async def test_whole_note_batch_keeps_order_and_count() -> None:
     assert [d.name for d in result.diagnoses] == [d.name for d in batch]
     expected = [e for _, _, e in peds] + [DiagnosisCategory.GASTROINTESTINAL]
     assert [d.category for d in result.diagnoses] == expected, _why(result.diagnoses)
+
+
+@pytest.mark.integration
+async def test_production_newborn_note_has_no_womens_health() -> None:
+    """The production 7-day-old's five diagnoses: none Women's Health, breech is newborn."""
+    batch = [
+        Diagnosis(name="Breech presentation, fetus 2 of multiple gestation", icd_code="O32.1XX2"),
+        Diagnosis(
+            name="Encounter for routine child health examination without abnormal findings",
+            icd_code="Z00.129",
+        ),
+        Diagnosis(name="Newborn affected by IUGR", icd_code="P05.9"),
+        Diagnosis(name="Health examination for newborn under 8 days old"),
+        Diagnosis(name="Need for RSV immunization"),
+    ]
+
+    result = await build_diagnosis_categorizer().categorize(batch, "7 days (infant)")
+
+    assert result.error is None, result.error
+    categories = [d.category for d in result.diagnoses]
+    assert DiagnosisCategory.WOMENS_HEALTH not in categories, _why(result.diagnoses)
+    assert categories[0] is DiagnosisCategory.NEWBORN, _why(result.diagnoses)
